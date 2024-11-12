@@ -18,6 +18,7 @@ services:
       REDIS_USE_AUTH: "false"
       REDIS_HOST: "redis"
       REDIS_USE_SSL: "false"
+      CORS_ALLOWED_ORIGIN: "http://localhost,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173"
 
   admin-api:
     build:
@@ -37,6 +38,7 @@ services:
       REDIS_USE_AUTH: "false"
       REDIS_HOST: "redis"
       REDIS_USE_SSL: "false"
+      CORS_ALLOWED_ORIGIN: "http://localhost,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173"
 
   worker:
     build:

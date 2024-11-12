@@ -1,6 +1,5 @@
 import os
 
-import redis
 from redis import StrictRedis
 
 

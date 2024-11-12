@@ -1,10 +1,22 @@
+import os
 from sqlalchemy import text
 from mc_bench.util.postgres import get_session
 from mc_bench.util.redis import get_redis_client, RedisDatabase
 from .celery import send_task
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+allow_origins = os.environ.get("CORS_ALLOWED_ORIGIN", "").split(",")
+print(allow_origins)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
