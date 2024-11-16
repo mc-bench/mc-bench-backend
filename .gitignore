@@ -1,5 +1,7 @@
 .env
 .env-local
+.env-dev
+.env-prod
 
 ### venv template
 # Virtualenv

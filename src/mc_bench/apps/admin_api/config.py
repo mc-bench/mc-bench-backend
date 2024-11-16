@@ -1,0 +1,13 @@
+import os
+
+
+class Settings:
+    # GITHUB_CLIENT_ID = os.environ['GITHUB_CLIENT_ID']
+    # GITHUB_CLIENT_SECRET = os.environ['GITHUB_CLIENT_SECRET']
+    # GITHUB_REDIRECT_URI = os.environ['GITHUB_REDIRECT_URI']
+    JWT_SECRET_KEY = os.environ["SECRET_KEY"]
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+
+settings = Settings()

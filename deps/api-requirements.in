@@ -1,1 +1,6 @@
+Authlib
+itsdangerous
+python-jose[cryptography]
+requests
 fastapi[standard]>=0.115.3
+pyhumps

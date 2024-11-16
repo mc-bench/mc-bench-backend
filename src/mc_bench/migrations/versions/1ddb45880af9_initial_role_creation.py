@@ -28,9 +28,14 @@ def upgrade() -> None:
                 INHERIT
         ;
         
+        GRANT USAGE ON SCHEMA auth TO "api";
         GRANT USAGE ON SCHEMA sample TO "api";
         GRANT USAGE ON SCHEMA scoring TO "api";
         GRANT USAGE ON SCHEMA specification TO "api";
+
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT SELECT, INSERT ON TABLES TO "api";
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT USAGE ON SEQUENCES TO "api";
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA scoring GRANT EXECUTE ON FUNCTIONS TO "api";
 
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT SELECT ON TABLES TO "api";
 
@@ -61,9 +66,14 @@ def upgrade() -> None:
                 INHERIT
         ;
 
+        GRANT USAGE ON SCHEMA auth TO "admin-api";
         GRANT USAGE ON SCHEMA sample TO "admin-api";
         GRANT USAGE ON SCHEMA scoring TO "admin-api";
         GRANT USAGE ON SCHEMA specification TO "admin-api";
+
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT SELECT, INSERT ON TABLES TO "admin-api";
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT USAGE ON SEQUENCES TO "admin-api";
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT EXECUTE ON FUNCTIONS TO "admin-api";
 
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT SELECT, INSERT ON TABLES TO "admin-api";
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT USAGE ON SEQUENCES TO "admin-api";
@@ -99,10 +109,13 @@ def upgrade() -> None:
                 INHERIT
         ;
         
+        GRANT USAGE ON SCHEMA auth TO "worker";
         GRANT USAGE ON SCHEMA sample TO "worker";
         GRANT USAGE ON SCHEMA scoring TO "worker";
         GRANT USAGE ON SCHEMA specification TO "worker";
 
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT SELECT ON TABLES TO "worker";
+        
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT SELECT, INSERT ON TABLES TO "worker";
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT USAGE ON SEQUENCES TO "worker";
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT EXECUTE ON FUNCTIONS TO "worker";
@@ -136,9 +149,15 @@ def upgrade() -> None:
                 INHERIT
         ;
 
+        GRANT USAGE ON SCHEMA auth TO "admin-worker";
         GRANT USAGE ON SCHEMA sample TO "admin-worker";
         GRANT USAGE ON SCHEMA scoring TO "admin-worker";
         GRANT USAGE ON SCHEMA specification TO "admin-worker";
+
+
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "admin-worker";
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT USAGE ON SEQUENCES TO "admin-worker";
+        ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA auth GRANT EXECUTE ON FUNCTIONS TO "admin-worker";
 
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT SELECT, INSERT ON TABLES TO "admin-worker";
         ALTER DEFAULT PRIVILEGES FOR ROLE "mc-bench-admin" IN SCHEMA sample GRANT USAGE ON SEQUENCES TO "admin-worker";

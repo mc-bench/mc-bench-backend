@@ -1,23 +1,18 @@
-""" """
-
 from sqlalchemy import (
     Table,
     Column,
-    Integer,
     String,
-    TIMESTAMP,
-    func,
-    Boolean,
-    text,
-    UUID,
-    ForeignKey,
+    Integer,
     BigInteger,
+    TIMESTAMP,
+    ForeignKey,
+    func,
 )
 from .._metadata import metadata
 
 
-template = Table(
-    "template",
+role = Table(
+    "role",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
@@ -26,14 +21,6 @@ template = Table(
     Column("created_by", Integer, ForeignKey("auth.user.id"), nullable=False),
     Column("last_modified", TIMESTAMP(timezone=False), nullable=True),
     Column("last_modified_by", Integer, ForeignKey("auth.user.id"), nullable=True),
-    Column(
-        "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
-    ),
     Column("name", String, unique=True, nullable=False),
-    Column("description", String, unique=False, nullable=True),
-    Column("content", String, nullable=False),
-    Column("active", Boolean, nullable=True),
-    Column("frozen", Boolean, nullable=True),
-    comment=__doc__.strip(),
-    schema="specification",
+    schema="auth",
 )

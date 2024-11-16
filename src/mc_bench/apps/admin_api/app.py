@@ -5,15 +5,17 @@ from mc_bench.util.redis import get_redis_client, RedisDatabase
 from .celery import send_task
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from .routers.templates import template_router
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("CORS_ALLOWED_ORIGIN").split(","),
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(template_router)
 
 
 @app.get("/")

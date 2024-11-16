@@ -22,6 +22,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.execute(
         textwrap.dedent("""\
+    CREATE SCHEMA IF NOT EXISTS auth;
     CREATE SCHEMA IF NOT EXISTS sample;
     CREATE SCHEMA IF NOT EXISTS scoring;
     CREATE SCHEMA IF NOT EXISTS specification;

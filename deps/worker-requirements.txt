@@ -71,6 +71,7 @@ redis==5.2.0
     #   celery
 six==1.16.0
     # via
+    #   -c deps/api-requirements.txt
     #   -c deps/requirements.txt
     #   python-dateutil
 sqlalchemy==2.0.36

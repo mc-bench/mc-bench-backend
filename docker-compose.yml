@@ -19,6 +19,12 @@ services:
       REDIS_HOST: "redis"
       REDIS_USE_SSL: "false"
       CORS_ALLOWED_ORIGIN: "http://localhost,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173"
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI}
+      SECRET_KEY: ${SECRET_KEY}
+      GITHUB_EMAIL_SALT: "iH7UU7YbypaFYqB2UslAv0LkR2lsEqNevrvwQbJ8bU8"
+
 
   admin-api:
     build:
@@ -39,6 +45,7 @@ services:
       REDIS_HOST: "redis"
       REDIS_USE_SSL: "false"
       CORS_ALLOWED_ORIGIN: "http://localhost,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173"
+      SECRET_KEY: ${SECRET_KEY}
 
   worker:
     build:

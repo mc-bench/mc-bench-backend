@@ -1,25 +1,42 @@
 """ """
 
-from sqlalchemy import Table, Column, Integer, String, ForeignKey, TIMESTAMP, func
+from sqlalchemy import (
+    Table,
+    Column,
+    Integer,
+    String,
+    ForeignKey,
+    TIMESTAMP,
+    func,
+    UUID,
+    text,
+    BigInteger,
+)
 from .._metadata import metadata
 
 
 sample = Table(
     "sample",
     metadata,
-    Column("id", Integer, primary_key=True),
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
-        "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=True
+        "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False
+    ),
+    Column("created_by", Integer, ForeignKey("auth.user.id"), nullable=False),
+    Column("last_modified", TIMESTAMP(timezone=False), nullable=True),
+    Column("last_modified_by", Integer, ForeignKey("auth.user.id"), nullable=True),
+    Column(
+        "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
     Column(
-        "model_run_id",
+        "run_id",
         Integer,
-        ForeignKey("specification.run_model.id"),
+        ForeignKey("specification.run.id"),
         nullable=False,
     ),
-    Column("inspiration_result_text", String, nullable=True),
-    Column("description_result_text", String, nullable=True),
-    Column("code_result", String, nullable=True),
+    Column("result_inspiration_text", String, nullable=True),
+    Column("result_description_text", String, nullable=True),
+    Column("result_code_text", String, nullable=False),
     comment=__doc__.strip(),
     schema="sample",
 )

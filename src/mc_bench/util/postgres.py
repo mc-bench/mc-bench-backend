@@ -1,3 +1,4 @@
+import contextlib
 import os
 
 import sqlalchemy
@@ -40,6 +41,7 @@ def get_session(engine=None, **kwargs):
     else:
         if engine is None:
             engine = get_engine(**kwargs)
+            engine.echo = True
 
         Session = sqlalchemy.orm.session.sessionmaker(bind=engine)
         _SESSIONMAKER = Session
@@ -53,3 +55,21 @@ def get_sessionmaker():
     get_session()
 
     return _SESSIONMAKER
+
+
+@contextlib.contextmanager
+def managed_session():
+    session = get_session()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_managed_session():
+    with managed_session() as db:
+        yield db
