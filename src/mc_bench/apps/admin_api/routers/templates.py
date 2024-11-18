@@ -16,7 +16,10 @@ from ..config import settings
 
 template_router = APIRouter()
 
-am = AuthManager(settings)
+am = AuthManager(
+    jwt_secret=settings.JWT_SECRET_KEY,
+    jwt_algorithm=settings.ALGORITHM,
+)
 
 T = TypeVar("T")
 
@@ -157,6 +160,7 @@ def delete_template(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
     db.delete(template)
+
 
 @am.require_any_scopes(["template:admin", "template:write", "template:read"])
 @template_router.get("/api/template/{external_id}", response_model=TemplateResponse)

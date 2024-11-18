@@ -12,7 +12,10 @@ import sqlalchemy
 
 user_router = APIRouter()
 
-am = AuthManager(settings)
+am = AuthManager(
+    jwt_secret=settings.JWT_SECRET_KEY,
+    jwt_algorithm=settings.ALGORITHM,
+)
 
 github_oauth_client = GithubOauthClient(
     client_id=settings.GITHUB_CLIENT_ID,

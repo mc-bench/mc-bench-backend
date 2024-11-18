@@ -27,7 +27,7 @@ class Template(Base):
             "content": self.content,
             "active": self.active,
             "frozen": self.frozen,
-            "usage": self.usage
+            "usage": self.usage,
         }
 
         if self.most_recent_editor is not None:
@@ -39,9 +39,8 @@ class Template(Base):
 
     @property
     def _usage_expression(self):
-        return (
-            select(func.count(1))
-            .where(schema.specification.run.c.template_id == self.id)
+        return select(func.count(1)).where(
+            schema.specification.run.c.template_id == self.id
         )
 
     @hybrid_property

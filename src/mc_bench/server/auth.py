@@ -9,8 +9,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 class AuthManager:
-    def __init__(self, settings):
-        self.settings = settings
+    def __init__(self, jwt_secret, jwt_algorithm):
+        self.jwt_secret = jwt_secret
+        self.jwt_algorithm = jwt_algorithm
 
     def create_access_token(
         self, data: dict, expires_delta: Optional[timedelta] = None
@@ -22,7 +23,7 @@ class AuthManager:
             expire = datetime.utcnow() + timedelta(minutes=15)
         to_encode.update({"exp": expire})
         encoded_jwt = jwt.encode(
-            to_encode, self.settings.JWT_SECRET_KEY, algorithm=self.settings.ALGORITHM
+            to_encode, self.jwt_secret, algorithm=self.jwt_algorithm
         )
         return encoded_jwt
 
@@ -35,8 +36,8 @@ class AuthManager:
         try:
             payload = jwt.decode(
                 token,
-                self.settings.JWT_SECRET_KEY,
-                algorithms=[self.settings.ALGORITHM],
+                self.jwt_secret,
+                algorithms=[self.jwt_algorithm],
             )
             user_uuid: str = payload.get("sub")
             if user_uuid is None:
@@ -57,8 +58,8 @@ class AuthManager:
                 try:
                     payload = jwt.decode(
                         token,
-                        self.settings.JWT_SECRET_KEY,
-                        algorithms=[self.settings.ALGORITHM],
+                        self.jwt_secret,
+                        algorithms=[self.jwt_algorithm],
                     )
                     current_scopes: str = payload.get("scopes")
                     if current_scopes is None:
@@ -88,8 +89,8 @@ class AuthManager:
                 try:
                     payload = jwt.decode(
                         token,
-                        self.settings.JWT_SECRET_KEY,
-                        algorithms=[self.settings.ALGORITHM],
+                        self.jwt_secret,
+                        algorithms=[self.jwt_algorithm],
                     )
                     current_scopes: str = payload.get("scopes")
                     if current_scopes is None:
@@ -116,8 +117,8 @@ class AuthManager:
         try:
             payload = jwt.decode(
                 token,
-                self.settings.JWT_SECRET_KEY,
-                algorithms=[self.settings.ALGORITHM],
+                self.jwt_secret,
+                algorithms=[self.jwt_algorithm],
             )
             return payload.get("scopes")
         except JWTError:
