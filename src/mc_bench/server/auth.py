@@ -1,6 +1,5 @@
-import functools
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -48,68 +47,57 @@ class AuthManager:
         return user_uuid
 
     def require_any_scopes(self, scopes):
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, token: str = Depends(oauth2_scheme), **kwargs):
-                credentials_exception = HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Could not validate credentials",
-                    headers={"WWW-Authenticate": "Bearer"},
+        def wrapper(token: str = Depends(oauth2_scheme)):
+            credentials_exception = HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            try:
+                payload = jwt.decode(
+                    token,
+                    self.jwt_secret,
+                    algorithms=[self.jwt_algorithm],
                 )
-                try:
-                    payload = jwt.decode(
-                        token,
-                        self.jwt_secret,
-                        algorithms=[self.jwt_algorithm],
-                    )
-                    current_scopes: str = payload.get("scopes")
-                    if current_scopes is None:
-                        raise credentials_exception
-
-                    if set(scopes).isdisjoint(set(current_scopes)):
-                        raise credentials_exception
-
-                    return func(*args, **kwargs)
-
-                except JWTError:
+                current_scopes: str = payload.get("scopes")
+                if current_scopes is None:
                     raise credentials_exception
 
-            return wrapper
+                if set(scopes).isdisjoint(set(current_scopes)):
+                    raise credentials_exception
 
-        return decorator
+            except JWTError:
+                raise credentials_exception
+
+        return wrapper
 
     def require_all_scopes(self, scopes):
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, token: str = Depends(oauth2_scheme), **kwargs):
-                credentials_exception = HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Could not validate credentials",
-                    headers={"WWW-Authenticate": "Bearer"},
+        def wrapper(token: str = Depends(oauth2_scheme)):
+            credentials_exception = HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            try:
+                payload = jwt.decode(
+                    token,
+                    self.jwt_secret,
+                    algorithms=[self.jwt_algorithm],
                 )
-                try:
-                    payload = jwt.decode(
-                        token,
-                        self.jwt_secret,
-                        algorithms=[self.jwt_algorithm],
-                    )
-                    current_scopes: str = payload.get("scopes")
-                    if current_scopes is None:
-                        raise credentials_exception
+                current_scopes: str = payload.get("scopes")
 
-                    if not set(scopes).issubset(set(current_scopes)):
-                        raise credentials_exception
-
-                    return func(*args, **kwargs)
-
-                except JWTError:
+                if current_scopes is None:
                     raise credentials_exception
 
-            return wrapper
+                if not set(scopes).issubset(set(current_scopes)):
+                    raise credentials_exception
 
-        return decorator
+            except JWTError:
+                raise credentials_exception
 
-    def current_scopes(self, token: str = Depends(oauth2_scheme)):
+        return wrapper
+
+    def current_scopes(self, token: str = Depends(oauth2_scheme)) -> List[str]:
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

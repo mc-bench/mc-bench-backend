@@ -66,8 +66,15 @@ class UpdateTemplateRequest(BaseModel):
     content: Optional[str] = None
 
 
-@am.require_any_scopes(["template:admin", "template:read", "template:write"])
-@template_router.get("/api/template", response_model=ListResponse[TemplateResponse])
+@template_router.get(
+    "/api/template",
+    dependencies=[
+        Depends(
+            am.require_any_scopes(["template:admin", "template:read", "template:write"])
+        ),
+    ],
+    response_model=ListResponse[TemplateResponse],
+)
 def get_templates(
     db: Session = Depends(get_managed_session),
 ):
@@ -80,8 +87,10 @@ def get_templates(
     return payload
 
 
-@am.require_any_scopes(["template:admin", "template:write"])
-@template_router.post("/api/template")
+@template_router.post(
+    "/api/template",
+    dependencies=[Depends(am.require_any_scopes(["template:admin", "template:write"]))],
+)
 def create_template(
     template: CreateTemplateRequest,
     user_uuid: str = Depends(am.get_current_user_uuid),
@@ -103,8 +112,10 @@ def create_template(
     }
 
 
-@am.require_any_scopes(["template:admin", "template:write"])
-@template_router.patch("/api/template/{external_id}")
+@template_router.patch(
+    "/api/template/{external_id}",
+    dependencies=[Depends(am.require_any_scopes(["template:admin", "template:write"]))],
+)
 def update_template(
     external_id: str,
     template_update: UpdateTemplateRequest,
@@ -141,8 +152,12 @@ def update_template(
     return template.to_dict()
 
 
-@am.require_any_scopes(["template:admin", "template:write"])
-@template_router.delete("/api/template/{external_id}")
+@template_router.delete(
+    "/api/template/{external_id}",
+    dependencies=[
+        Depends(am.require_any_scopes(["template:admin", "template:write"])),
+    ],
+)
 def delete_template(
     external_id: str,
     user_uuid: str = Depends(am.get_current_user_uuid),
@@ -163,8 +178,15 @@ def delete_template(
     db.delete(template)
 
 
-@am.require_any_scopes(["template:admin", "template:write", "template:read"])
-@template_router.get("/api/template/{external_id}", response_model=TemplateResponse)
+@template_router.get(
+    "/api/template/{external_id}",
+    response_model=TemplateResponse,
+    dependencies=[
+        Depends(
+            am.require_any_scopes(["template:admin", "template:write", "template:read"])
+        )
+    ],
+)
 def get_template(
     external_id: str,
     db: Session = Depends(get_managed_session),

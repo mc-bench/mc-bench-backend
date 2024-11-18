@@ -1,4 +1,5 @@
 import datetime
+from typing import List
 
 import sqlalchemy
 from fastapi import APIRouter, Depends, HTTPException
@@ -106,11 +107,10 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
     access_token = am.create_access_token(
         data={
             "sub": user_id,
-            "scopes": ["template:admin"],
+            "scopes": user.scopes,
         },
         expires_delta=datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    print(user.username)
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -122,6 +122,7 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
 def read_users_me(
     current_user_uuid: str = Depends(am.get_current_user_uuid),
     db: Session = Depends(get_managed_session),
+    current_scopes: List[str] = Depends(am.current_scopes),
 ):
     user_stmt = select(User).where(User.external_id == current_user_uuid)
     user = db.scalar(user_stmt)
@@ -131,7 +132,7 @@ def read_users_me(
             status_code=404,
         )
 
-    return {"username": user.username, "scopes": ["template:admin"]}
+    return {"username": user.username, "scopes": current_scopes}
 
 
 @user_router.post("/api/user")

@@ -4,9 +4,9 @@ from sqlalchemy import (
     Column,
     ForeignKey,
     Integer,
-    String,
     Table,
-    func, UniqueConstraint,
+    UniqueConstraint,
+    func,
 )
 
 from .._metadata import metadata
