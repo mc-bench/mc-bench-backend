@@ -1,11 +1,13 @@
 import os
-from sqlalchemy import text
-from mc_bench.util.postgres import get_session
-from mc_bench.util.redis import get_redis_client, RedisDatabase
-from .celery import send_task
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers.user import user_router
+from sqlalchemy import text
+
+from mc_bench.apps.api.celery import send_task
+from mc_bench.apps.api.routers.user import user_router
+from mc_bench.util.postgres import get_session
+from mc_bench.util.redis import RedisDatabase, get_redis_client
 
 allow_origins = os.environ.get("CORS_ALLOWED_ORIGIN", "").split(",")
 

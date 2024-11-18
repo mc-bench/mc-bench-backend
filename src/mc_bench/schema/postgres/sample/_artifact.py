@@ -1,8 +1,8 @@
 """ """
 
-from sqlalchemy import Table, Column, Integer, String, ForeignKey, func, TIMESTAMP
-from .._metadata import metadata
+from sqlalchemy import TIMESTAMP, Column, ForeignKey, Integer, String, Table, func
 
+from .._metadata import metadata
 
 artifact = Table(
     "artifact",

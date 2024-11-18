@@ -1,6 +1,6 @@
 """ """
 
-from sqlalchemy import Table, Column, Integer, String, func, TIMESTAMP
+from sqlalchemy import TIMESTAMP, Column, Integer, String, Table, func
 
 from .._metadata import metadata
 

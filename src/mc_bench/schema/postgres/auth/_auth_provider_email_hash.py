@@ -1,16 +1,16 @@
 from sqlalchemy import (
-    Table,
+    TIMESTAMP,
+    BigInteger,
     Column,
+    ForeignKey,
     Integer,
     String,
-    ForeignKey,
+    Table,
     UniqueConstraint,
-    BigInteger,
     func,
-    TIMESTAMP,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 auth_provider_email_hash = Table(
     "auth_provider_email_hash",

@@ -4,19 +4,19 @@ This table is append only. If we choose to use a different template we should ma
 """
 
 from sqlalchemy import (
-    Table,
+    TIMESTAMP,
+    UUID,
+    BigInteger,
     Column,
+    ForeignKey,
     Integer,
     String,
-    ForeignKey,
-    TIMESTAMP,
+    Table,
     func,
-    BigInteger,
-    UUID,
     text,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 prompt = Table(
     "prompt",

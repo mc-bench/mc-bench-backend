@@ -1,8 +1,10 @@
-from sqlalchemy.orm import relationship
-from sqlalchemy.orm import Mapped
 from typing import List
-from ._base import Base
+
+from sqlalchemy.orm import Mapped, relationship
+
 import mc_bench.schema.postgres as schema
+
+from ._base import Base
 
 
 class User(Base):

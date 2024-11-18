@@ -8,19 +8,19 @@ Unless it becomes necessary, we will generally consider this model name the syst
 """
 
 from sqlalchemy import (
-    Table,
+    TIMESTAMP,
+    UUID,
+    BigInteger,
     Column,
+    ForeignKey,
     Integer,
     String,
-    TIMESTAMP,
+    Table,
     func,
-    ForeignKey,
-    BigInteger,
     text,
-    UUID,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 model = Table(
     "model",

@@ -1,17 +1,17 @@
 from sqlalchemy import (
-    Table,
-    Column,
-    Integer,
-    UUID,
-    String,
-    text,
     TIMESTAMP,
-    func,
-    ForeignKey,
+    UUID,
     BigInteger,
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    func,
+    text,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 user = Table(
     "user",

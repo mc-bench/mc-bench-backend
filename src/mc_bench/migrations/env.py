@@ -1,7 +1,9 @@
 import logging.config
 import sys
-from sqlalchemy import pool
+
 from alembic import context
+from sqlalchemy import pool
+
 from mc_bench.schema.postgres import metadata
 from mc_bench.util.postgres import get_engine
 

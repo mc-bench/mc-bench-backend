@@ -1,20 +1,20 @@
 """ """
 
 from sqlalchemy import (
-    Table,
+    TIMESTAMP,
+    UUID,
+    BigInteger,
+    Boolean,
     Column,
+    ForeignKey,
     Integer,
     String,
-    TIMESTAMP,
+    Table,
     func,
-    Boolean,
     text,
-    UUID,
-    ForeignKey,
-    BigInteger,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 template = Table(
     "template",

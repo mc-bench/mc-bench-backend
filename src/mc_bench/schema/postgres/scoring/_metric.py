@@ -1,19 +1,19 @@
 """ """
 
 from sqlalchemy import (
-    Table,
+    TIMESTAMP,
+    UUID,
+    BigInteger,
     Column,
+    ForeignKey,
     Integer,
     String,
-    TIMESTAMP,
+    Table,
     func,
-    ForeignKey,
-    UUID,
     text,
-    BigInteger,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 metric = Table(
     "metric",

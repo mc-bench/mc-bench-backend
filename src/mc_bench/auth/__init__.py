@@ -1,5 +1,6 @@
 import requests
-from .emails import hash_email
+
+from mc_bench.auth.emails import hash_email
 
 
 class GithubOauthClient:

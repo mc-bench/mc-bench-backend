@@ -1,17 +1,18 @@
 """ """
 
 from sqlalchemy import (
+    TIMESTAMP,
+    UUID,
+    BigInteger,
     Column,
-    Table,
+    ForeignKey,
     Integer,
     String,
-    TIMESTAMP,
+    Table,
     func,
-    UUID,
-    ForeignKey,
     text,
-    BigInteger,
 )
+
 from .._metadata import metadata
 
 # e.g. QUEUED, RUNNNIG, DONE

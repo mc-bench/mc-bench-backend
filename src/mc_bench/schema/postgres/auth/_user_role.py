@@ -1,6 +1,6 @@
-from sqlalchemy import Table, Column, Integer, ForeignKey, BigInteger, TIMESTAMP, func
-from .._metadata import metadata
+from sqlalchemy import TIMESTAMP, BigInteger, Column, ForeignKey, Integer, Table, func
 
+from .._metadata import metadata
 
 user_role = Table(
     "user_role",

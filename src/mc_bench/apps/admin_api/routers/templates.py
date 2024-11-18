@@ -1,18 +1,19 @@
-from sqlalchemy import select
-from mc_bench.util.postgres import get_managed_session
-from sqlalchemy.orm import Session
-from typing import Optional
+import datetime
+import uuid
+from typing import Generic, List, Optional, TypeVar
+
+import humps
 from fastapi import Depends, HTTPException, status
 from fastapi.routing import APIRouter
-from mc_bench.server.auth import AuthManager
-import uuid
-from mc_bench.models.template import Template
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from mc_bench.apps.admin_api.config import settings
+from mc_bench.models.template import Template
 from mc_bench.models.user import User
-import humps
-from typing import Generic, TypeVar, List
-import datetime
-from ..config import settings
+from mc_bench.server.auth import AuthManager
+from mc_bench.util.postgres import get_managed_session
 
 template_router = APIRouter()
 

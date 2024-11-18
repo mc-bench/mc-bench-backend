@@ -1,10 +1,6 @@
-from mc_bench.config import CeleryConfig
+from mc_bench.util.celery import make_celery_app
 
-from celery import Celery
-
-config = CeleryConfig()
-
-celery = Celery(broker=config.broker_url, backend=config.broker_url)
+celery = make_celery_app()
 
 
 def send_task(name, *args, **kwargs):

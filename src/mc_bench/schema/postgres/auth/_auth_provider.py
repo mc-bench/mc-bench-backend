@@ -1,15 +1,15 @@
 from sqlalchemy import (
-    Table,
-    Column,
-    Integer,
-    String,
     TIMESTAMP,
     BigInteger,
+    Column,
     ForeignKey,
+    Integer,
+    String,
+    Table,
     func,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 auth_provider = Table(
     "auth_provider",

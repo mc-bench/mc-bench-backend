@@ -16,6 +16,7 @@ install-dev:
 	pip install -e .[dev]
 
 fmt:
+	ruff check --select I --fix
 	ruff format .
 
 check:

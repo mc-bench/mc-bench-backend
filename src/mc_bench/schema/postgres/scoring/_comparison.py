@@ -1,17 +1,17 @@
 """ """
 
 from sqlalchemy import (
-    Table,
-    Column,
-    Integer,
-    ForeignKey,
-    UUID,
-    text,
-    func,
     TIMESTAMP,
+    UUID,
+    Column,
+    ForeignKey,
+    Integer,
+    Table,
+    func,
+    text,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 comparison = Table(
     "comparison",

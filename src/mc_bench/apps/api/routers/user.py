@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from mc_bench.models.user import User, AuthProviderEmailHash, AuthProvider
-from mc_bench.auth import GithubOauthClient
-from mc_bench.util.postgres import get_managed_session
-from ..config import settings
-from mc_bench.server.auth import AuthManager
 import datetime
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
+
 import sqlalchemy
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from mc_bench.apps.api.config import settings
+from mc_bench.auth import GithubOauthClient
+from mc_bench.models.user import AuthProvider, AuthProviderEmailHash, User
+from mc_bench.server.auth import AuthManager
+from mc_bench.util.postgres import get_managed_session
 
 user_router = APIRouter()
 

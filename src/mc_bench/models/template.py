@@ -1,9 +1,10 @@
-from sqlalchemy.orm import relationship
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.hybrid import hybrid_property
-from ._base import Base
+from sqlalchemy.orm import object_session, relationship
+
 import mc_bench.schema.postgres as schema
-from sqlalchemy.orm import object_session
+
+from ._base import Base
 
 
 class Template(Base):

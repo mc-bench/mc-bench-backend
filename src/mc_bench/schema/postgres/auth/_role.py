@@ -1,15 +1,15 @@
 from sqlalchemy import (
-    Table,
-    Column,
-    String,
-    Integer,
-    BigInteger,
     TIMESTAMP,
+    BigInteger,
+    Column,
     ForeignKey,
+    Integer,
+    String,
+    Table,
     func,
 )
-from .._metadata import metadata
 
+from .._metadata import metadata
 
 role = Table(
     "role",
