@@ -44,7 +44,9 @@ services:
       REDIS_USE_SSL: "false"
       CORS_ALLOWED_ORIGIN: "http://localhost,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173"
       SECRET_KEY: ${SECRET_KEY}
-
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
   worker:
     build:
       dockerfile: "images/worker.Dockerfile"
@@ -68,6 +70,9 @@ services:
       POSTGRES_PASSWORD: "mc-bench"
       POSTGRES_SSLMODE: "disable"
       REDIS_USE_SSL: "false"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
 
   postgres:
     image: postgres:16

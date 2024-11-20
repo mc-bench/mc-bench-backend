@@ -1,6 +1,5 @@
 from typing import List
 
-import jinja2
 from sqlalchemy import func, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, object_session, relationship
@@ -10,18 +9,18 @@ import mc_bench.schema.postgres as schema
 from ._base import Base
 
 
-class Template(Base):
-    __table__ = schema.specification.template
+class Prompt(Base):
+    __table__ = schema.specification.prompt
 
     author = relationship(
-        "User", foreign_keys=[schema.specification.template.c.created_by]
+        "User", foreign_keys=[schema.specification.prompt.c.created_by]
     )
     most_recent_editor = relationship(
-        "User", foreign_keys=[schema.specification.template.c.last_modified_by]
+        "User", foreign_keys=[schema.specification.prompt.c.last_modified_by]
     )
 
     runs: Mapped[List["Run"]] = relationship(  # noqa: F821
-        "Run", uselist=True, back_populates="template"
+        "Run", uselist=True, back_populates="prompt"
     )
 
     def to_dict(self, include_runs=False):
@@ -31,10 +30,8 @@ class Template(Base):
             "created_by": self.author.username,
             "last_modified": self.last_modified,
             "name": self.name,
-            "description": self.description,
-            "content": self.content,
-            "active": bool(self.active),
-            "frozen": bool(self.frozen),
+            "build_specification": self.build_specification,
+            "active": self.active,
             "usage": self.usage,
         }
 
@@ -53,7 +50,7 @@ class Template(Base):
     @property
     def _usage_expression(self):
         return select(func.count(1)).where(
-            schema.specification.run.c.template_id == self.id
+            schema.specification.run.c.prompt_id == self.id
         )
 
     @hybrid_property
@@ -64,6 +61,3 @@ class Template(Base):
     @usage.expression
     def usage(self):
         return self._usage_expression.scalar_subquery()
-
-    def render(self, **kwargs):
-        return jinja2.Template(self.content).render(**kwargs)

@@ -1,6 +1,5 @@
 from typing import List
 
-import jinja2
 from sqlalchemy import func, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, object_session, relationship
@@ -10,31 +9,36 @@ import mc_bench.schema.postgres as schema
 from ._base import Base
 
 
-class Template(Base):
-    __table__ = schema.specification.template
+class Model(Base):
+    __table__ = schema.specification.model
 
-    author = relationship(
-        "User", foreign_keys=[schema.specification.template.c.created_by]
+    creator = relationship(
+        "User", foreign_keys=[schema.specification.model.c.created_by]
     )
     most_recent_editor = relationship(
-        "User", foreign_keys=[schema.specification.template.c.last_modified_by]
+        "User", foreign_keys=[schema.specification.model.c.last_modified_by]
     )
 
+    providers: Mapped[List["Provider"]] = relationship(  # noqa: F821
+        "Provider",
+        uselist=True,
+        lazy="selectin",
+        back_populates="model",
+        cascade="all, delete",
+        passive_deletes=True,
+    )
     runs: Mapped[List["Run"]] = relationship(  # noqa: F821
-        "Run", uselist=True, back_populates="template"
+        "Run", uselist=True, back_populates="model"
     )
 
-    def to_dict(self, include_runs=False):
+    def to_dict(self, include_providers=True, include_runs=False):
         ret = {
             "id": self.external_id,
             "created": self.created,
-            "created_by": self.author.username,
+            "created_by": self.creator.username,
             "last_modified": self.last_modified,
-            "name": self.name,
-            "description": self.description,
-            "content": self.content,
+            "slug": self.slug,
             "active": bool(self.active),
-            "frozen": bool(self.frozen),
             "usage": self.usage,
         }
 
@@ -42,6 +46,9 @@ class Template(Base):
             ret["last_modified_by"] = self.most_recent_editor.username
         else:
             ret["last_modified_by"] = None
+
+        if include_providers:
+            ret["providers"] = [provider.to_dict() for provider in self.providers]
 
         if include_runs:
             ret["runs"] = [
@@ -53,7 +60,7 @@ class Template(Base):
     @property
     def _usage_expression(self):
         return select(func.count(1)).where(
-            schema.specification.run.c.template_id == self.id
+            schema.specification.run.c.model_id == self.id
         )
 
     @hybrid_property
@@ -65,5 +72,16 @@ class Template(Base):
     def usage(self):
         return self._usage_expression.scalar_subquery()
 
-    def render(self, **kwargs):
-        return jinja2.Template(self.content).render(**kwargs)
+    @property
+    def default_provider(self):
+        return [provider for provider in self.providers if provider.is_default][0]
+
+
+class ProviderClass(Base):
+    __table__ = schema.specification.provider_class
+
+    def to_dict(self):
+        return {
+            "id": self.external_id,
+            "name": self.name,
+        }

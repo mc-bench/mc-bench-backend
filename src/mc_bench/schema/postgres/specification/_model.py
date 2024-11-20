@@ -11,6 +11,7 @@ from sqlalchemy import (
     TIMESTAMP,
     UUID,
     BigInteger,
+    Boolean,
     Column,
     ForeignKey,
     Integer,
@@ -35,7 +36,8 @@ model = Table(
     Column(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
-    Column("name", String, unique=True, nullable=False),
+    Column("slug", String, unique=True, nullable=False),
+    Column("active", Boolean, nullable=True),
     comment=__doc__.strip(),
     schema="specification",
 )

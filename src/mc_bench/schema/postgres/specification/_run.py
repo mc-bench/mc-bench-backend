@@ -31,6 +31,14 @@ run = Table(
     Column("prompt_id", Integer, ForeignKey("specification.prompt.id")),
     Column("model_id", Integer, ForeignKey("specification.model.id")),
     Column("state_id", Integer, ForeignKey("specification.run_state.id")),
-    comment=__doc__.strip(),
+    # While we can imagine most runs will occur as the result of a generation
+    # it may become true that we execute individual runs that are not a part of the
+    # generation concept
+    Column(
+        "generation_id",
+        Integer,
+        ForeignKey("specification.generation.id"),
+        nullable=True,
+    ),
     schema="specification",
 )

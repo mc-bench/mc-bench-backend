@@ -1,13 +1,8 @@
-"""
-A prompt. This will include a template id (which should be the same across every given run).
-This table is append only. If we choose to use a different template we should make a new prompt row.
-"""
-
 from sqlalchemy import (
+    JSON,
     TIMESTAMP,
     UUID,
     BigInteger,
-    Boolean,
     Column,
     ForeignKey,
     Integer,
@@ -19,8 +14,8 @@ from sqlalchemy import (
 
 from .._metadata import metadata
 
-prompt = Table(
-    "prompt",
+provider_class = Table(
+    "provider_class",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
@@ -33,8 +28,6 @@ prompt = Table(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
     Column("name", String, unique=True, nullable=False),
-    Column("active", Boolean, nullable=True),
-    Column("build_specification", String, nullable=False),
-    comment=__doc__.strip(),
+    Column("default_config", JSON, nullable=False, server_default=text("'{}'::jsonb")),
     schema="specification",
 )
