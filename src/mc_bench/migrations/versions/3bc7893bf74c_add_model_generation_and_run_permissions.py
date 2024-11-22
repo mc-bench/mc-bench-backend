@@ -26,7 +26,8 @@ roles_to_permissions = {
         "run:read",
     ],
     "admin": [
-        "generation:admin" "run:admin",
+        "generation:admin",
+        "run:admin",
     ],
 }
 
