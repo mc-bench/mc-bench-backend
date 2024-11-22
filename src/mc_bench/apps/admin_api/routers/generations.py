@@ -35,9 +35,7 @@ am = AuthManager(
 @generation_router.post(
     "/api/run/generate",
     dependencies=[
-        Depends(
-            am.require_any_scopes(["template:admin", "template:read", "template:write"])
-        ),
+        Depends(am.require_any_scopes(["generation:admin", "generation:write"])),
     ],
     response_model=GenerationCreatedResponse,
 )
@@ -94,7 +92,9 @@ def generate_runs(
     "/api/generation",
     dependencies=[
         Depends(
-            am.require_any_scopes(["template:admin", "template:read", "template:write"])
+            am.require_any_scopes(
+                ["generation:admin", "generation:read", "generation:write"]
+            )
         ),
     ],
     response_model=ListResponse[GenerationResponse],
@@ -120,7 +120,9 @@ def get_generations(
     "/api/generation/{generation_id}",
     dependencies=[
         Depends(
-            am.require_any_scopes(["template:admin", "template:read", "template:write"])
+            am.require_any_scopes(
+                ["generation:admin", "generation:read", "generation:write"]
+            )
         ),
     ],
     response_model=GenerationDetailResponse,

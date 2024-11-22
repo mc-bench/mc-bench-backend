@@ -1,4 +1,4 @@
-from typing import Union
+from typing import List, Union
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.routing import APIRouter
@@ -87,6 +87,7 @@ def update_template(
     user_uuid: str = Depends(am.get_current_user_uuid),
     db: Session = Depends(get_managed_session),
     include_runs: bool = Query(default=False),
+    current_scopes: List[str] = Depends(am.current_scopes),
 ):
     template = db.query(Template)
     if include_runs:
@@ -105,7 +106,7 @@ def update_template(
             detail=f"Template with external_id {external_id} not found",
         )
 
-    if author != editor:
+    if author != editor and "template:admin" not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Template with external_id {external_id} is not editable by {editor.external_id} without the template:admin permission",

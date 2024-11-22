@@ -13,6 +13,7 @@ from mc_bench.apps.admin_api.transport_types.requests import (
     UpdateModelRequest,
 )
 from mc_bench.apps.admin_api.transport_types.responses import (
+    ModelCreatedResponse,
     ModelDetailResponse,
     ModelResponse,
     ProviderClassResponse,
@@ -34,9 +35,7 @@ am = AuthManager(
 @model_router.get(
     "/api/provider-class",
     dependencies=[
-        Depends(
-            am.require_any_scopes(["template:admin", "template:read", "template:write"])
-        ),
+        Depends(am.require_any_scopes(["model:admin", "model:read", "model:write"])),
     ],
     response_model=List[ProviderClassResponse],
 )
@@ -51,9 +50,7 @@ def get_provider_class(
 @model_router.get(
     "/api/model",
     dependencies=[
-        Depends(
-            am.require_any_scopes(["template:admin", "template:read", "template:write"])
-        ),
+        Depends(am.require_any_scopes(["model:admin", "model:read", "model:write"])),
     ],
     response_model=ListResponse[ModelResponse],
 )
@@ -71,7 +68,8 @@ def get_models(
 
 @model_router.post(
     "/api/model",
-    dependencies=[Depends(am.require_any_scopes(["template:admin", "template:write"]))],
+    dependencies=[Depends(am.require_any_scopes(["model:admin", "model:write"]))],
+    response_model=ModelCreatedResponse,
 )
 def register_model(
     model_request: CreateModelRequest,
@@ -104,7 +102,7 @@ def register_model(
 
 @model_router.patch(
     "/api/model/{external_id}",
-    dependencies=[Depends(am.require_any_scopes(["template:admin", "template:write"]))],
+    dependencies=[Depends(am.require_any_scopes(["model:admin", "model:write"]))],
     response_model=Union[ModelResponse, ModelDetailResponse],
 )
 def update_model(
@@ -113,12 +111,13 @@ def update_model(
     user_uuid: str = Depends(am.get_current_user_uuid),
     db: Session = Depends(get_managed_session),
     include_runs: bool = Query(default=False),
+    current_scopes=Depends(am.current_scopes),
 ):
     model = db.query(Model)
     if include_runs:
         model = model.options(selectinload(Model.runs))
     model = model.filter(Model.external_id == external_id).first()
-    author = db.scalars(select(User).where(User.id == model.creator.id)).one()
+    creator = db.scalars(select(User).where(User.id == model.creator.id)).one()
     editor = db.scalars(select(User).where(User.external_id == user_uuid)).one()
 
     # TODO: Implement logic that ensures we don't edit the content of a model that has usages
@@ -129,10 +128,10 @@ def update_model(
             detail=f"Model with external_id {external_id} not found",
         )
 
-    if author != editor:
+    if creator != editor and "model:admin" not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Model with external_id {external_id} is not editable by {editor.external_id} without the template:admin permission",
+            detail=f"Model with external_id {external_id} is not editable by {editor.external_id} without the model:admin permission",
         )
 
     update_data = model_update.model_dump(exclude_unset=True)
@@ -180,7 +179,7 @@ def update_model(
 @model_router.delete(
     "/api/model/{external_id}",
     dependencies=[
-        Depends(am.require_any_scopes(["template:admin", "template:write"])),
+        Depends(am.require_any_scopes(["model:admin", "model:write"])),
     ],
 )
 def delete_model(
@@ -192,7 +191,7 @@ def delete_model(
     model = db.query(Model).filter(Model.external_id == external_id).first()
     creator = db.scalars(select(User).where(User.id == model.creator.id)).one()
     editor = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    if creator != editor and "template:admin" not in current_scopes:
+    if creator != editor and "model:admin" not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
@@ -208,9 +207,7 @@ def delete_model(
     "/api/model/{external_id}",
     response_model=ModelDetailResponse,
     dependencies=[
-        Depends(
-            am.require_any_scopes(["template:admin", "template:write", "template:read"])
-        )
+        Depends(am.require_any_scopes(["model:admin", "model:write", "model:read"]))
     ],
 )
 def get_model(
