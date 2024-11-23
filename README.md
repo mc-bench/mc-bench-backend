@@ -32,6 +32,46 @@ Any other mechanism should work as well
     
     ```pip install -e .[dev,api,worker]```
 
+# Run migrations
+
+With the python virtual environment activated, run the database migrations
+
+```shell
+$ mc-bench-alembic upgrade head
+```
+
+# Setup oauth2
+
+You need to create a Github oauth app and save the client and secret in your local env file as:
+
+GITHUB_CLIENT_ID
+GITHUB_CLIENT_SECRET
+
+See [frontend setup docs](https://github.com/mc-bench/mc-bench-frontend/blob/main/docs/setup_oauth_prereqs.md) 
+
+# Login and give yourself a role
+
+Running the frontend and the backend, login and create a username.
+
+Then use:
+
+```python
+./bin/grant-user-role grant --username {your username} --role admin
+```
+To see the usernames use:
+
+```shell
+
+./bin/grant-user-role list-users
+```
+
+To see the roles use:
+
+```shell
+
+./bin/grant-user-role list-roles
+```
+
 # Services run via docker
 
 The following command will start all the services up
