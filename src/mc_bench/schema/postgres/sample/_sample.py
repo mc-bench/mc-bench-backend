@@ -36,7 +36,8 @@ sample = Table(
     ),
     Column("result_inspiration_text", String, nullable=True),
     Column("result_description_text", String, nullable=True),
-    Column("result_code_text", String, nullable=False),
+    Column("result_code_text", String, nullable=True),
+    Column("raw", String, nullable=True),
     comment=__doc__.strip(),
     schema="sample",
 )

@@ -22,8 +22,7 @@ roles_to_permissions = {
         "template:read",
         "prompt:read",
         "model:read",
-        "generation:read",
-        "run:read",
+        "generation:read" "run:read",
     ],
 }
 

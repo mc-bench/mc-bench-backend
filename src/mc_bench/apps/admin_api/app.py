@@ -8,6 +8,7 @@ from mc_bench.apps.admin_api.celery import send_task
 from mc_bench.apps.admin_api.routers.generations import generation_router
 from mc_bench.apps.admin_api.routers.models import model_router
 from mc_bench.apps.admin_api.routers.prompts import prompt_router
+from mc_bench.apps.admin_api.routers.runs import run_router
 from mc_bench.apps.admin_api.routers.templates import template_router
 from mc_bench.util.postgres import get_session
 from mc_bench.util.redis import RedisDatabase, get_redis_client
@@ -24,6 +25,7 @@ app.include_router(template_router)
 app.include_router(prompt_router)
 app.include_router(model_router)
 app.include_router(generation_router)
+app.include_router(run_router)
 
 
 @app.get("/")

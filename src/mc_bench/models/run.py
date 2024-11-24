@@ -15,6 +15,8 @@ class RUN_STATE(enum.Enum):
     CREATED = "CREATED"
     PROMPT_ENQUEUED = "PROMPT_ENQUEUED"
     PROMPT_COMPLETED = "PROMPT_COMPLETED"
+    PROMPT_PROCESSING_ENQUEUED = "PROMPT_PROCESSING_ENQUEUED"
+    PROMPT_PROCESSING_COMPLETED = "PROMPT_PROCESSING_COMPLETED"
     BUILD_ENQUEUED = "BUILD_ENQUEUED"
     BUILD_COMPLETED = "BUILD_COMPLETED"
     POST_PROCESSING_ENQUEUED = "POST_PROCESSING_ENQUEUED"
@@ -22,6 +24,7 @@ class RUN_STATE(enum.Enum):
     SAMPLE_PREP_ENQUEUED = "SAMPLE_PREP_ENQUEUED"
     COMPLETED = "COMPLETED"
     PROMPT_FAILED = "PROMPT_FAILED"
+    PROMPT_PROCESSING_FAILED = "PROMPT_PROCESSING_FAILED"
     BUILD_FAILED = "BUILD_FAILED"
     POST_PROCESSING_FAILED = "POST_PROCESSING_FAILED"
     SAMPLE_PREP_FAILED = "SAMPLE_PREP_FAILED"
@@ -79,7 +82,14 @@ class Run(Base):
 
     state: Mapped["RunState"] = relationship("RunState", uselist=False)
 
-    def to_dict(self):
+    samples: Mapped[List["Sample"]] = relationship(
+        "Sample", uselist=True, back_populates="run"
+    )
+    artifacts: Mapped[List["Artifact"]] = relationship(
+        "Artifact", uselist=True, back_populates="run"
+    )
+
+    def to_dict(self, include_samples=False, include_artifacts=False):
         ret = {
             "id": self.external_id,
             "created": self.created,
@@ -89,6 +99,9 @@ class Run(Base):
             "model": self.model.to_dict(),
             "template": self.template.to_dict(),
             "status": self.state.slug,
+            "generation_id": self.generation.external_id
+            if self.generation_id
+            else None,
         }
 
         if self.most_recent_editor is not None:
@@ -96,7 +109,54 @@ class Run(Base):
         else:
             ret["last_modified_by"] = None
 
+        if include_samples:
+            ret["samples"] = [sample.to_dict() for sample in self.samples]
+
+        if include_artifacts:
+            ret["artifacts"] = [artifact.to_dict() for artifact in self.artifacts]
+
         return ret
+
+
+class Sample(Base):
+    __table__ = schema.sample.sample
+
+    run: Mapped["Run"] = relationship("Run", back_populates="samples")
+
+    def to_dict(self):
+        ret = {
+            "id": self.external_id,
+            "created": self.created,
+            "result_inspiration_text": self.result_inspiration_text,
+            "result_description_text": self.result_description_text,
+            "result_code_text": self.result_code_text,
+            "raw": self.raw,
+        }
+
+        if self.last_modified is not None:
+            ret["last_modified"] = self.last_modified
+
+        return ret
+
+
+class Artifact(Base):
+    __table__ = schema.sample.artifact
+
+    kind: Mapped["ArtifactKind"] = relationship("ArtifactKind")
+    run: Mapped["Run"] = relationship("Run", back_populates="artifacts")
+
+    def to_dict(self):
+        return {
+            "id": self.external_id,
+            "kind": self.kind.name,
+            "created": self.created,
+            "bucket": self.bucket.name,
+            "key": self.key,
+        }
+
+
+class ArtifactKind(Base):
+    __table__ = schema.sample.artifact_kind
 
 
 class Generation(Base):

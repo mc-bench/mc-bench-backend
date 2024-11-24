@@ -18,6 +18,7 @@ from mc_bench.apps.admin_api.transport_types.responses import (
     ModelResponse,
     ProviderClassResponse,
 )
+from mc_bench.auth.permissions import PERM
 from mc_bench.models.model import Model, ProviderClass
 from mc_bench.models.provider import Provider
 from mc_bench.models.user import User
@@ -35,7 +36,9 @@ am = AuthManager(
 @model_router.get(
     "/api/provider-class",
     dependencies=[
-        Depends(am.require_any_scopes(["model:admin", "model:read", "model:write"])),
+        Depends(
+            am.require_any_scopes([PERM.MODEL.ADMIN, PERM.MODEL.READ, PERM.MODEL.WRITE])
+        ),
     ],
     response_model=List[ProviderClassResponse],
 )
@@ -50,7 +53,9 @@ def get_provider_class(
 @model_router.get(
     "/api/model",
     dependencies=[
-        Depends(am.require_any_scopes(["model:admin", "model:read", "model:write"])),
+        Depends(
+            am.require_any_scopes([PERM.MODEL.ADMIN, PERM.MODEL.READ, PERM.MODEL.WRITE])
+        ),
     ],
     response_model=ListResponse[ModelResponse],
 )
@@ -68,7 +73,7 @@ def get_models(
 
 @model_router.post(
     "/api/model",
-    dependencies=[Depends(am.require_any_scopes(["model:admin", "model:write"]))],
+    dependencies=[Depends(am.require_any_scopes([PERM.MODEL.ADMIN, PERM.MODEL.WRITE]))],
     response_model=ModelCreatedResponse,
 )
 def register_model(
@@ -102,7 +107,7 @@ def register_model(
 
 @model_router.patch(
     "/api/model/{external_id}",
-    dependencies=[Depends(am.require_any_scopes(["model:admin", "model:write"]))],
+    dependencies=[Depends(am.require_any_scopes([PERM.MODEL.ADMIN, PERM.MODEL.WRITE]))],
     response_model=Union[ModelResponse, ModelDetailResponse],
 )
 def update_model(
@@ -128,7 +133,7 @@ def update_model(
             detail=f"Model with external_id {external_id} not found",
         )
 
-    if creator != editor and "model:admin" not in current_scopes:
+    if creator != editor and PERM.MODEL.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Model with external_id {external_id} is not editable by {editor.external_id} without the model:admin permission",
@@ -179,7 +184,7 @@ def update_model(
 @model_router.delete(
     "/api/model/{external_id}",
     dependencies=[
-        Depends(am.require_any_scopes(["model:admin", "model:write"])),
+        Depends(am.require_any_scopes([PERM.MODEL.ADMIN, PERM.MODEL.WRITE])),
     ],
 )
 def delete_model(
@@ -191,7 +196,7 @@ def delete_model(
     model = db.query(Model).filter(Model.external_id == external_id).first()
     creator = db.scalars(select(User).where(User.id == model.creator.id)).one()
     editor = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    if creator != editor and "model:admin" not in current_scopes:
+    if creator != editor and PERM.MODEL.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
@@ -207,7 +212,9 @@ def delete_model(
     "/api/model/{external_id}",
     response_model=ModelDetailResponse,
     dependencies=[
-        Depends(am.require_any_scopes(["model:admin", "model:write", "model:read"]))
+        Depends(
+            am.require_any_scopes([PERM.MODEL.ADMIN, PERM.MODEL.WRITE, PERM.MODEL.READ])
+        )
     ],
 )
 def get_model(

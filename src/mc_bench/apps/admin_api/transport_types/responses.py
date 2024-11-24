@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from .generic import Base
 
 
-class RunsResponse(Base):
+class RunBaseResponse(Base):
     id: uuid.UUID
     created: datetime.datetime
     created_by: str
@@ -15,6 +15,35 @@ class RunsResponse(Base):
     model: "ModelResponse"
     template: "TemplateResponse"
     status: str
+    generation_id: Optional[uuid.UUID] = None
+
+
+class RunResponse(RunBaseResponse):
+    pass
+
+
+class RunDetailResponse(RunBaseResponse):
+    samples: List["SampleResponse"]
+    artifacts: List["ArtifactResponse"]
+
+
+class SampleResponse(Base):
+    id: uuid.UUID
+    created: datetime.datetime
+    result_inspiration_text: Optional[str] = None
+    result_description_text: Optional[str] = None
+    result_code_text: Optional[str] = None
+    raw: Optional[str] = None
+    last_modified: Optional[datetime.datetime] = None
+    last_modified_by: Optional[str] = None
+
+
+class ArtifactResponse(Base):
+    id: uuid.UUID
+    created: datetime.datetime
+    kind: str
+    bucket: str
+    key: str
 
 
 class GenerationBaseResponse(Base):
@@ -34,7 +63,7 @@ class GenerationResponse(GenerationBaseResponse):
 
 
 class GenerationDetailResponse(GenerationResponse):
-    runs: List[RunsResponse]
+    runs: List[RunResponse]
 
 
 class GenerationCreatedResponse(Base):
@@ -75,7 +104,7 @@ class PromptResponse(PromptBaseResponse):
 
 
 class PromptDetailResponse(PromptBaseResponse):
-    runs: List[RunsResponse]
+    runs: List[RunResponse]
 
 
 class PromptCreatedResponse(Base):
@@ -99,7 +128,7 @@ class ModelResponse(ModelBaseResponse):
 
 
 class ModelDetailResponse(ModelBaseResponse):
-    runs: Optional[List[RunsResponse]] = None
+    runs: Optional[List[RunResponse]] = None
 
 
 class ModelCreatedResponse(Base):
@@ -129,4 +158,4 @@ class TemplateResponse(TemplateBaseResponse):
 
 
 class TemplateDetailResponse(TemplateBaseResponse):
-    runs: List[RunsResponse]
+    runs: List[RunResponse]

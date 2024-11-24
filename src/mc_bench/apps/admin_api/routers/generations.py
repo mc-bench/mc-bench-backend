@@ -12,6 +12,7 @@ from mc_bench.apps.admin_api.transport_types.responses import (
     GenerationDetailResponse,
     GenerationResponse,
 )
+from mc_bench.auth.permissions import PERM
 from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt
 from mc_bench.models.run import (
@@ -35,7 +36,7 @@ am = AuthManager(
 @generation_router.post(
     "/api/run/generate",
     dependencies=[
-        Depends(am.require_any_scopes(["generation:admin", "generation:write"])),
+        Depends(am.require_any_scopes([PERM.GENERATION.ADMIN, PERM.GENERATION.WRITE])),
     ],
     response_model=GenerationCreatedResponse,
 )
@@ -93,7 +94,7 @@ def generate_runs(
     dependencies=[
         Depends(
             am.require_any_scopes(
-                ["generation:admin", "generation:read", "generation:write"]
+                [PERM.GENERATION.ADMIN, PERM.GENERATION.READ, PERM.GENERATION.WRITE]
             )
         ),
     ],
@@ -121,7 +122,7 @@ def get_generations(
     dependencies=[
         Depends(
             am.require_any_scopes(
-                ["generation:admin", "generation:read", "generation:write"]
+                [PERM.GENERATION.ADMIN, PERM.GENERATION.READ, PERM.GENERATION.WRITE]
             )
         ),
     ],

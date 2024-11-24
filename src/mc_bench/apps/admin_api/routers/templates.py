@@ -16,6 +16,7 @@ from mc_bench.apps.admin_api.transport_types.responses import (
     TemplateDetailResponse,
     TemplateResponse,
 )
+from mc_bench.auth.permissions import PERM
 from mc_bench.models.template import Template
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
@@ -33,7 +34,9 @@ am = AuthManager(
     "/api/template",
     dependencies=[
         Depends(
-            am.require_any_scopes(["template:admin", "template:read", "template:write"])
+            am.require_any_scopes(
+                [PERM.TEMPLATE.ADMIN, PERM.TEMPLATE.READ, PERM.TEMPLATE.WRITE]
+            )
         ),
     ],
     response_model=ListResponse[TemplateResponse],
@@ -52,7 +55,9 @@ def get_templates(
 
 @template_router.post(
     "/api/template",
-    dependencies=[Depends(am.require_any_scopes(["template:admin", "template:write"]))],
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.TEMPLATE.ADMIN, PERM.TEMPLATE.WRITE]))
+    ],
     response_model=TemplateCreatedResponse,
 )
 def create_template(
@@ -78,7 +83,9 @@ def create_template(
 
 @template_router.patch(
     "/api/template/{external_id}",
-    dependencies=[Depends(am.require_any_scopes(["template:admin", "template:write"]))],
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.TEMPLATE.ADMIN, PERM.TEMPLATE.WRITE]))
+    ],
     response_model=Union[TemplateResponse, TemplateDetailResponse],
 )
 def update_template(
@@ -106,7 +113,7 @@ def update_template(
             detail=f"Template with external_id {external_id} not found",
         )
 
-    if author != editor and "template:admin" not in current_scopes:
+    if author != editor and PERM.TEMPLATE.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Template with external_id {external_id} is not editable by {editor.external_id} without the template:admin permission",
@@ -130,7 +137,7 @@ def update_template(
 @template_router.delete(
     "/api/template/{external_id}",
     dependencies=[
-        Depends(am.require_any_scopes(["template:admin", "template:write"])),
+        Depends(am.require_any_scopes([PERM.TEMPLATE.ADMIN, PERM.TEMPLATE.WRITE])),
     ],
 )
 def delete_template(
@@ -142,7 +149,7 @@ def delete_template(
     template = db.query(Template).filter(Template.external_id == external_id).first()
     author = db.scalars(select(User).where(User.id == template.author.id)).one()
     editor = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    if author != editor and "template:admin" not in current_scopes:
+    if author != editor and PERM.TEMPLATE.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
@@ -158,7 +165,9 @@ def delete_template(
     response_model=TemplateDetailResponse,
     dependencies=[
         Depends(
-            am.require_any_scopes(["template:admin", "template:write", "template:read"])
+            am.require_any_scopes(
+                [PERM.TEMPLATE.ADMIN, PERM.TEMPLATE.WRITE, PERM.TEMPLATE.READ]
+            )
         )
     ],
 )

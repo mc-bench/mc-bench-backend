@@ -12,6 +12,7 @@ class Base(BaseModel):
         alias_generator=humps.camelize,  # Converts snake_case to camelCase
         populate_by_name=True,  # Allows accessing fields by snake_case name
         arbitrary_types_allowed=True,
+        protected_namespaces=(),
     )
 
 

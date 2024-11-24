@@ -16,6 +16,7 @@ from mc_bench.apps.admin_api.transport_types.responses import (
     PromptDetailResponse,
     PromptResponse,
 )
+from mc_bench.auth.permissions import PERM
 from mc_bench.models.prompt import Prompt
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
@@ -32,7 +33,11 @@ am = AuthManager(
 @prompt_router.get(
     "/api/prompt",
     dependencies=[
-        Depends(am.require_any_scopes(["prompt:admin", "prompt:read", "prompt:write"])),
+        Depends(
+            am.require_any_scopes(
+                [PERM.PROMPT.ADMIN, PERM.PROMPT.READ, PERM.PROMPT.WRITE]
+            )
+        ),
     ],
     response_model=ListResponse[PromptResponse],
 )
@@ -50,7 +55,9 @@ def get_prompts(
 
 @prompt_router.post(
     "/api/prompt",
-    dependencies=[Depends(am.require_any_scopes(["prompt:admin", "prompt:write"]))],
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.PROMPT.ADMIN, PERM.PROMPT.WRITE]))
+    ],
     response_model=PromptCreatedResponse,
 )
 def create_prompt(
@@ -75,7 +82,9 @@ def create_prompt(
 
 @prompt_router.patch(
     "/api/prompt/{external_id}",
-    dependencies=[Depends(am.require_any_scopes(["prompt:admin", "prompt:write"]))],
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.PROMPT.ADMIN, PERM.PROMPT.WRITE]))
+    ],
     response_model=Union[PromptResponse, PromptDetailResponse],
 )
 def update_prompt(
@@ -104,7 +113,7 @@ def update_prompt(
             detail=f"Prompt with external_id {external_id} not found",
         )
 
-    if author != editor and "prompt:admin" not in current_scopes:
+    if author != editor and PERM.PROMPT.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Prompt with external_id {external_id} is not editable by {editor.external_id} without the prompt:admin permission",
@@ -125,7 +134,7 @@ def update_prompt(
 @prompt_router.delete(
     "/api/prompt/{external_id}",
     dependencies=[
-        Depends(am.require_any_scopes(["prompt:admin", "prompt:write"])),
+        Depends(am.require_any_scopes([PERM.PROMPT.ADMIN, PERM.PROMPT.WRITE])),
     ],
 )
 def delete_prompt(
@@ -137,7 +146,7 @@ def delete_prompt(
     prompt = db.query(Prompt).filter(Prompt.external_id == external_id).first()
     author = db.scalars(select(User).where(User.id == prompt.author.id)).one()
     editor = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    if author != editor and "prompt:admin" not in current_scopes:
+    if author != editor and PERM.PROMPT.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
@@ -152,7 +161,11 @@ def delete_prompt(
     "/api/prompt/{external_id}",
     response_model=PromptDetailResponse,
     dependencies=[
-        Depends(am.require_any_scopes(["prompt:admin", "prompt:write", "prompt:read"]))
+        Depends(
+            am.require_any_scopes(
+                [PERM.PROMPT.ADMIN, PERM.PROMPT.WRITE, PERM.PROMPT.READ]
+            )
+        )
     ],
 )
 def get_prompt(
