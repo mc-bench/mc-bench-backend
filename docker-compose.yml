@@ -74,6 +74,25 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
 
+  admin-flower:
+    build:
+      dockerfile: "images/admin-worker.Dockerfile"
+      context: "."
+    image: "mcbench/admin-worker"
+    ports:
+      - "5555:5555"
+    environment:
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+
+# Uncomment below to test flower github oauth
+#      FLOWER_AUTH_PROVIDER: "flower.views.auth.GithubLoginHandler"
+#      FLOWER_AUTH: "huntcsg@gmail.com"
+#      FLOWER_OAUTH2_KEY: ${FLOWER_GITHUB_CLIENT_ID}
+#      FLOWER_OAUTH2_SECRET: ${FLOWER_GITHUB_CLIENT_SECRET}
+#      FLOWER_OAUTH2_REDIRECT_URI: "http://localhost:5555/login"
+
+    command: ["celery", "-A", "mc_bench.apps.admin_worker", "flower"]
+
   postgres:
     image: postgres:16
     ports:

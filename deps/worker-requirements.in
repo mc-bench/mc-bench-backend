@@ -5,3 +5,4 @@ alembic>=1.14.0
 anthropic
 openai
 jinja2
+flower

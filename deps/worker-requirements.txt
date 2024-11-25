@@ -34,6 +34,7 @@ celery[redis]==5.4.0
     # via
     #   -c deps/requirements.txt
     #   -r deps/worker-requirements.in
+    #   flower
 certifi==2024.8.30
     # via
     #   -c deps/api-requirements.txt
@@ -64,6 +65,8 @@ distro==1.9.0
     #   -c deps/api-requirements.txt
     #   anthropic
     #   openai
+flower==2.0.1
+    # via -r deps/worker-requirements.in
 h11==0.14.0
     # via
     #   -c deps/api-requirements.txt
@@ -77,6 +80,8 @@ httpx==0.27.2
     #   -c deps/api-requirements.txt
     #   anthropic
     #   openai
+humanize==4.11.0
+    # via flower
 idna==3.10
     # via
     #   -c deps/api-requirements.txt
@@ -109,6 +114,8 @@ openai==1.55.0
     # via
     #   -c deps/api-requirements.txt
     #   -r deps/worker-requirements.in
+prometheus-client==0.21.0
+    # via flower
 prompt-toolkit==3.0.48
     # via
     #   -c deps/requirements.txt
@@ -130,6 +137,8 @@ python-dateutil==2.9.0.post0
     # via
     #   -c deps/requirements.txt
     #   celery
+pytz==2024.2
+    # via flower
 redis==5.2.0
     # via
     #   -c deps/requirements.txt
@@ -151,6 +160,8 @@ sqlalchemy==2.0.36
     #   -c deps/requirements.txt
     #   -r deps/worker-requirements.in
     #   alembic
+tornado==6.4.2
+    # via flower
 tqdm==4.67.0
     # via
     #   -c deps/api-requirements.txt
