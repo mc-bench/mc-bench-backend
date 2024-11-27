@@ -1,4 +1,5 @@
 import uuid
+from typing import List
 
 import sqlalchemy
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +17,7 @@ from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_client
 
 from ..transport_types.requests import NewComparisonBatchRequest, UserComparisonRequest
-from ..transport_types.responses import ComparisonBatchResponse
+from ..transport_types.responses import ComparisonBatchResponse, MetricResponse
 
 comparison_router = APIRouter()
 
@@ -192,3 +193,13 @@ def post_comparison(
     return {
         "ok": True,
     }
+
+
+@comparison_router.get(
+    "/api/metric",
+    response_model=List[MetricResponse],
+)
+def get_metrics(
+    db: Session = Depends(get_managed_session),
+):
+    return map(lambda x: x.to_dict(), db.scalars(select(Metric)).all())

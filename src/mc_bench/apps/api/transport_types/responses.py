@@ -13,3 +13,9 @@ class Comparison(Base):
 
 class ComparisonBatchResponse(Base):
     comparisons: List[Comparison]
+
+
+class MetricResponse(Base):
+    id: uuid.UUID
+    name: str
+    description: str

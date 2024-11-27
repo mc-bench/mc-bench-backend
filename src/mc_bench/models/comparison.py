@@ -9,3 +9,10 @@ class Comparison(Base):
 
 class Metric(Base):
     __table__ = schema.scoring.metric
+
+    def to_dict(self):
+        return {
+            "id": self.external_id,
+            "name": self.name,
+            "description": self.description,
+        }
