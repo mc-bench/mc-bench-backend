@@ -131,6 +131,7 @@ class Sample(Base):
             "result_description_text": self.result_description_text,
             "result_code_text": self.result_code_text,
             "raw": self.raw,
+            "active": self.active,
         }
 
         if self.last_modified is not None:

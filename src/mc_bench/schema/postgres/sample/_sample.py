@@ -4,8 +4,10 @@ from sqlalchemy import (
     TIMESTAMP,
     UUID,
     BigInteger,
+    Boolean,
     Column,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -38,6 +40,13 @@ sample = Table(
     Column("result_description_text", String, nullable=True),
     Column("result_code_text", String, nullable=True),
     Column("raw", String, nullable=True),
+    Column(
+        "active", Boolean, nullable=False, default=False, server_default=text("false")
+    ),
+    Column("comparison_correlation_id", UUID, nullable=True),
+    Index(
+        "sample_selection_index", "active", "comparison_correlation_id", "external_id"
+    ),
     comment=__doc__.strip(),
     schema="sample",
 )

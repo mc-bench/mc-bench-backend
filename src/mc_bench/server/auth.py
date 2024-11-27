@@ -112,3 +112,19 @@ class AuthManager:
             return payload.get("scopes")
         except JWTError:
             raise credentials_exception
+
+    def is_authenticated(self, token: str = Depends(oauth2_scheme)):
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            payload = jwt.decode(
+                token,
+                self.jwt_secret,
+                algorithms=[self.jwt_algorithm],
+            )
+            return payload.get("sub")
+        except Exception:
+            raise credentials_exception
