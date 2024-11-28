@@ -25,6 +25,5 @@ artifact = Table(
     ),
     Column("bucket", String, unique=False, nullable=False),
     Column("key", String, unique=False, nullable=False),
-    comment=__doc__.strip(),
     schema="sample",
 )

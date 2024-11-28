@@ -12,6 +12,5 @@ artifact_kind = Table(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=True
     ),
     Column("name", String, unique=True, nullable=False),
-    comment=__doc__.strip(),
     schema="sample",
 )

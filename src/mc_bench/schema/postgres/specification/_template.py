@@ -34,6 +34,5 @@ template = Table(
     Column("content", String, nullable=False),
     Column("active", Boolean, nullable=True),
     Column("frozen", Boolean, nullable=True),
-    comment=__doc__.strip(),
     schema="specification",
 )

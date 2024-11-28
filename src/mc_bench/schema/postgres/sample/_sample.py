@@ -31,6 +31,12 @@ sample = Table(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
     Column(
+        "comparison_sample_id",
+        UUID,
+        nullable=False,
+        server_default=text("uuid_generate_v4()"),
+    ),
+    Column(
         "run_id",
         Integer,
         ForeignKey("specification.run.id"),
@@ -47,6 +53,5 @@ sample = Table(
     Index(
         "sample_selection_index", "active", "comparison_correlation_id", "external_id"
     ),
-    comment=__doc__.strip(),
     schema="sample",
 )

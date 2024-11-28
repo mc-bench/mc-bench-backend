@@ -30,6 +30,5 @@ run_state = Table(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
     Column("slug", String, unique=True, nullable=False),
-    comment=__doc__.strip(),
     schema="specification",
 )

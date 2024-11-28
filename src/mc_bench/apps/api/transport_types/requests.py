@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 
 from .generic import Base
 
@@ -7,6 +7,7 @@ from .generic import Base
 class NewComparisonBatchRequest(Base):
     batch_size: int = 3
     metric_id: uuid.UUID
+    files: Optional[List[str]] = ("gltf_scene",)
 
 
 class ComparisonDetailRequest(Base):

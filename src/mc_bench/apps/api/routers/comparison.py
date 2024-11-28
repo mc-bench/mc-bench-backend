@@ -15,6 +15,7 @@ from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_client
+import random
 
 from ..transport_types.requests import NewComparisonBatchRequest, UserComparisonRequest
 from ..transport_types.responses import ComparisonBatchResponse, MetricResponse
@@ -75,13 +76,13 @@ def get_comparison_batch(
             LIMIT :sample_count
         )
         SELECT
-            sample_1.external_id sample_1,
-            sample_2.external_id sample_2
+            sample_1.comparison_sample_id sample_1,
+            sample_2.comparison_sample_id sample_2
         FROM
             correlation_ids
             JOIN LATERAL (
                 SELECT 
-                    sample.external_id,
+                    sample.comparison_sample_id,
                     sample.comparison_correlation_id
                 FROM 
                     sample.sample
@@ -94,14 +95,14 @@ def get_comparison_batch(
             ) sample_1 ON sample_1.comparison_correlation_id = correlation_ids.id
             JOIN LATERAL (
                 SELECT 
-                    sample.external_id,
+                    sample.comparison_sample_id,
                     sample.comparison_correlation_id
                 FROM 
                     sample.sample
                 WHERE 
                     active = true
                     AND comparison_correlation_id = correlation_ids.id
-                    AND external_id != sample_1.external_id  -- Ensure we don't select the same sample twice
+                    AND comparison_sample_id != sample_1.comparison_sample_id  -- Ensure we don't select the same sample twice
                 ORDER BY 
                     random()
                 LIMIT 1
@@ -126,8 +127,44 @@ def get_comparison_batch(
             select(Prompt.build_specification)
             .join(Run, Run.prompt_id == Prompt.id)
             .join(Sample, Sample.run_id == Run.id)
-            .where(Sample.external_id == sample_1)
+            .where(Sample.comparison_sample_id == sample_1)
         )
+
+        # assets = []
+        # for sample_id in [sample_1, sample_2]:
+        #     assets.append({
+        #         "sample_id": sample_id,
+        #         "files": [
+        #             {
+        #                 "kind": "gltf_scene",
+        #                 "url": random.choice([
+        #                     "/my_awesome_house.gltf",
+        #                     "/my_cool_house.gltf"
+        #                 ])
+        #             }
+        #         ]
+        #     })
+
+        assets = [
+            {
+                "sample_id": sample_1,
+                "files": [
+                    {
+                        "kind": "gltf_scene",
+                        "url": "/my_awesome_house.gltf"
+                    },
+                ]
+            },
+            {
+                "sample_id": sample_2,
+                "files": [
+                    {
+                        "kind": "gltf_scene",
+                        "url": "/my_cool_house.gltf"
+                    }
+                ]
+            },
+        ]
 
         comparison_tokens.append(
             {
@@ -135,9 +172,8 @@ def get_comparison_batch(
                 "metric_id": metric.external_id,
                 "samples": [sample_1, sample_2],
                 "build_description": db.scalar(build_specification_query),
-            }
-        )
-
+                "assets": assets,
+            })
     return {
         "comparisons": comparison_tokens,
     }
@@ -163,15 +199,15 @@ def post_comparison(
     sample_1_id, sample_2_id = map(uuid.UUID, sample_data.split(":", 1))
     samples = list(
         db.scalars(
-            select(Sample).where(Sample.external_id.in_([sample_1_id, sample_2_id]))
+            select(Sample).where(Sample.comparison_sample_id.in_([sample_1_id, sample_2_id]))
         )
     )
-    sample_1 = samples[0] if samples[0].external_id == sample_1_id else samples[1]
-    sample_2 = samples[1] if samples[1].external_id == sample_1_id else samples[0]
+    sample_1 = samples[0] if samples[0].comparison_sample_id == sample_1_id else samples[1]
+    sample_2 = samples[1] if samples[1].comparison_sample_id == sample_1_id else samples[0]
     winning_sample = [
         sample
         for sample in samples
-        if sample.external_id == request.ordered_sample_ids[0]
+        if sample.comparison_sample_id == request.ordered_sample_ids[0]
     ][0]
 
     metric = db.scalar(
@@ -193,6 +229,30 @@ def post_comparison(
     return {
         "ok": True,
     }
+
+# @comparison_router.get("/api/sample/asset_details", response_model=SamplesAssetDetailResponse)
+# def get_samples_asset_details(
+#     request: SamplesAssetDetailRequest
+# ):
+#     assets = []
+#
+#     for sample_id in request.ordered_sample_ids:
+#         assets.append({
+#             "sample_id": sample_id,
+#             "files": [
+#                 {
+#                     "kind": "gltf_scene",
+#                     "url": random.choice([
+#                         "/my_awesome_house.gltf",
+#                         "/my_cool_house.gltf"
+#                     ])
+#                 }
+#             ]
+#         })
+#
+#     return {
+#         "assets": assets,
+#     }
 
 
 @comparison_router.get(
