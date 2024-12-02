@@ -32,8 +32,8 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
-          chmod +x ./scripts/docker-push.sh
-          ./scripts/docker-push.sh
+          chmod +x ./deploy/docker-push.sh
+          ./deploy/docker-push.sh
 
   deploy:
     needs: build-and-push
@@ -59,5 +59,5 @@ jobs:
           ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
           
           # Copy deploy script to server and execute
-          scp -i ~/.ssh/deploy_key ./scripts/deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
           ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME GITHUB_SHA=$GITHUB_SHA CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"
