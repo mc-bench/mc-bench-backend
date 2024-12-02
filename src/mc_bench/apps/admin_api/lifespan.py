@@ -4,7 +4,7 @@ from mc_bench.util.postgres import get_session
 
 
 @asynccontextmanager
-async def lifespan():
+async def lifespan(app):
     session = get_session()
     engine = session.bind
 

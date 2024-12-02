@@ -5,7 +5,7 @@ from mc_bench.util.redis import RedisDatabase, get_redis_pool
 
 
 @asynccontextmanager
-async def lifespan():
+async def lifespan(app):
     session = get_session()
     engine = session.bind
     redis_pool = get_redis_pool(RedisDatabase.COMPARISON)
