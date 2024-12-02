@@ -1,4 +1,5 @@
 import os
+import ssl
 from functools import lru_cache
 
 from redis import ConnectionPool, StrictRedis
@@ -24,6 +25,7 @@ def get_redis_pool(database: int, **kwargs) -> ConnectionPool:
 
     if os.environ.get("REDIS_USE_SSL", "true") == "true":
         kwargs["ssl"] = kwargs.pop("ssl", True)
+        kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
 
     return ConnectionPool(**kwargs)
 
