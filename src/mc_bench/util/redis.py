@@ -42,3 +42,4 @@ def get_redis_database(database):
             yield redis
         finally:
             redis.close()
+    return wrapper
