@@ -3,6 +3,7 @@ from typing import List
 
 from .generic import Base
 
+
 class SampleAssetDetailFile(Base):
     kind: str
     url: str

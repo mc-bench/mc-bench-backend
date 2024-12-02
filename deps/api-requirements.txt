@@ -5,13 +5,17 @@
 #    pip-compile --constraint=deps/dev-requirements.in --constraint=deps/requirements.txt --constraint=deps/worker-requirements.in --output-file=deps/api-requirements.txt deps/api-requirements.in
 #
 annotated-types==0.7.0
-    # via pydantic
-anthropic==0.39.0
     # via
+    #   -c deps/requirements.txt
+    #   pydantic
+anthropic==0.40.0
+    # via
+    #   -c deps/requirements.txt
     #   -c deps/worker-requirements.in
     #   -r deps/api-requirements.in
 anyio==4.6.2.post1
     # via
+    #   -c deps/requirements.txt
     #   anthropic
     #   httpx
     #   openai
@@ -21,11 +25,14 @@ authlib==1.3.2
     # via -r deps/api-requirements.in
 certifi==2024.8.30
     # via
+    #   -c deps/requirements.txt
     #   httpcore
     #   httpx
     #   requests
 cffi==1.17.1
-    # via cryptography
+    # via
+    #   -c deps/requirements.txt
+    #   cryptography
 charset-normalizer==3.4.0
     # via requests
 click==8.1.7
@@ -39,6 +46,7 @@ cryptography==43.0.3
     #   python-jose
 distro==1.9.0
     # via
+    #   -c deps/requirements.txt
     #   anthropic
     #   openai
 dnspython==2.7.0
@@ -53,19 +61,24 @@ fastapi-cli[standard]==0.0.5
     # via fastapi
 h11==0.14.0
     # via
+    #   -c deps/requirements.txt
     #   httpcore
     #   uvicorn
-httpcore==1.0.6
-    # via httpx
+httpcore==1.0.7
+    # via
+    #   -c deps/requirements.txt
+    #   httpx
 httptools==0.6.4
     # via uvicorn
-httpx==0.27.2
+httpx==0.28.0
     # via
+    #   -c deps/requirements.txt
     #   anthropic
     #   fastapi
     #   openai
 idna==3.10
     # via
+    #   -c deps/requirements.txt
     #   anyio
     #   email-validator
     #   httpx
@@ -74,11 +87,13 @@ itsdangerous==2.2.0
     # via -r deps/api-requirements.in
 jinja2==3.1.4
     # via
+    #   -c deps/requirements.txt
     #   -c deps/worker-requirements.in
     #   -r deps/api-requirements.in
     #   fastapi
-jiter==0.7.1
+jiter==0.8.0
     # via
+    #   -c deps/requirements.txt
     #   anthropic
     #   openai
 markdown-it-py==3.0.0
@@ -89,8 +104,9 @@ markupsafe==3.0.2
     #   jinja2
 mdurl==0.1.2
     # via markdown-it-py
-openai==1.55.0
+openai==1.55.3
     # via
+    #   -c deps/requirements.txt
     #   -c deps/worker-requirements.in
     #   -r deps/api-requirements.in
 pyasn1==0.6.1
@@ -98,14 +114,19 @@ pyasn1==0.6.1
     #   python-jose
     #   rsa
 pycparser==2.22
-    # via cffi
-pydantic==2.9.2
     # via
+    #   -c deps/requirements.txt
+    #   cffi
+pydantic==2.10.2
+    # via
+    #   -c deps/requirements.txt
     #   anthropic
     #   fastapi
     #   openai
-pydantic-core==2.23.4
-    # via pydantic
+pydantic-core==2.27.1
+    # via
+    #   -c deps/requirements.txt
+    #   pydantic
 pygments==2.18.0
     # via rich
 pyhumps==3.8.0
@@ -132,14 +153,16 @@ six==1.16.0
     #   ecdsa
 sniffio==1.3.1
     # via
+    #   -c deps/requirements.txt
     #   anthropic
     #   anyio
-    #   httpx
     #   openai
 starlette==0.41.0
     # via fastapi
-tqdm==4.67.0
-    # via openai
+tqdm==4.67.1
+    # via
+    #   -c deps/requirements.txt
+    #   openai
 typer==0.12.5
     # via fastapi-cli
 typing-extensions==4.12.2
@@ -152,7 +175,9 @@ typing-extensions==4.12.2
     #   pydantic-core
     #   typer
 urllib3==2.2.3
-    # via requests
+    # via
+    #   -c deps/requirements.txt
+    #   requests
 uvicorn[standard]==0.32.0
     # via
     #   fastapi

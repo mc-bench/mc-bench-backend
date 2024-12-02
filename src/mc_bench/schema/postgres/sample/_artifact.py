@@ -23,6 +23,12 @@ artifact = Table(
         ForeignKey("specification.run.id"),
         nullable=False,
     ),
+    Column(
+        "sample_id",
+        Integer,
+        ForeignKey("sample.sample.id"),
+        nullable=True,
+    ),
     Column("bucket", String, unique=False, nullable=False),
     Column("key", String, unique=False, nullable=False),
     schema="sample",

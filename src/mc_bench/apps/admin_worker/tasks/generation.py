@@ -46,7 +46,7 @@ def create_runs(
                 celery.chain(
                     app.signature("run.execute_prompt", args=[run_id], queue="admin"),
                     app.signature("run.parse_prompt", queue="admin"),
-                    app.signature("run.build_structure", queue="admin"),
+                    app.signature("run.build_structure", queue="server"),
                     app.signature("run.post_processing", queue="admin"),
                     app.signature("run.sample_prep", queue="admin"),
                 )

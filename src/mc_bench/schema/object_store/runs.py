@@ -2,47 +2,47 @@ from mc_bench.util.object_store import Prototype
 
 
 class KINDS:
-    MODEL_RUN = "model_run"
+    RUN = "run"
+    SAMPLE = "sample"
     ARTIFACTS = "artifacts"
     NBT_STRUCTURE_FILE = "nbt-structure-file"
     PROMPT = "prompt"
     SCRIPT = "script"
     RAW_RESPONSE = "raw-response"
+    BUILD_SCHEMATIC = "build-schematic"
 
 
 runs = Prototype(
     children=[
         Prototype(
-            kind=KINDS.MODEL_RUN,
-            pattern="model-run/{model_run_id}",
+            kind=KINDS.RUN,
+            pattern="run/{run_id}",
             children=[
                 Prototype(
-                    kind=KINDS.ARTIFACTS,
+                    kind=KINDS.SAMPLE,
+                    pattern="sample/{sample_id}",
                     children=[
                         Prototype(
-                            kind=KINDS.NBT_STRUCTURE_FILE,
-                            pattern="{name}.nbt",
-                        ),
-                        Prototype(
-                            kind=KINDS.PROMPT,
-                            pattern="{name}-prompt.txt",
-                        ),
-                        Prototype(
-                            kind=KINDS.SCRIPT,
-                            pattern="{name}-script.py",
-                        ),
+                            kind=KINDS.ARTIFACTS,
+                            pattern="artifacts",
+                            children=[
+                                Prototype(
+                                    kind=KINDS.BUILD_SCHEMATIC,
+                                    pattern="{name}-build.schem",
+                                ),
+                                Prototype(
+                                    kind=KINDS.PROMPT,
+                                    pattern="{name}-prompt.txt",
+                                ),
+                                Prototype(
+                                    kind=KINDS.SCRIPT,
+                                    pattern="{name}-script.py",
+                                ),
+                            ],
+                        )
                     ],
                 )
             ],
         )
     ]
 )
-
-# runs.get(
-#     KINDS.MODEL_RUN,
-#     KINDS.ARTIFACTS,
-#     KINDS.NBT_STRUCTURE_FILE,
-# ).materialize(
-#     model_run_id=model_run.id,
-#     name=model_run.nbt_file.name,
-# )

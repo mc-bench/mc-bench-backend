@@ -1,6 +1,8 @@
 .env
 .env.*
 !.env.template
+data
+**/node_modules
 
 ### venv template
 # Virtualenv

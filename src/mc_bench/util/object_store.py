@@ -17,7 +17,11 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
+import ast
+import os
 from string import Formatter
+
+import minio
 
 
 class Prototype:
@@ -169,3 +173,19 @@ class PrototypeMaterialization:
 
     def prefix(self, **kwargs):
         return self.get_path(**kwargs).split("/", 1)[1]
+
+
+def get_client():
+    dsn = os.environ["OBJECT_STORE_DSN"]
+    access_key = os.environ["OBJECT_STORE_ACCESS_KEY"]
+    secret_key = os.environ["OBJECT_STORE_SECRET_KEY"]
+    secure = ast.literal_eval(os.environ.get("OBJECT_STORE_SECURE", "True"))
+
+    client = minio.Minio(
+        dsn,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=secure,
+    )
+
+    return client

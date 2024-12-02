@@ -137,44 +137,18 @@ def _parse_known_parts(text):
     return result
 
 
-@app.task(name="run.build_structure")
-def build_structure(sample_id):
-    if sample_id is None:
-        raise RuntimeError("sample_id is required")
-
-    time.sleep(15)
-
-    with managed_session() as db:
-        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-        run = db.scalar(select(Run).where(Run.id == sample.run_id))
-
-        run.state_id = run_state_id_for(db, RUN_STATE.BUILD_COMPLETED)
-        db.commit()
-
-        # app.send_task(
-        #     "run.post_processing",
-        #     kwargs=dict(
-        #         run_id=run.id,
-        #     ),
-        #     queue="admin",
-        # )
-
-        run.state_id = run_state_id_for(db, RUN_STATE.POST_PROCESSING_ENQUEUED)
-        db.commit()
-
-        return sample_id
-
-
 @app.task(name="run.post_processing")
 def post_process_build(sample_id):
     if sample_id is None:
         raise RuntimeError("sample_id is required")
 
-    time.sleep(15)
-
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
+
+        for artifact in sample.artifacts:
+            if artifact.kind.name != "BUILD_SCHEMATIC":
+                continue
 
         run.state_id = run_state_id_for(db, RUN_STATE.POST_PROCESSING_COMPLETED)
         db.commit()

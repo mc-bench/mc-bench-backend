@@ -24,6 +24,7 @@ dependencies = { file = "deps/requirements.in" }
 dev = {file = "deps/dev-requirements.in"}
 api = {file = "deps/api-requirements.in"}
 worker = {file = "deps/worker-requirements.in"}
+server-worker = { file = "deps/server-worker-requirements.in"}
 
 
 [tool.ruff.lint.pyflakes]

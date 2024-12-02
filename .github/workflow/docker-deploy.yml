@@ -1,0 +1,63 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: "registry.digitalocean.com"
+  IMAGE_NAME: "mcbench/server-worker"
+  CONTAINER_PREFIX: "server-worker"
+  DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Build and push
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          chmod +x ./scripts/docker-push.sh
+          ./scripts/docker-push.sh
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          GITHUB_SHA: ${{ github.sha }}
+          CONTAINER_PREFIX: ${{ env.CONTAINER_PREFIX }}
+        run: |
+          # Set up SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          # Copy deploy script to server and execute
+          scp -i ~/.ssh/deploy_key ./scripts/deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME GITHUB_SHA=$GITHUB_SHA CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"

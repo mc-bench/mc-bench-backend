@@ -5,6 +5,7 @@ sync-deps:
 	pip-compile -o deps/requirements.txt deps/requirements.in --constraint deps/dev-requirements.in --constraint deps/api-requirements.in --constraint deps/worker-requirements.in
 	pip-compile -o deps/api-requirements.txt deps/api-requirements.in --constraint deps/requirements.txt --constraint deps/worker-requirements.in --constraint deps/dev-requirements.in
 	pip-compile -o deps/worker-requirements.txt deps/worker-requirements.in --constraint deps/requirements.txt --constraint deps/api-requirements.txt --constraint deps/dev-requirements.in
+	pip-compile -o deps/server-worker-requirements.txt deps/server-worker-requirements.in --constraint deps/requirements.txt --constraint deps/api-requirements.txt --constraint deps/dev-requirements.in --constraint deps/worker-requirements.in
 	pip-compile -o deps/dev-requirements.txt deps/dev-requirements.in --constraint deps/requirements.txt --constraint deps/api-requirements.txt --constraint deps/worker-requirements.txt
 
 build-%:
@@ -24,3 +25,6 @@ check:
 
 check-fix:
 	ruff check --fix
+
+build-local-server-image:
+	cd images/minecraft-server && python build-and-save-image.py --tag built

@@ -1,9 +1,9 @@
 .env
 .env-local
-images/
 docker-compose.yml
 .gitignore
 .git
+**/node_modules
 
 ### venv template
 # Virtualenv

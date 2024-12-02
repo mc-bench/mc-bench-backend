@@ -1,0 +1,6 @@
+{
+  "name": "builder-runner",
+  "dependencies": {
+    "mineflayer": "^4.23.0"
+  }
+}

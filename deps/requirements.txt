@@ -10,12 +10,35 @@ alembic==1.14.0
     #   -r deps/requirements.in
 amqp==5.2.0
     # via kombu
+annotated-types==0.7.0
+    # via pydantic
+anthropic==0.40.0
+    # via
+    #   -c deps/api-requirements.in
+    #   -c deps/worker-requirements.in
+    #   -r deps/requirements.in
+anyio==4.6.2.post1
+    # via
+    #   anthropic
+    #   httpx
+    #   openai
+argon2-cffi==23.1.0
+    # via minio
+argon2-cffi-bindings==21.2.0
+    # via argon2-cffi
 billiard==4.2.1
     # via celery
 celery[redis]==5.4.0
     # via
     #   -c deps/worker-requirements.in
     #   -r deps/requirements.in
+certifi==2024.8.30
+    # via
+    #   httpcore
+    #   httpx
+    #   minio
+cffi==1.17.1
+    # via argon2-cffi-bindings
 click==8.1.7
     # via
     #   celery
@@ -28,37 +51,95 @@ click-plugins==1.1.1
     # via celery
 click-repl==0.3.0
     # via celery
+distro==1.9.0
+    # via
+    #   anthropic
+    #   openai
+h11==0.14.0
+    # via httpcore
+httpcore==1.0.7
+    # via httpx
+httpx==0.28.0
+    # via
+    #   anthropic
+    #   openai
+idna==3.10
+    # via
+    #   anyio
+    #   httpx
+jinja2==3.1.4
+    # via
+    #   -c deps/api-requirements.in
+    #   -c deps/worker-requirements.in
+    #   -r deps/requirements.in
+jiter==0.8.0
+    # via
+    #   anthropic
+    #   openai
 kombu==5.4.2
     # via celery
 mako==1.3.6
     # via alembic
 markupsafe==3.0.2
-    # via mako
+    # via
+    #   jinja2
+    #   mako
+minio==7.2.12
+    # via -r deps/requirements.in
+openai==1.55.3
+    # via
+    #   -c deps/api-requirements.in
+    #   -c deps/worker-requirements.in
+    #   -r deps/requirements.in
 prompt-toolkit==3.0.48
     # via click-repl
-psycopg2==2.9.10
+psycopg2-binary==2.9.10
     # via
     #   -c deps/worker-requirements.in
     #   -r deps/requirements.in
+pycparser==2.22
+    # via cffi
+pycryptodome==3.21.0
+    # via minio
+pydantic==2.10.2
+    # via
+    #   anthropic
+    #   openai
+pydantic-core==2.27.1
+    # via pydantic
 python-dateutil==2.9.0.post0
     # via celery
 redis==5.2.0
     # via celery
 six==1.16.0
     # via python-dateutil
+sniffio==1.3.1
+    # via
+    #   anthropic
+    #   anyio
+    #   openai
 sqlalchemy==2.0.36
     # via
     #   -c deps/worker-requirements.in
     #   -r deps/requirements.in
     #   alembic
+tqdm==4.67.1
+    # via openai
 typing-extensions==4.12.2
     # via
     #   alembic
+    #   anthropic
+    #   minio
+    #   openai
+    #   pydantic
+    #   pydantic-core
     #   sqlalchemy
 tzdata==2024.2
     # via
     #   celery
     #   kombu
+urllib3==2.2.3
+    # via minio
 vine==5.1.0
     # via
     #   amqp

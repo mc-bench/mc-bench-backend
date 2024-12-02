@@ -14,8 +14,7 @@ from mc_bench.models.run import Run, Sample
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
-from mc_bench.util.redis import RedisDatabase, get_redis_client
-import random
+from mc_bench.util.redis import RedisDatabase, get_redis_database
 
 from ..transport_types.requests import NewComparisonBatchRequest, UserComparisonRequest
 from ..transport_types.responses import ComparisonBatchResponse, MetricResponse
@@ -35,6 +34,7 @@ def get_comparison_batch(
     request: NewComparisonBatchRequest,
     user_id=Depends(am.is_authenticated),
     db: Session = Depends(get_managed_session),
+    redis: StrictRedis = Depends(get_redis_database(RedisDatabase.COMPARISON)),
 ):
     if request.batch_size > MAX_BATCH_SIZE:
         raise HTTPException(
@@ -42,8 +42,6 @@ def get_comparison_batch(
             detail="Invalid batch size",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    redis: StrictRedis = get_redis_client(RedisDatabase.COMPARISON)
 
     metric = db.scalar(
         select(Metric).where(
@@ -149,20 +147,12 @@ def get_comparison_batch(
             {
                 "sample_id": sample_1,
                 "files": [
-                    {
-                        "kind": "gltf_scene",
-                        "url": "/my_awesome_house.gltf"
-                    },
-                ]
+                    {"kind": "gltf_scene", "url": "/my_awesome_house.gltf"},
+                ],
             },
             {
                 "sample_id": sample_2,
-                "files": [
-                    {
-                        "kind": "gltf_scene",
-                        "url": "/my_cool_house.gltf"
-                    }
-                ]
+                "files": [{"kind": "gltf_scene", "url": "/my_cool_house.gltf"}],
             },
         ]
 
@@ -173,7 +163,8 @@ def get_comparison_batch(
                 "samples": [sample_1, sample_2],
                 "build_description": db.scalar(build_specification_query),
                 "assets": assets,
-            })
+            }
+        )
     return {
         "comparisons": comparison_tokens,
     }
@@ -184,9 +175,9 @@ def post_comparison(
     request: UserComparisonRequest,
     db: Session = Depends(get_managed_session),
     user_uuid: str = Depends(am.get_current_user_uuid),
+    redis: StrictRedis = Depends(get_redis_database(RedisDatabase.COMPARISON)),
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    redis: StrictRedis = get_redis_client(RedisDatabase.COMPARISON)
     key = f"active_comparison:{request.comparison_details.token}"
     token_data = redis.getdel(key)
     if not token_data:
@@ -199,11 +190,17 @@ def post_comparison(
     sample_1_id, sample_2_id = map(uuid.UUID, sample_data.split(":", 1))
     samples = list(
         db.scalars(
-            select(Sample).where(Sample.comparison_sample_id.in_([sample_1_id, sample_2_id]))
+            select(Sample).where(
+                Sample.comparison_sample_id.in_([sample_1_id, sample_2_id])
+            )
         )
     )
-    sample_1 = samples[0] if samples[0].comparison_sample_id == sample_1_id else samples[1]
-    sample_2 = samples[1] if samples[1].comparison_sample_id == sample_1_id else samples[0]
+    sample_1 = (
+        samples[0] if samples[0].comparison_sample_id == sample_1_id else samples[1]
+    )
+    sample_2 = (
+        samples[1] if samples[1].comparison_sample_id == sample_1_id else samples[0]
+    )
     winning_sample = [
         sample
         for sample in samples
@@ -229,6 +226,7 @@ def post_comparison(
     return {
         "ok": True,
     }
+
 
 # @comparison_router.get("/api/sample/asset_details", response_model=SamplesAssetDetailResponse)
 # def get_samples_asset_details(

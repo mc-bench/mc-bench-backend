@@ -122,6 +122,9 @@ class Sample(Base):
     __table__ = schema.sample.sample
 
     run: Mapped["Run"] = relationship("Run", back_populates="samples")
+    artifacts: Mapped[List["Artifact"]] = relationship(
+        "Artifact", uselist=True, back_populates="sample"
+    )
 
     def to_dict(self):
         ret = {
@@ -145,6 +148,9 @@ class Artifact(Base):
 
     kind: Mapped["ArtifactKind"] = relationship("ArtifactKind")
     run: Mapped["Run"] = relationship("Run", back_populates="artifacts")
+    sample: Mapped["Sample"] = relationship(
+        "Sample", uselist=False, back_populates="artifacts"
+    )
 
     def to_dict(self):
         return {

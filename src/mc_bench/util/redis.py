@@ -1,15 +1,18 @@
 import os
+from functools import lru_cache
 
-from redis import StrictRedis
+from redis import ConnectionPool, StrictRedis
 
 
 class RedisDatabase:
     CELERY = 0
     CACHE = 1
     COMPARISON = 2
+    MINECRAFT_SERVER_REGISTRY = 3
 
 
-def get_redis_client(database, **kwargs) -> StrictRedis:
+@lru_cache
+def get_redis_pool(database: int, **kwargs) -> ConnectionPool:
     kwargs["host"] = kwargs.get("host", os.environ.get("REDIS_HOST", "localhost"))
     kwargs["port"] = kwargs.get("port", os.environ.get("REDIS_PORT", 6379))
 
@@ -22,4 +25,18 @@ def get_redis_client(database, **kwargs) -> StrictRedis:
     if os.environ.get("REDIS_USE_SSL", "true") == "true":
         kwargs["ssl"] = kwargs.pop("ssl", True)
 
-    return StrictRedis(**kwargs)
+    return ConnectionPool(**kwargs)
+
+
+def get_redis_client(database: int = 0, **kwargs) -> StrictRedis:
+    pool = get_redis_pool(database, **kwargs)
+    return StrictRedis(connection_pool=pool)
+
+
+def get_redis_database(database):
+    def wrapper():
+        redis = get_redis_client(database=database)
+        try:
+            yield redis
+        finally:
+            redis.close()
