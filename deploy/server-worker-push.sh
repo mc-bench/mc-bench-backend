@@ -14,7 +14,7 @@ if [ -z "$REGISTRY" ] || [ -z "$IMAGE_NAME" ]; then
 fi
 
 # Build the image
-docker build -t "$REGISTRY/$IMAGE_NAME:${GITHUB_SHA:0:7}" .
+docker build -f images/server-worker.Dockerfile -t "$REGISTRY/$IMAGE_NAME:${GITHUB_SHA:0:7}" .
 
 # Push to registry
 docker push "$REGISTRY/$IMAGE_NAME:${GITHUB_SHA:0:7}"
