@@ -1,6 +1,16 @@
 """ """
 
-from sqlalchemy import TIMESTAMP, Column, ForeignKey, Integer, String, Table, func
+from sqlalchemy import (
+    TIMESTAMP,
+    UUID,
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    func,
+    text,
+)
 
 from .._metadata import metadata
 
@@ -31,5 +41,8 @@ artifact = Table(
     ),
     Column("bucket", String, unique=False, nullable=False),
     Column("key", String, unique=False, nullable=False),
+    Column(
+        "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
+    ),
     schema="sample",
 )

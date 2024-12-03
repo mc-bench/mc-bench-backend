@@ -58,7 +58,7 @@ services:
 
   admin-worker:
     build:
-      dockerfile: "images/admin-worker/admin-worker.Dockerfile"
+      dockerfile: "images/admin-worker.Dockerfile"
       context: "."
     image: "mcbench/admin-worker"
     environment:
@@ -105,7 +105,7 @@ services:
 
   admin-flower:
     build:
-      dockerfile: "images/admin-worker/admin-worker.Dockerfile"
+      dockerfile: "images/admin-worker.Dockerfile"
       context: "."
     image: "mcbench/admin-worker"
     ports:

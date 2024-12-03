@@ -140,9 +140,9 @@ async function safeSetBlock(x, y, z, blockType, options = {}) {
         // Add block states if provided
         if (options.blockStates && Object.keys(options.blockStates).length > 0) {
             const stateString = Object.entries(options.blockStates)
-                .map(([key, value]) => `${key}:${value}`)
+                .map(([key, value]) => `${key}=${value}`)
                 .join(',')
-            command += `{${stateString}}`
+            command += `[${stateString}]`
         }
 
         // Add placement mode if provided
@@ -151,7 +151,7 @@ async function safeSetBlock(x, y, z, blockType, options = {}) {
             if (!validModes.includes(options.mode)) {
                 throw new Error(`Invalid placement mode: ${options.mode}. Must be one of: ${validModes.join(', ')}`)
             }
-            command += ` ${options.mode}`
+            command += ` [${options.mode}]`
         }
 
         await commandQueue.add(command)
@@ -195,9 +195,9 @@ async function safeFill(x1, y1, z1, x2, y2, z2, blockType, options = {}) {
         // Add block states if provided
         if (options.blockStates && Object.keys(options.blockStates).length > 0) {
             const stateString = Object.entries(options.blockStates)
-                .map(([key, value]) => `${key}:${value}`)
+                .map(([key, value]) => `${key}=${value}`)
                 .join(',')
-            command += `{${stateString}}`
+            command += `[${stateString}]`
         }
 
         // Handle fill modes and replace filter
@@ -207,7 +207,7 @@ async function safeFill(x1, y1, z1, x2, y2, z2, blockType, options = {}) {
                 throw new Error(`Invalid fill mode: ${options.mode}. Must be one of: ${validModes.join(', ')}`)
             }
 
-            command += ` ${options.mode}`
+            command += ` [${options.mode}]`
 
             // Handle replace filter if specified
             if (options.mode === 'replace' && options.replaceFilter) {
@@ -218,9 +218,9 @@ async function safeFill(x1, y1, z1, x2, y2, z2, blockType, options = {}) {
                 // Add replace filter block states if provided
                 if (options.replaceFilterStates && Object.keys(options.replaceFilterStates).length > 0) {
                     const filterStateString = Object.entries(options.replaceFilterStates)
-                        .map(([key, value]) => `${key}:${value}`)
+                        .map(([key, value]) => `${key}=${value}`)
                         .join(',')
-                    command += `{${filterStateString}}`
+                    command += `[${filterStateString}]`
                 }
             }
         }

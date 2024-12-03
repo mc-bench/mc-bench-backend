@@ -1,8 +1,7 @@
 import os
-import ssl
 from functools import lru_cache
 
-from redis import ConnectionPool, StrictRedis, SSLConnection
+from redis import ConnectionPool, SSLConnection, StrictRedis
 
 
 class RedisDatabase:
@@ -42,4 +41,5 @@ def get_redis_database(database):
             yield redis
         finally:
             redis.close()
+
     return wrapper

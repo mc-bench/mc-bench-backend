@@ -157,7 +157,7 @@ class Artifact(Base):
             "id": self.external_id,
             "kind": self.kind.name,
             "created": self.created,
-            "bucket": self.bucket.name,
+            "bucket": self.bucket,
             "key": self.key,
         }
 
