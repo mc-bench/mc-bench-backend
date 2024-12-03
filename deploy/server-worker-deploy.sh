@@ -27,4 +27,5 @@ docker run -d --name "$NEW_CONTAINER_NAME" \
     --restart unless-stopped \
     --env-file /opt/secrets/.env \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /root/.docker/config.json:/root/.docker/config.json \
     "$REGISTRY/$IMAGE_NAME:${GITHUB_SHA:0:7}"
