@@ -47,7 +47,9 @@ click-repl==0.3.0
     #   -c deps/requirements.txt
     #   celery
 docker==7.1.0
-    # via -r deps/server-worker-requirements.in
+    # via
+    #   -c deps/dev-requirements.in
+    #   -r deps/server-worker-requirements.in
 idna==3.10
     # via
     #   -c deps/api-requirements.txt

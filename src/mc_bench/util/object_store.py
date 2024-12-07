@@ -19,6 +19,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 import ast
 import os
+from io import BytesIO
 from string import Formatter
 
 import minio
@@ -189,3 +190,32 @@ def get_client():
     )
 
     return client
+
+
+# Download to BytesIO
+def get_object_as_bytesio(client, bucket_name, object_name):
+    try:
+        # Get object data
+        data = client.get_object(bucket_name, object_name)
+        # Read into BytesIO
+        buffer = BytesIO()
+        for d in data.stream(32 * 1024):
+            buffer.write(d)
+        # Reset buffer position to start
+        buffer.seek(0)
+        return buffer
+    finally:
+        data.close()
+        data.release_conn()
+
+
+# Download to string
+def get_object_as_string(client, bucket_name, object_name):
+    try:
+        # Get object data
+        data = client.get_object(bucket_name, object_name)
+        # Read into string
+        return data.read().decode("utf-8")
+    finally:
+        data.close()
+        data.release_conn()

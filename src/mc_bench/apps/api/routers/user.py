@@ -100,7 +100,6 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
     db.flush()
     db.refresh(user)
 
-    # TODO: get or validate user
     user_id = str(user.external_id)
 
     # Create the access token

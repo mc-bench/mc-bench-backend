@@ -58,3 +58,13 @@ class UpdateModelRequest(Base):
     remove_providers: Optional[bool] = None
     content: Optional[str] = None
     active: Optional[bool] = None
+
+
+class TaskRetryRequest(Base):
+    tasks: List[str]
+
+
+class StageProgress(Base):
+    stage: str
+    progress: float
+    note: Optional[str] = None

@@ -3,7 +3,18 @@ import time
 
 from sqlalchemy import select
 
-from mc_bench.models.run import RUN_STATE, Run, Sample, run_state_id_for
+from mc_bench.models.run import (
+    RUN_STAGE_STATE,
+    RUN_STATE,
+    PostProcessing,
+    PreparingSample,
+    PromptExecution,
+    ResponseParsing,
+    Run,
+    Sample,
+    run_stage_state_id_for,
+    run_state_id_for,
+)
 from mc_bench.util.postgres import managed_session
 
 from ..app import app
@@ -20,6 +31,13 @@ def execute_prompt(
 ):
     with managed_session() as db:
         run = db.scalar(select(Run).where(Run.id == run_id))
+        run_stage = db.scalar(
+            select(PromptExecution).where(PromptExecution.run_id == run_id)
+        )
+
+        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
+        db.add(run_stage)
+        db.commit()
 
         response = run.model.default_provider.execute_prompt(
             template=run.template, prompt=run.prompt
@@ -34,12 +52,9 @@ def execute_prompt(
         sample = Sample(**sample_kwargs)
         db.add(sample)
         db.commit()
-
-        run.state_id = run_state_id_for(db, RUN_STATE.PROMPT_COMPLETED)
+        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
         db.commit()
-
         db.refresh(sample)
-
         return sample.id
 
 
@@ -53,9 +68,13 @@ def parse_prompt(
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
+        run_stage = db.scalar(
+            select(ResponseParsing).where(ResponseParsing.run_id == run.id)
+        )
 
-        print("sample: ", sample)
-        print("sample.raw:", sample.raw)
+        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
+        db.add(run_stage)
+        db.commit()
 
         # 2. Parse Response
         parsed = _parse_known_parts(sample.raw)
@@ -86,15 +105,15 @@ def parse_prompt(
         if not all(
             [parsed.get("code"), parsed.get("inspiration"), parsed.get("description")]
         ):
-            new_state = run_state_id_for(db, RUN_STATE.PROMPT_PROCESSING_FAILED)
+            new_state = run_stage_state_id_for(db, RUN_STAGE_STATE.FAILED)
         else:
-            new_state = run_state_id_for(db, RUN_STATE.PROMPT_COMPLETED)
+            new_state = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
 
         db.commit()
-        run.state_id = new_state
+        run_stage.state_id = new_state
         db.commit()
 
-        if new_state == run_state_id_for(db, RUN_STATE.PROMPT_PROCESSING_FAILED):
+        if new_state == run_state_id_for(db, RUN_STAGE_STATE.FAILED):
             raise RuntimeError("Prompting didn't go well")
 
         return sample_id
@@ -145,23 +164,17 @@ def post_process_build(sample_id):
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
+        run_stage = db.scalar(
+            select(PostProcessing).where(PostProcessing.run_id == run.id)
+        )
 
-        for artifact in sample.artifacts:
-            if artifact.kind.name != "BUILD_SCHEMATIC":
-                continue
-
-        run.state_id = run_state_id_for(db, RUN_STATE.POST_PROCESSING_COMPLETED)
+        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
+        db.add(run_stage)
         db.commit()
 
-        # app.send_task(
-        #     "run.sample_prep",
-        #     kwargs=dict(
-        #         run_id=run.id,
-        #     ),
-        #     queue="admin",
-        # )
+        # TODO: Post processing
 
-        run.state_id = run_state_id_for(db, RUN_STATE.SAMPLE_PREP_ENQUEUED)
+        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
         db.commit()
 
         return sample_id
@@ -178,7 +191,17 @@ def prepare_sample(sample_id):
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
 
-        run.state_id = run_state_id_for(db, RUN_STATE.COMPLETED)
+        run_stage = db.scalar(
+            select(PreparingSample).where(PreparingSample.run_id == run.id)
+        )
+
+        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
+        db.add(run_stage)
         db.commit()
 
-        return sample_id
+        # TODO: Prepare sample
+
+        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
+        run.state_id = run_state_id_for(db, RUN_STATE.COMPLETED)
+        db.add(run_stage)
+        db.commit()

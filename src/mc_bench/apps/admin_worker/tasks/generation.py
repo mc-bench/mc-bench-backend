@@ -14,8 +14,9 @@ from mc_bench.util.postgres import managed_session
 from ..app import app
 
 
-@app.task(name="generation.create_runs")
+@app.task(bind=True, name="generation.create_runs")
 def create_runs(
+    self,
     generation_id=None,
     prompt_ids=None,
     template_ids=None,
@@ -36,19 +37,37 @@ def create_runs(
                         state_id=run_state_id_for(db, RUN_STATE.CREATED),
                     )
                     db.add(run)
+                    db.flush()
+                    stages = run.make_stages(db)
+                    db.add_all(stages)
         db.commit()
 
         run_ids = db.scalars(
             select(Run.id).where(Run.generation_id == generation_id)
         ).all()
+
+        headers = {"token": self.request.headers["token"]}
+
         workflow = celery.chain(
             celery.group(
                 celery.chain(
-                    app.signature("run.execute_prompt", args=[run_id], queue="admin"),
-                    app.signature("run.parse_prompt", queue="admin"),
-                    app.signature("run.build_structure", queue="server"),
-                    app.signature("run.post_processing", queue="admin"),
-                    app.signature("run.sample_prep", queue="admin"),
+                    app.signature(
+                        "run.execute_prompt",
+                        args=[run_id],
+                        queue="admin",
+                        headers=headers,
+                    ),
+                    app.signature("run.parse_prompt", queue="admin", headers=headers),
+                    app.signature(
+                        "run.build_structure", queue="server", headers=headers
+                    ),
+                    app.signature(
+                        "run.export_structure_views", queue="server", headers=headers
+                    ),
+                    app.signature(
+                        "run.post_processing", queue="admin", headers=headers
+                    ),
+                    app.signature("run.sample_prep", queue="admin", headers=headers),
                 )
                 for run_id in run_ids
             ),
@@ -61,6 +80,7 @@ def create_runs(
         )
 
         workflow.apply_async()
+
         db.execute(
             text("""\
         UPDATE specification.run 
@@ -69,7 +89,7 @@ def create_runs(
         AND state_id = :created_state_id;
         """).bindparams(
                 run_ids=run_ids,
-                new_state_id=run_state_id_for(db, RUN_STATE.PROMPT_ENQUEUED),
+                new_state_id=run_state_id_for(db, RUN_STATE.IN_PROGRESS),
                 created_state_id=run_state_id_for(db, RUN_STATE.CREATED),
             )
         )

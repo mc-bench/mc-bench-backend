@@ -10,12 +10,13 @@ STOPSIGNAL SIGTERM
 ENV TYPE=VANILLA VERSION=LATEST EULA=TRUE UID=1000 GID=1000
 
 ENV EULA="TRUE" \
-    VERSION="1.20.4" \
+    VERSION="1.20.1" \
     TYPE="PAPER" \
     DIFFICULTY="peaceful" \
     VIEW_DISTANCE="10" \
     MODE="creative" \
     LEVEL_TYPE="flat" \
+    GENERATOR_SETTINGS='{"biome":"minecraft:plains","layers":[{"block":"minecraft:bedrock","height":1},{"block":"minecraft:deepslate","height":20},{"block":"minecraft:stone","height":65},{"block":"minecraft:granite","height":37},{"block":"minecraft:dirt","height":3},{"block":"minecraft:grass_block","height":1}],"structures":{"structures":{}}}' \
     GENERATE_STRUCTURES="false" \
     SPAWN_PROTECTION="0" \
     MAX_PLAYERS="20" \

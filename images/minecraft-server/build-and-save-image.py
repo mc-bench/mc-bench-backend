@@ -64,9 +64,9 @@ def main(options):
 
     container.stop()
     container.commit(
-        repository=f"{options.registry}/{options.repository}",
-        tag=datetime.date.today().isoformat(),
+        repository=f"{options.registry}/{options.repository}", tag=options.tag
     )
+
     return image, container
 
 

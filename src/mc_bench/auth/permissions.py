@@ -23,3 +23,4 @@ class PERM:
         READ = "run:read"
         WRITE = "run:write"
         ADMIN = "run:admin"
+        PROGRESS_WRITE = "run:progress:write"

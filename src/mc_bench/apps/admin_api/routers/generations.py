@@ -1,3 +1,5 @@
+import datetime
+
 from fastapi import Depends
 from fastapi.routing import APIRouter
 from sqlalchemy import select
@@ -71,6 +73,19 @@ def generate_runs(
     db.commit()  # required to ensure generation_id is present in db for runs to be created
     db.refresh(generation)
 
+    system_user = db.scalars(select(User).where(User.id == 1)).one()
+
+    # Create the access token
+    progress_token = am.create_access_token(
+        data={
+            "sub": str(system_user.external_id),
+            "scopes": [
+                PERM.RUN.PROGRESS_WRITE,
+            ],
+        },
+        expires_delta=datetime.timedelta(days=2),
+    )
+
     send_task(
         "generation.create_runs",
         kwargs=dict(
@@ -79,6 +94,7 @@ def generate_runs(
             model_ids=model_ids,
             template_ids=template_ids,
         ),
+        headers={"token": progress_token},
     )
 
     generation.state_id = generation_state_id_for(db, GENERATION_STATE.IN_PROGRESS)

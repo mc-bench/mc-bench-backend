@@ -41,7 +41,9 @@ def get_session(engine=None, **kwargs):
     else:
         if engine is None:
             engine = get_engine(**kwargs)
-            engine.echo = True
+            engine.echo = (
+                True if os.environ.get("SHOW_VERBOSE_SQL") == "true" else False
+            )
 
         Session = sqlalchemy.orm.session.sessionmaker(bind=engine)
         _SESSIONMAKER = Session

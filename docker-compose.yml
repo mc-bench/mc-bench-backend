@@ -79,6 +79,7 @@ services:
       OBJECT_STORE_SECRET_KEY: "fake_secret"
       OBJECT_STORE_SECURE: "False"
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
+      ADMIN_API_URL: "http://admin-api:8000"
 
   server-worker:
     build:
@@ -99,9 +100,13 @@ services:
       OBJECT_STORE_ACCESS_KEY: "fake_key"
       OBJECT_STORE_SECRET_KEY: "fake_secret"
       OBJECT_STORE_SECURE: "False"
+      ADMIN_API_URL: "http://admin-api:8000"
+      MINECRAFT_SERVER_IMAGE: ${MINECRAFT_SERVER_IMAGE}
+      MINECRAFT_BUILDER_IMAGE: ${MINECRAFT_BUILDER_IMAGE}
+      NUM_WORKERS: "1"
+
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./data/server-worker/schematics:/data/schematics
 
   admin-flower:
     build:

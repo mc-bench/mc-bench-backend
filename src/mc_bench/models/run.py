@@ -1,10 +1,17 @@
+import datetime
 import enum
+import os
 from typing import Dict, List
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Mapped, object_session, relationship
 
 import mc_bench.schema.postgres as schema
+from mc_bench.schema.object_store.runs import KINDS, runs
+from mc_bench.util.object_store import (
+    get_client,
+    get_object_as_bytesio,
+)
 
 from ._base import Base
 
@@ -13,21 +20,18 @@ from ._base import Base
 # see d618a24f0bed_add_generation_state_and_run_state_.py for an example
 class RUN_STATE(enum.Enum):
     CREATED = "CREATED"
-    PROMPT_ENQUEUED = "PROMPT_ENQUEUED"
-    PROMPT_COMPLETED = "PROMPT_COMPLETED"
-    PROMPT_PROCESSING_ENQUEUED = "PROMPT_PROCESSING_ENQUEUED"
-    PROMPT_PROCESSING_COMPLETED = "PROMPT_PROCESSING_COMPLETED"
-    BUILD_ENQUEUED = "BUILD_ENQUEUED"
-    BUILD_COMPLETED = "BUILD_COMPLETED"
-    POST_PROCESSING_ENQUEUED = "POST_PROCESSING_ENQUEUED"
-    POST_PROCESSING_COMPLETED = "POST_PROCESSING_COMPLETED"
-    SAMPLE_PREP_ENQUEUED = "SAMPLE_PREP_ENQUEUED"
+    IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
-    PROMPT_FAILED = "PROMPT_FAILED"
-    PROMPT_PROCESSING_FAILED = "PROMPT_PROCESSING_FAILED"
-    BUILD_FAILED = "BUILD_FAILED"
-    POST_PROCESSING_FAILED = "POST_PROCESSING_FAILED"
-    SAMPLE_PREP_FAILED = "SAMPLE_PREP_FAILED"
+    FAILED = "FAILED"
+    IN_RETRY = "IN_RETRY"
+
+
+class RUN_STAGE_STATE(enum.Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    IN_RETRY = "IN_RETRY"
 
 
 # Any values added here must also be added to the DB via a migration
@@ -37,14 +41,25 @@ class GENERATION_STATE(enum.Enum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     PARTIAL_FAILED = "PARTIAL_FAILED"
+    IN_RETRY = "IN_RETRY"
     FAILED = "FAILED"
+
+
+class STAGE(enum.Enum):
+    PROMPT_EXECUTION = "PROMPT_EXECUTION"
+    RESPONSE_PARSING = "RESPONSE_PARSING"
+    BUILDING = "BUILDING"
+    EXPORTING_CONTENT = "EXPORTING_CONTENT"
+    POST_PROCESSING = "POST_PROCESSING"
+    PREPARING_SAMPLE = "PREPARING_SAMPLE"
 
 
 _run_state_cache: Dict[RUN_STATE, int] = {}
 _generation_state_cache: Dict[RUN_STATE, int] = {}
+_run_stage_state_cache: Dict[RUN_STAGE_STATE, int] = {}
+_stage_cache: Dict[STAGE, int] = {}
 
 
-# TODO: cache the result on `state`
 def run_state_id_for(db, state: RUN_STATE):
     if state not in _run_state_cache:
         _run_state_cache[state] = db.scalar(
@@ -53,7 +68,23 @@ def run_state_id_for(db, state: RUN_STATE):
     return _run_state_cache[state]
 
 
-# TODO: cache the result `state`
+def run_stage_state_id_for(db, stage_state: RUN_STAGE_STATE):
+    if stage_state not in _run_stage_state_cache:
+        _run_stage_state_cache[stage_state] = db.scalar(
+            select(RunStageState.id).where(RunStageState.slug == stage_state.value)
+        )
+
+    return _run_stage_state_cache[stage_state]
+
+
+def stage_id_for(db, stage: STAGE):
+    if stage not in _stage_cache:
+        _stage_cache[stage] = db.scalar(
+            select(Stage.id).where(Stage.slug == stage.value)
+        )
+    return _stage_cache[stage]
+
+
 def generation_state_id_for(db, state: GENERATION_STATE):
     if state not in _generation_state_cache:
         _generation_state_cache[state] = db.scalar(
@@ -89,7 +120,21 @@ class Run(Base):
         "Artifact", uselist=True, back_populates="run"
     )
 
-    def to_dict(self, include_samples=False, include_artifacts=False):
+    stages: Mapped[List["RunStage"]] = relationship(
+        "RunStage", uselist=True, back_populates="run"
+    )
+
+    def sorted_stages(self, sort_order):
+        return sorted(self.stages, key=lambda x: sort_order.index(x.stage.slug))
+
+    def to_dict(
+        self,
+        include_samples=False,
+        include_artifacts=False,
+        include_stages=False,
+        db=None,
+        redis=None,
+    ):
         ret = {
             "id": self.external_id,
             "created": self.created,
@@ -115,7 +160,51 @@ class Run(Base):
         if include_artifacts:
             ret["artifacts"] = [artifact.to_dict() for artifact in self.artifacts]
 
+        if include_stages:
+            ret["stages"] = [stage.to_dict(redis=redis) for stage in self.stages]
+
         return ret
+
+    def make_stages(self, db):
+        pending_stage_state = run_stage_state_id_for(db, RUN_STAGE_STATE.PENDING)
+
+        return [
+            PromptExecution(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.PROMPT_EXECUTION),
+                state_id=pending_stage_state,
+            ),
+            ResponseParsing(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.RESPONSE_PARSING),
+                state_id=pending_stage_state,
+            ),
+            Building(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.BUILDING),
+                state_id=pending_stage_state,
+            ),
+            ExportingContent(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.EXPORTING_CONTENT),
+                state_id=pending_stage_state,
+            ),
+            PostProcessing(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.POST_PROCESSING),
+                state_id=pending_stage_state,
+            ),
+            PreparingSample(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.PREPARING_SAMPLE),
+                state_id=pending_stage_state,
+            ),
+        ]
+
+    def get_stage(self, name):
+        for stage in self.stages:
+            if stage.stage.slug == name:
+                return name
 
 
 class Sample(Base):
@@ -142,6 +231,182 @@ class Sample(Base):
 
         return ret
 
+    def get_command_list_artifact(self):
+        command_lists = [
+            artifact
+            for artifact in self.artifacts
+            if artifact.kind.name == KINDS.BUILD_COMMAND_LIST
+        ]
+        if command_lists:
+            return command_lists[0]
+
+    def get_build_summary_artifact(self):
+        summaries = [
+            artifact
+            for artifact in self.artifacts
+            if artifact.kind.name == KINDS.BUILD_SUMMARY
+        ]
+        if summaries:
+            return summaries[0]
+
+    def build_artifact_spec(self, db, structure_name):
+        run_external_id = self.run.external_id
+        sample_external_id = self.external_id
+
+        return {
+            "build_script": {
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(
+                        ArtifactKind.name == "ORIGINAL_BUILD_SCRIPT_JS"
+                    )
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    KINDS.ORIGINAL_BUILD_SCRIPT_JS,
+                ),
+            },
+            "schematic": {
+                "container_path": os.path.join(
+                    "/data/plugins/WorldEdit/schematics", f"{structure_name}.schem"
+                ),
+                "host_file": f"{structure_name}.schem",
+                "host_path_directory": f"/data/schematics/{self.id}/",
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(ArtifactKind.name == "BUILD_SCHEMATIC")
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    KINDS.BUILD_SCHEMATIC,
+                ),
+            },
+            "command_list": {
+                "container_path": "/data/commandList.json",
+                "host_file": "commandList.json",
+                "host_path_directory": f"/data/schematics/{self.id}/",
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(
+                        ArtifactKind.name == "BUILD_COMMAND_LIST"
+                    )
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    KINDS.BUILD_COMMAND_LIST,
+                ),
+            },
+            "build_summary": {
+                "container_path": "/data/summary.json",
+                "host_file": "summary.json",
+                "host_path_directory": f"/data/schematics/{self.id}/",
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(ArtifactKind.name == "BUILD_SUMMARY")
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    KINDS.BUILD_SUMMARY,
+                ),
+            },
+        }
+
+    def export_artifact_spec(self, db, structure_name):
+        run_external_id = self.run.external_id
+        sample_external_id = self.external_id
+
+        spec = {
+            "command_list_build_script": {
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(
+                        ArtifactKind.name == KINDS.COMMAND_LIST_BUILD_SCRIPT_JS
+                    )
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    KINDS.COMMAND_LIST_BUILD_SCRIPT_JS,
+                ),
+            },
+            "timelapse": {
+                "container_path": f"/data/processed/{structure_name}_timelapse.mp4",
+                "host_file": f"{structure_name}_timelapse.mp4",
+                "host_path_directory": f"/data/content/{self.id}/",
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(
+                        ArtifactKind.name == KINDS.BUILD_CINEMATIC_MP4
+                    )
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    KINDS.BUILD_CINEMATIC_MP4,
+                ),
+            },
+        }
+
+        for side in ["north", "south", "east", "west"]:
+            spec[f"{side}side_capture"] = {
+                "container_path": f"/data/{side}side_capture.png",
+                "host_file": f"{side}side_capture.png",
+                "host_path_directory": f"/data/content/{self.id}/",
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(
+                        ArtifactKind.name
+                        == getattr(KINDS, f"{side.upper()}SIDE_CAPTURE_PNG")
+                    )
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    getattr(KINDS, f"{side.upper()}SIDE_CAPTURE_PNG"),
+                ),
+            }
+
+        return spec
+
 
 class Artifact(Base):
     __table__ = schema.sample.artifact
@@ -160,6 +425,16 @@ class Artifact(Base):
             "bucket": self.bucket,
             "key": self.key,
         }
+
+    def download_artifact(self, client=None):
+        if client is None:
+            client = get_client()
+
+        return get_object_as_bytesio(
+            client=client,
+            bucket_name=self.bucket,
+            object_name=self.key,
+        )
 
 
 class ArtifactKind(Base):
@@ -221,3 +496,153 @@ class GenerationState(Base):
 
 class RunState(Base):
     __table__ = schema.specification.run_state
+
+
+class Stage(Base):
+    __table__ = schema.specification.stage
+
+
+class RunStageState(Base):
+    __table__ = schema.specification.run_stage_state
+
+
+class RunStage(Base):
+    __table__ = schema.specification.run_stage
+
+    stage: Mapped[Stage] = relationship("Stage", foreign_keys="RunStage.stage_id")
+    run: Mapped["Run"] = relationship("Run", back_populates="stages")
+    state: Mapped["RunStageState"] = relationship("RunStageState", uselist=False)
+
+    __mapper_args__ = {"polymorphic_on": "stage_slug"}
+
+    def to_dict(self, db=None, redis=None):
+        db = object_session(self)
+        state = self.state
+        progress_note = None
+        if state.id in (
+            run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS),
+            run_stage_state_id_for(db, RUN_STAGE_STATE.IN_RETRY),
+        ):
+            progress, progress_note = self.get_stage_progress(redis)
+        elif state.id == run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED):
+            progress = 1.0
+        else:
+            progress = 0
+
+        return {
+            "id": self.external_id,
+            "stage": self.stage.slug,
+            "state": state.slug,
+            "progress": progress,
+            "note": progress_note,
+        }
+
+    def get_stage_progress(self, redis) -> float:
+        progress = redis.get(f"stage:{self.id}:progress")
+        progress_note = redis.get(f"stage:{self.id}:progress_note")
+        return (float(progress) if progress else 0.0), progress_note
+
+    def set_progress(self, redis, progress, note=None):
+        redis.set(f"stage:{self.id}:progress", str(progress))
+        if note:
+            redis.set(f"stage:{self.id}:progress_note", note)
+        else:
+            try:
+                redis.delete(f"stage:{self.id}:progress_note")
+            except Exception:
+                pass
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        pass
+
+
+class PromptExecution(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "PROMPT_EXECUTION",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "admin"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            kwargs["args"] = [self.run_id]
+
+        return app.signature("run.execute_prompt", **kwargs)
+
+
+class ResponseParsing(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "RESPONSE_PARSING",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "admin"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            kwargs["args"] = [self.run_id]
+
+        return app.signature("run.parse_prompt", **kwargs)
+
+
+class Building(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "BUILDING",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "server"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            kwargs["args"] = [self.run_id]
+
+        return app.signature("run.build_structure", **kwargs)
+
+
+class ExportingContent(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "EXPORTING_CONTENT",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "server"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            kwargs["args"] = [self.run.samples[0].id]
+
+        return app.signature("run.export_structure_views", **kwargs)
+
+
+class PostProcessing(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "POST_PROCESSING",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "admin"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            sample_id = self.run.samples[0].id
+            print(f"Setting sample_id: {sample_id}")
+            kwargs["args"] = [sample_id]
+
+        return app.signature("run.post_processing", **kwargs)
+
+
+class PreparingSample(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "PREPARING_SAMPLE",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "admin"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            kwargs["args"] = [self.run.samples[0].id]
+
+        return app.signature("run.sample_prep", **kwargs)

@@ -22,9 +22,24 @@ class RunResponse(RunBaseResponse):
     pass
 
 
+class RunStageResponse(Base):
+    id: uuid.UUID
+    stage: str
+    state: str
+    progress: float
+    note: Optional[str] = None
+
+
+class RunStatusResponse(Base):
+    id: uuid.UUID
+    status: str
+    stages: List["RunStageResponse"]
+
+
 class RunDetailResponse(RunBaseResponse):
     samples: List["SampleResponse"]
     artifacts: List["ArtifactResponse"]
+    stages: List["RunStageResponse"]
 
 
 class SampleResponse(Base):
@@ -159,3 +174,7 @@ class TemplateResponse(TemplateBaseResponse):
 
 class TemplateDetailResponse(TemplateBaseResponse):
     runs: List[RunResponse]
+
+
+class RunRetryResponse(Base):
+    pass
