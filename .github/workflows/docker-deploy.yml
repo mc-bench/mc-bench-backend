@@ -100,7 +100,7 @@ jobs:
       - id: set-ips
         run: |
           # Define your IPs as a JSON array
-          echo "$( doctl compute reserved-ip list -o json | jq -c '{"ip-list": [.[] | select(.droplet.tags[] == "server-worker-dev") | .ip]}')" >> $GITHUB_OUTPUT
+          echo $(doctl compute reserved-ip list -o json | jq -c '{"ip-list": [.[] | select(.droplet.tags[] == "server-worker-dev") | .ip]}') >> $GITHUB_OUTPUT
 
   deploy:
     needs:
