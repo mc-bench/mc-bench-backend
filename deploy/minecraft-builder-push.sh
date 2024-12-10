@@ -13,8 +13,10 @@ if [ -z "$REGISTRY" ] || [ -z "$IMAGE_NAME" ]; then
     exit 1
 fi
 
+cd images/builder-runner
+
 # Build the image
-docker build -f images/builder-runner/builder-runner.Dockerfile -t "$REGISTRY/$IMAGE_NAME:${GITHUB_SHA:0:7}" images/builder-runner
+docker build -f builder-runner.Dockerfile -t "$REGISTRY/$IMAGE_NAME:${GITHUB_SHA:0:7}" .
 
 # Push to registry
 docker push "$REGISTRY/$IMAGE_NAME:${GITHUB_SHA:0:7}"
