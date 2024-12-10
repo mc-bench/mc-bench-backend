@@ -87,12 +87,31 @@ jobs:
           chmod +x ./deploy/server-worker-push.sh
           ./deploy/minecraft-builder-push.sh
 
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          # Define your IPs as a JSON array
+          echo "$( doctl compute reserved-ip list -o json | jq -c '{"ip-list": [.[] | select(.droplet.tags[] == "server-worker-dev") | .ip]}')" >> $GITHUB_OUTPUT
+
   deploy:
     needs:
+      - prepare
       - build-and-push-server-worker
       - build-and-push-minecraft-server
       - build-and-push-minecraft-builder
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare.outputs.ip-list) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3

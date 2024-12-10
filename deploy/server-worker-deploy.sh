@@ -22,6 +22,10 @@ for container in $(docker ps -f name="$CONTAINER_PREFIX" -q); do
     docker kill --signal=SIGTERM "$container"
 done
 
+sed -i "s/minecraft-server:[[:alnum:]]\{6\}/minecraft-server:${GITHUB_SHA:0:7}/" /opt/secrets/.env
+sed -i "s/minecraft-builder:[[:alnum:]]\{6\}/minecraft-builder:${GITHUB_SHA:0:7}/" /opt/secrets/.env
+
+
 # Start the new container
 docker run -d --name "$NEW_CONTAINER_NAME" \
     --restart unless-stopped \
