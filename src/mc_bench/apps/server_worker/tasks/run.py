@@ -117,7 +117,6 @@ def build_structure(self, sample_id):
         suffix = f"{sample_id}-{int(time.time())}"
         network_name = create_network(suffix)
         structure_name = f"sample_{sample_id}"
-        builder_id = None
 
         file_spec = sample.build_artifact_spec(
             db=db,
@@ -127,6 +126,11 @@ def build_structure(self, sample_id):
     build_script = build_template.replace("REPLACE_ME", code)
 
     volume = create_volume(build_script)
+
+    # set here in case we fail in the try/except below before they get set
+    builder_id = None
+    server_id = None
+
     try:
         admin_api_client.update_stage_progress(
             run_external_id=run_external_id,
@@ -296,10 +300,11 @@ def export_structure_views(self, sample_id):
     suffix = f"{sample_id}-{int(time.time())}"
     network_name = create_network(suffix)
 
-    server_id = None
-    builder_id = None
-
     volume = create_volume(export_script)
+
+    # set here in case we fail in the try/except below before they get set
+    builder_id = None
+    server_id = None
 
     try:
         admin_api_client.update_stage_progress(
