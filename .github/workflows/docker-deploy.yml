@@ -118,7 +118,7 @@ jobs:
       - name: Execute deployment
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_HOST: ${{ matrix.ip }}
           DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
