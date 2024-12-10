@@ -25,6 +25,9 @@ def start_server(image, network_name: str, suffix, ports=None) -> str:
     if ports:
         kwargs["ports"] = ports
 
+    if not os.environ.get("NO_IMAGE_PULL"):
+        client.images.pull(image)
+
     container = client.containers.run(
         image,
         detach=True,
@@ -76,6 +79,9 @@ def run_builder(
     """
     client = docker.from_env()
     server_container = client.containers.get(server_container_id)
+
+    if not os.environ.get("NO_IMAGE_PULL"):
+        client.images.pull(image)
 
     # Run your second container
     builder = client.containers.run(
@@ -207,6 +213,8 @@ def create_volume(
         tar.addfile(tar_info, io.BytesIO(data_bytes))
     tar_buffer.seek(0)
 
+    if not os.environ.get("NO_IMAGE_PULL"):
+        client.images.pull("alpine")
     # Create temporary container to populate volume
     container = client.containers.run(
         "alpine",
