@@ -106,6 +106,7 @@ services:
       NUM_WORKERS: "1"
       NO_CLEANUP_SERVER_CONTAINER: ${NO_CLEANUP_SERVER_CONTAINER:-false}
       NO_CLEANUP_BUILDER_CONTAINER: ${NO_CLEANUP_BUILDER_CONTAINER:-false}
+      NO_IMAGE_PULL: "true"
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

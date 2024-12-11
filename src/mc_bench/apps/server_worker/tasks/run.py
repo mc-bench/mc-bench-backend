@@ -161,16 +161,26 @@ def build_structure(self, sample_id):
         )
         builder_id = builder.id
 
-        for log_index, log_line in enumerate(builder.logs(stream=True)):
-            print(log_line)
+        build_command_count = 0
+
+        for log_index, log_line in enumerate(server.logs(stream=True)):
+            decoded_log_line = log_line.decode("utf-8")
+            print(decoded_log_line)
+
+            if '/setblock' in decoded_log_line or '/fill' in decoded_log_line:
+                build_command_count += 1
+
             # when we break out of this the container will be done
-            if log_index % 50 == 0:
+            if build_command_count % 50 == 0:
                 admin_api_client.update_stage_progress(
                     run_external_id=run_external_id,
                     stage="BUILDING",
                     progress=0,
-                    note=f"building... ({log_index} log lines output)",
+                    note=f"building... ({build_command_count} build commands executed)",
                 )
+
+            if 'builder left the game' in decoded_log_line and builder.status != 'running':
+                break
 
         admin_api_client.update_stage_progress(
             run_external_id=run_external_id,
