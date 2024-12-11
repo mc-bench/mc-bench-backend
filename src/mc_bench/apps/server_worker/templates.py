@@ -387,6 +387,9 @@ bot.once('spawn', async () => {
         await commandQueue.add(`//schem list`);
     
         await commandQueue.waitForAll();
+        // TODO: Fix waitForAll() to definitely work. We are seeing exits before //schem save command actually executes!
+        console.log('Waiting 30 seconds to be sure everything is done!');
+        await new Promise(resolve => setTimeout(resolve, 30000))
         console.log('Done! Exiting...');
         process.exit(0);
     } catch (error) {
