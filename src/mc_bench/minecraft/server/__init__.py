@@ -113,7 +113,7 @@ def cleanup(
 
     # Stop and remove the server container
     try:
-        if server_container_id is not None:
+        if server_container_id is not None and not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == 'true':
             container = client.containers.get(server_container_id)
             container.stop()
             container.remove()
@@ -122,7 +122,7 @@ def cleanup(
         pass
 
     try:
-        if build_container_id is not None:
+        if build_container_id is not None and not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == 'true':
             container = client.containers.get(build_container_id)
             container.stop()
             container.remove()
@@ -131,8 +131,9 @@ def cleanup(
         pass
 
     try:
-        network = client.networks.get(network_name)
-        network.remove()
+        if not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == 'true' and not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == 'true':
+            network = client.networks.get(network_name)
+            network.remove()
     except docker.errors.NotFound:
         pass
 
