@@ -180,7 +180,7 @@ def build_structure(self, sample_id):
         )
 
         for container_id, file_key in [
-            (server.id, "schematic"),
+            (server_id, "schematic"),
             (builder_id, "command_list"),
             (builder_id, "build_summary"),
         ]:
@@ -191,8 +191,7 @@ def build_structure(self, sample_id):
             )
 
     finally:
-        cleanup(network_name, server_id, builder_id)
-        volume.remove(force=True)
+        cleanup(network_name, server_id, builder_id, volume)
 
     object_client = get_client()
 
@@ -384,8 +383,7 @@ def export_structure_views(self, sample_id):
             )
 
     finally:
-        cleanup(network_name, server_id, builder_id)
-        volume.remove(force=True)
+        cleanup(network_name, server_id, builder_id, volume)
 
     object_client = get_client()
 
