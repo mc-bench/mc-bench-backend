@@ -115,7 +115,7 @@ def build_structure(self, sample_id):
         db.add(run_stage)
         db.commit()
 
-        suffix = f"{sample_id}-{int(time.time())}"
+        suffix = f"{self.request.id}-{int(time.time())}"
         network_name = create_network(suffix)
         structure_name = f"sample_{sample_id}"
 
@@ -307,7 +307,7 @@ def export_structure_views(self, sample_id):
             ),
         ).replace("REPLACE_ME_COMMAND_LIST", json.dumps(command_list))
 
-    suffix = f"{sample_id}-{int(time.time())}"
+    suffix = f"{self.request.id}-{int(time.time())}"
     network_name = create_network(suffix)
 
     volume = create_volume(export_script)

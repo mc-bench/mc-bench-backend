@@ -83,7 +83,6 @@ def run_builder(
     if not os.environ.get("NO_IMAGE_PULL"):
         client.images.pull(image)
 
-    # Run your second container
     builder = client.containers.run(
         image,
         environment={
@@ -94,9 +93,10 @@ def run_builder(
             "OUTDIR": "/data",
         },
         network=network_name,
-        remove=False,  # Container will not be removed after building
+        remove=False,
         detach=True,
         volumes={build_script_volume.name: {"bind": "/build-scripts", "mode": "ro"}},
+        name=f"mc-builder-{suffix}",
     )
 
     return builder
