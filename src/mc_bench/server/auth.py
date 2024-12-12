@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -128,3 +129,21 @@ class AuthManager:
             return payload.get("sub")
         except Exception:
             raise credentials_exception
+
+    def create_refresh_token(
+        self, data: dict, expires_delta: Optional[timedelta] = None
+    ):
+        to_encode = data.copy()
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(minutes=15)
+
+        # Add jti (JWT ID) claim for tracking revoked tokens
+        token_id = str(uuid.uuid4())
+        to_encode.update({"exp": expire, "jti": token_id})
+
+        encoded_jwt = jwt.encode(
+            to_encode, self.jwt_secret, algorithm=self.jwt_algorithm
+        )
+        return token_id, encoded_jwt

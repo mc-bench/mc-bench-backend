@@ -106,7 +106,7 @@ def cleanup(
     network_name: str,
     server_container_id: Optional[str],
     build_container_id: Optional[str],
-    volume: docker.models.volumes.Volume
+    volume: docker.models.volumes.Volume,
 ):
     """Clean up resources after we're done."""
     print("Cleaning up docker resources after minecraft server run")
@@ -114,7 +114,10 @@ def cleanup(
 
     # Stop and remove the server container
     try:
-        if server_container_id is not None and not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == 'true':
+        if (
+            server_container_id is not None
+            and not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == "true"
+        ):
             container = client.containers.get(server_container_id)
             container.stop()
             container.remove()
@@ -123,7 +126,10 @@ def cleanup(
         pass
 
     try:
-        if build_container_id is not None and not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == 'true':
+        if (
+            build_container_id is not None
+            and not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == "true"
+        ):
             container = client.containers.get(build_container_id)
             container.stop()
             container.remove()
@@ -132,14 +138,17 @@ def cleanup(
         pass
 
     try:
-        if not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == 'true' and not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == 'true':
+        if (
+            not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == "true"
+            and not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == "true"
+        ):
             network = client.networks.get(network_name)
             network.remove()
     except docker.errors.NotFound:
         pass
 
     try:
-        if not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == 'true':
+        if not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == "true":
             volume.remove(force=True)
     except Exception:
         pass

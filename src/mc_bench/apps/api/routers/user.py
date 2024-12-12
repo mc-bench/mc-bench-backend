@@ -110,8 +110,18 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
         },
         expires_delta=datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
+
+    # Create the refresh token
+    refresh_token_id, refresh_token = am.create_refresh_token(
+        data={
+            "sub": user_id,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
+    )
+
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "username": user.username,
     }
@@ -152,3 +162,27 @@ def create_user(
     db.flush()
     db.refresh(user, attribute_names=["username"])
     return {"username": user.username}
+
+
+@user_router.post("/api/auth/refresh")
+def refresh_token(
+    current_user_uuid: str = Depends(am.get_current_user_uuid),
+    db: Session = Depends(get_managed_session),
+):
+    # Get user and their scopes from DB
+    user_stmt = select(User).where(User.external_id == current_user_uuid)
+    user = db.scalar(user_stmt)
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Create new access token with scopes from DB
+    access_token = am.create_access_token(
+        data={
+            "sub": current_user_uuid,
+            "scopes": user.scopes,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return {"access_token": access_token, "token_type": "bearer"}
