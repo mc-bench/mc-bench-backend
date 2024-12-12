@@ -168,7 +168,7 @@ def build_structure(self, sample_id):
             decoded_log_line = log_line.decode("utf-8")
             print(decoded_log_line)
 
-            if '/setblock' in decoded_log_line or '/fill' in decoded_log_line:
+            if "/setblock" in decoded_log_line or "/fill" in decoded_log_line:
                 build_command_count += 1
 
             # when we break out of this the container will be done
@@ -180,7 +180,10 @@ def build_structure(self, sample_id):
                     note=f"building... ({build_command_count} build commands executed)",
                 )
 
-            if 'builder left the game' in decoded_log_line and builder.status != 'running':
+            if (
+                "builder left the game" in decoded_log_line
+                and builder.status != "running"
+            ):
                 break
 
         admin_api_client.update_stage_progress(

@@ -6,7 +6,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, object_session, relationship
 
 import mc_bench.schema.postgres as schema
-
+from mc_bench.minecraft.data import get_block_types
 from ._base import Base
 
 

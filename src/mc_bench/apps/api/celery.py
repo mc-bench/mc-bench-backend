@@ -1,6 +1,6 @@
-from mc_bench.util.celery import make_celery_app
+from mc_bench.util.celery import make_client_celery_app
 
-celery = make_celery_app()
+celery = make_client_celery_app()
 
 
 def send_task(name, *args, **kwargs):

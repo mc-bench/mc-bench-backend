@@ -28,7 +28,7 @@ def main(options):
         },
     )
     print("Waiting for server to start...")
-    wait_for_server(result)
+    wait_for_server(result.id)
     print("Server started...")
 
     print(result)

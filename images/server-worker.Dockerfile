@@ -7,4 +7,4 @@ RUN pip install -r requirements.txt -r server-worker-requirements.txt
 COPY . /usr/lib/mc-bench-backend
 RUN pip install /usr/lib/mc-bench-backend[server-worker]
 
-CMD celery -A mc_bench.apps.server_worker worker -Q server --concurrency $NUM_WORKERS
+CMD exec celery -A mc_bench.apps.server_worker worker -Q server --concurrency $NUM_WORKERS

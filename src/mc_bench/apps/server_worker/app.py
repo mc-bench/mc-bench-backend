@@ -1,3 +1,3 @@
-from mc_bench.util.celery import make_celery_app
+from mc_bench.util.celery import make_worker_celery_app
 
-app = make_celery_app()
+app = make_worker_celery_app()

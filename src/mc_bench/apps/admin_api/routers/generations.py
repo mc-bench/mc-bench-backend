@@ -5,15 +5,6 @@ from fastapi.routing import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from mc_bench.apps.admin_api.celery import send_task
-from mc_bench.apps.admin_api.config import settings
-from mc_bench.apps.admin_api.transport_types.generic import ListResponse
-from mc_bench.apps.admin_api.transport_types.requests import GenerationRequest
-from mc_bench.apps.admin_api.transport_types.responses import (
-    GenerationCreatedResponse,
-    GenerationDetailResponse,
-    GenerationResponse,
-)
 from mc_bench.auth.permissions import PERM
 from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt
@@ -26,6 +17,16 @@ from mc_bench.models.template import Template
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
+
+from .. import celery
+from ..config import settings
+from ..transport_types.generic import ListResponse
+from ..transport_types.requests import GenerationRequest
+from ..transport_types.responses import (
+    GenerationCreatedResponse,
+    GenerationDetailResponse,
+    GenerationResponse,
+)
 
 generation_router = APIRouter()
 
@@ -80,21 +81,19 @@ def generate_runs(
         data={
             "sub": str(system_user.external_id),
             "scopes": [
+                # Permits the bearer to write run progress updates
                 PERM.RUN.PROGRESS_WRITE,
             ],
         },
         expires_delta=datetime.timedelta(days=2),
     )
 
-    send_task(
-        "generation.create_runs",
-        kwargs=dict(
-            generation_id=generation.id,
-            prompt_ids=prompt_ids,
-            model_ids=model_ids,
-            template_ids=template_ids,
-        ),
-        headers={"token": progress_token},
+    celery.create_runs(
+        generation_id=generation.id,
+        prompt_ids=prompt_ids,
+        model_ids=model_ids,
+        template_ids=template_ids,
+        progress_token=progress_token,
     )
 
     generation.state_id = generation_state_id_for(db, GENERATION_STATE.IN_PROGRESS)
