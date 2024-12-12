@@ -39,7 +39,8 @@ MINECRAFT_BUILDER_IMAGE = os.environ["MINECRAFT_BUILDER_IMAGE"]
 
 def error_handler(stage_class):
     def wrapper(self, exc, task_id, args, kwargs, einfo):
-        if self.request.is_retrying():
+        if self.request.retries < self.max_retries:
+            print(f"Task {task_id} is in retry, not marking as failed")
             return
 
         print(f"Task {task_id} failed: {exc}")
