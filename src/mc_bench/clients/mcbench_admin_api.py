@@ -2,6 +2,10 @@ import os
 
 import requests
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class Client:
     def __init__(self, token):

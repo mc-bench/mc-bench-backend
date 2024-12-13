@@ -4,6 +4,9 @@ import time
 from io import BytesIO
 
 from sqlalchemy import select
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from mc_bench.clients.mcbench_admin_api import Client
 from mc_bench.minecraft.server import (

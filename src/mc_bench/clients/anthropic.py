@@ -2,6 +2,10 @@ import os
 
 import anthropic
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class AnthropicClient:
     def __init__(self):

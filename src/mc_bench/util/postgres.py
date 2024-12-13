@@ -1,12 +1,14 @@
 import contextlib
 import os
+from dotenv import load_dotenv
 
 import sqlalchemy
 import sqlalchemy.engine.url
 import sqlalchemy.orm.session
 
-_SESSIONMAKER = None
+load_dotenv()
 
+_SESSIONMAKER = None
 
 def get_engine(prefix="POSTGRES_", **kwargs):
     url = sqlalchemy.engine.url.URL(

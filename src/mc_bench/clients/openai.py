@@ -2,6 +2,10 @@ import os
 
 import openai
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class OpenAIClient:
     def __init__(self):

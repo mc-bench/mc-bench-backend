@@ -1,5 +1,7 @@
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 class Settings:
     GITHUB_CLIENT_ID = os.environ["GITHUB_CLIENT_ID"]
