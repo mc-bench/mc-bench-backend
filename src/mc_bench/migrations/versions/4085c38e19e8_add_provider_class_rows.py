@@ -33,6 +33,11 @@ def upgrade() -> None:
             (select id from auth.user where username = 'SYSTEM'),
             'OPENROUTER_SDK'
         ) ON CONFLICT (name) DO NOTHING;
+               
+         INSERT INTO specification.provider_class (created_by, name) VALUES (
+            (select id from auth.user where username = 'SYSTEM'),
+            'GEMINI_SDK'
+        ) ON CONFLICT (name) DO NOTHING;
     
     """)
 
