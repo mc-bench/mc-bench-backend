@@ -57,7 +57,7 @@ GITHUB_CLIENT_ID
 GITHUB_CLIENT_SECRET
 
 See [frontend setup docs](https://github.com/mc-bench/mc-bench-frontend/blob/main/docs/setup_oauth_prereqs.md) 
-Auth call back URL should be http://localhost:5173/login
+Auth call back URL should be on ```http://localhost:5173/login```
 # Login and give yourself a role
 
 Running the frontend and the backend, login and create a username.

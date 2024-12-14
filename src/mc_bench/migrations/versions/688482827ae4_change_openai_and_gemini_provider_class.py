@@ -22,6 +22,11 @@ def upgrade() -> None:
     op.execute("""\
         INSERT INTO specification.provider_class (created_by, name) VALUES (
             (select id from auth.user where username = 'SYSTEM'),
+            'OPENAI_SDK'
+        ) ON CONFLICT (name) DO NOTHING;
+               
+        INSERT INTO specification.provider_class (created_by, name) VALUES (
+            (select id from auth.user where username = 'SYSTEM'),
             'GEMINI_SDK'
         ) ON CONFLICT (name) DO NOTHING;
     """)
