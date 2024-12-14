@@ -124,7 +124,7 @@ def build_structure(self, sample_id):
             structure_name=structure_name,
         )
 
-    build_script = build_template.replace("REPLACE_ME", code)
+    build_script = build_template.replace("async function buildCreation(startX, startY, startZ) {}", code)
 
     volume = create_volume(build_script)
 
@@ -302,13 +302,13 @@ def export_structure_views(self, sample_id):
         )
 
         export_script = export_template.replace(
-            "REPLACE_ME_SUMMARY",
-            json.dumps(
+            "const summary = {}",
+            f'const summary = {json.dumps(
                 json.loads(
                     summary_artifact.download_artifact().getvalue().decode("utf-8")
                 )
-            ),
-        ).replace("REPLACE_ME_COMMAND_LIST", json.dumps(command_list))
+            )}',
+        ).replace("const commandList = []", f'const commandList = {json.dumps(command_list)}')
 
     suffix = f"{self.request.id}-{int(time.time())}"
     network_name = create_network(suffix)

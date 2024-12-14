@@ -26,6 +26,8 @@ api = {file = "deps/api-requirements.in"}
 worker = {file = "deps/worker-requirements.in"}
 server-worker = { file = "deps/server-worker-requirements.in"}
 
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff.lint.pyflakes]
 allowed-unused-imports = [

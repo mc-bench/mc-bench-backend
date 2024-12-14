@@ -1,0 +1,2 @@
+recursive-include src/mc_bench/ *.js
+recursive-include src/mc_bench/ *.json

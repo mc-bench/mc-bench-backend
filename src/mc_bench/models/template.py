@@ -13,6 +13,8 @@ from ._base import Base
 class Template(Base):
     __table__ = schema.specification.template
 
+    minecraft_version = "1.20.1" # TODO: make this data driven
+
     author = relationship(
         "User", foreign_keys=[schema.specification.template.c.created_by]
     )
@@ -65,5 +67,12 @@ class Template(Base):
     def usage(self):
         return self._usage_expression.scalar_subquery()
 
+    def get_default_template_kwargs(self):
+        return {
+            "block_types_list": "\n".join(get_block_types(self.minecraft_version)),
+        }
+
     def render(self, **kwargs):
-        return jinja2.Template(self.content).render(**kwargs)
+        render_kwargs = self.get_default_template_kwargs()
+        render_kwargs.update(kwargs)
+        return jinja2.Template(self.content).render(**render_kwargs)

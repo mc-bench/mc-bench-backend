@@ -40,7 +40,9 @@ def execute_prompt(
         db.commit()
 
         response = run.model.default_provider.execute_prompt(
-            template=run.template, prompt=run.prompt
+            prompt=run.template.render(
+                build_specification=run.prompt.build_specification,
+            )
         )
 
         sample_kwargs = {

@@ -29,12 +29,11 @@ class Provider(Base):
         "polymorphic_on": "provider_class",
     }
 
-    def execute_prompt(self, template, prompt):
+    def execute_prompt(self, prompt):
         client = self.get_client()
         kwargs = (
             json.loads(self.config) if isinstance(self.config, str) else self.config
         ).copy()
-        kwargs["prompt"] = template.render(
-            build_specification=prompt.build_specification,
-        )
+        kwargs["prompt"] = prompt
+        print(kwargs)
         return client.send_prompt(**kwargs)
