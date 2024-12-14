@@ -33,11 +33,20 @@ Any other mechanism should work as well
     ```pip install -e .[dev,api,worker]```
 
 # Run migrations
+Load the environment variables with
+```bash
+source .env
+```
 
 With the python virtual environment activated, run the database migrations
 
 ```shell
 $ mc-bench-alembic upgrade head
+```
+
+Or run 
+```shell
+$ docker-compose run --rm api mc-bench-alembic upgrade head
 ```
 
 # Setup oauth2
@@ -48,7 +57,7 @@ GITHUB_CLIENT_ID
 GITHUB_CLIENT_SECRET
 
 See [frontend setup docs](https://github.com/mc-bench/mc-bench-frontend/blob/main/docs/setup_oauth_prereqs.md) 
-
+Auth call back URL should be http://localhost:5173/login
 # Login and give yourself a role
 
 Running the frontend and the backend, login and create a username.
