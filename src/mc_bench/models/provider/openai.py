@@ -4,7 +4,7 @@ from ._base import Provider
 
 
 class OpenAIProvider(Provider):
-    __mapper_args__ = {"polymorphic_identity": "OPEN_AI_SDK"}
+    __mapper_args__ = {"polymorphic_identity": "OPENAI_SDK"}
 
     def get_client(self):
         return OpenAIClient()
