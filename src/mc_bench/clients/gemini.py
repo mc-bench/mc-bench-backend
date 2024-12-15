@@ -7,7 +7,7 @@ class GeminiClient:
     def __init__(self):
         self.client = openai.OpenAI(
             api_key=os.environ["GOOGLE_API_KEY"],
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         )
 
     def send_prompt(self, **kwargs):
