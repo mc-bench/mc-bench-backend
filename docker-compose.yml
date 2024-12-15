@@ -76,6 +76,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       INTERNAL_OBJECT_BUCKET: "mcbench-backend-object-local"
       OBJECT_STORE_DSN: "object:9000"
       OBJECT_STORE_ACCESS_KEY: "fake_key"
