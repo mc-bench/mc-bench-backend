@@ -4,7 +4,6 @@ const { Buffer } = require("buffer");
 const fs = require("fs").promises;
 const path = require("path");
 const minecraftData = require("minecraft-data");
-const fs = require("fs");
 
 // Environment variables with defaults
 const HOST = process.env.HOST || "127.0.0.1";
