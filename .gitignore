@@ -2,6 +2,7 @@
 .env.*
 !.env.template
 data
+!src/mc_bench/minecraft/data
 **/node_modules
 
 ### venv template

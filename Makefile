@@ -48,7 +48,7 @@ reset:
 		mc mb object/mcbench-backend-object-local && mc anonymous set download object/mcbench-backend-object-local && \
 		mc mb object/mcbench-object-cdn-local && mc anonymous set download object/mcbench-object-cdn-local"
 
-	docker-compose up -d
+	docker-compose up -d --build
 
 	make seed-data
 
