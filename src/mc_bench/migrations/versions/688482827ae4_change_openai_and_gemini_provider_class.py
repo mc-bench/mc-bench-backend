@@ -29,6 +29,13 @@ def upgrade() -> None:
             (select id from auth.user where username = 'SYSTEM'),
             'GEMINI_SDK'
         ) ON CONFLICT (name) DO NOTHING;
+        
+        UPDATE specification.provider
+        SET provider_class = 'OPENAI_SDK'
+        WHERE provider_class = 'OPEN_AI_SDK';
+        
+        DELETE FROM specification.provider_class 
+        WHERE name = 'OPEN_AI_SDK';
     """)
 
 def downgrade() -> None:
