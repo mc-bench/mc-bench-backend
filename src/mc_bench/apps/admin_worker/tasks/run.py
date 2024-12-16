@@ -1,4 +1,3 @@
-import re
 import time
 
 from sqlalchemy import select
@@ -16,6 +15,7 @@ from mc_bench.models.run import (
     run_state_id_for,
 )
 from mc_bench.util.postgres import managed_session
+from mc_bench.util.text import parse_known_parts
 
 from ..app import app
 
@@ -79,7 +79,7 @@ def parse_prompt(
         db.commit()
 
         # 2. Parse Response
-        parsed = _parse_known_parts(sample.raw)
+        parsed = parse_known_parts(sample.raw)
 
         if parsed.get("code"):
             print("Code in parsed")
@@ -119,43 +119,6 @@ def parse_prompt(
             raise RuntimeError("Prompting didn't go well")
 
         return sample_id
-
-
-def _parse_known_parts(text):
-    tags = ["code", "inspiration", "description"]
-    result = {}
-
-    # Parse each tag
-    for tag in tags:
-        pattern = f"<{tag}>(.*?)</{tag}>"
-        matches = re.findall(pattern, text, re.DOTALL)
-        if matches and matches[0]:
-            result[tag] = matches[0]
-
-    if not result.get("inspiration"):
-        try:
-            start_index = text.index("<inspiration>") + len("<inspiration>")
-            end_index = text.index("<description>")
-            result["inspiration"] = text[start_index:end_index].strip()
-        except ValueError:
-            pass
-
-    if not result.get("description"):
-        try:
-            start_index = text.index("<description>") + len("<description>")
-            end_index = text.index("<code>")
-            result["description"] = text[start_index:end_index].strip()
-        except ValueError:
-            pass
-
-    if not result.get("code"):
-        try:
-            start_index = text.index("<code>") + len("<code>")
-            result["code"] = text[start_index:].strip()
-        except ValueError:
-            pass
-
-    return result
 
 
 @app.task(name="run.post_processing")

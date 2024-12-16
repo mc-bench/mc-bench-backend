@@ -1,6 +1,5 @@
 # Adding new provider clases
 
-
 1. First implement the class and decide on the `provider_class` key. Set the `polymorphic_identity` to that key.
 
 ```python
