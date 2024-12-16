@@ -20,15 +20,14 @@ from mc_bench.apps.admin_api.transport_types.responses import (
     RunStatusResponse,
 )
 from mc_bench.auth.permissions import PERM
-from mc_bench.models.run import (
-    GENERATION_STATE,
-    RUN_STAGE_STATE,
-    RUN_STATE,
-    Run,
-    generation_state_id_for,
-    run_stage_state_id_for,
-    run_state_id_for,
+from mc_bench.constants import GENERATION_STATE, RUN_STAGE_STATE, RUN_STATE
+from mc_bench.events import emit_event
+from mc_bench.events.types import (
+    GenerationStateChanged,
+    RunStageStateChanged,
+    RunStateChanged,
 )
+from mc_bench.models.run import Run
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
@@ -138,7 +137,7 @@ def task_retry(
         .first()
     )
 
-    run.state_id = run_state_id_for(db, RUN_STATE.IN_RETRY)
+    emit_event(RunStateChanged(run_id=run.id, new_state=RUN_STATE.IN_RETRY))
 
     system_user = db.scalars(select(User).where(User.id == 1)).one()
 
@@ -154,6 +153,7 @@ def task_retry(
     )
 
     if run is not None:
+        generation_id = run.generation_id
         sort_order = [
             "PROMPT_EXECUTION",
             "RESPONSE_PARSING",
@@ -194,9 +194,6 @@ def task_retry(
                 )
 
             if run.generation_id is not None:
-                run.generation.state_id = generation_state_id_for(
-                    db, GENERATION_STATE.IN_RETRY
-                )
                 chained_items.append(
                     celery.signature(
                         "generation.finalize_generation",
@@ -205,13 +202,21 @@ def task_retry(
                         immutable=True,
                     )
                 )
-                db.add(run)
-                db.commit()
 
-            stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.PENDING)
-            db.add(stage)
-            db.commit()
-            celery.chain(*chained_items).apply_async()
+            emit_event(
+                RunStageStateChanged(
+                    stage_id=stage.id, new_state=RUN_STAGE_STATE.PENDING
+                )
+            )
+
+        if generation_id is not None:
+            emit_event(
+                GenerationStateChanged(
+                    generation_id=generation_id, new_state=GENERATION_STATE.IN_RETRY
+                )
+            )
+
+        celery.chain(*chained_items).apply_async()
         return {}
     else:
         raise HTTPException(

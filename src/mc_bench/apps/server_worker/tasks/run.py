@@ -6,6 +6,9 @@ from io import BytesIO
 from sqlalchemy import select
 
 from mc_bench.clients.mcbench_admin_api import Client
+from mc_bench.constants import RUN_STAGE_STATE
+from mc_bench.events import emit_event
+from mc_bench.events.types import RunStageStateChanged
 from mc_bench.minecraft.server import (
     calculate_expected_frames,
     cleanup,
@@ -18,14 +21,13 @@ from mc_bench.minecraft.server import (
     wait_for_server,
 )
 from mc_bench.models.run import (
-    RUN_STAGE_STATE,
     Artifact,
     Building,
     ExportingContent,
     Run,
     Sample,
-    run_stage_state_id_for,
 )
+from mc_bench.util.docker import wait_for_containers
 from mc_bench.util.object_store import get_client
 from mc_bench.util.postgres import managed_session
 
@@ -37,7 +39,7 @@ MINECRAFT_SERVER_IMAGE = os.environ["MINECRAFT_SERVER_IMAGE"]
 MINECRAFT_BUILDER_IMAGE = os.environ["MINECRAFT_BUILDER_IMAGE"]
 
 
-def error_handler(stage_class):
+def error_handler(stage_class, stage_slug):
     def wrapper(self, exc, task_id, args, kwargs, einfo):
         if self.request.retries < self.max_retries:
             print(f"Task {task_id} is in retry, not marking as failed")
@@ -45,6 +47,10 @@ def error_handler(stage_class):
 
         print(f"Task {task_id} failed: {exc}")
 
+        admin_api_client = Client(
+            token=self.request.headers["token"],
+        )
+
         sample_id = args[0] if args else kwargs.get("sample_id")
 
         with managed_session() as db:
@@ -55,22 +61,32 @@ def error_handler(stage_class):
             run_stage = db.scalar(
                 select(stage_class).where(stage_class.run_id == run_id)
             )
-
-            run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.FAILED)
-            db.add(run_stage)
-            db.commit()
-
-            run_stage.set_progress(0, note=None)
+            run_stage_id = run_stage.id
+            admin_api_client.update_stage_progress(
+                run_external_id=run.external_id,
+                stage=stage_slug,
+                progress=0,
+                note=None,
+            )
+            emit_event(
+                RunStageStateChanged(
+                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.FAILED
+                )
+            )
 
     return wrapper
 
 
-def retry_handler(stage_class):
+def retry_handler(stage_class, stage_slug):
     def wrapper(self, exc, task_id, args, kwargs, einfo):
         print(f"Task {task_id} failed: {exc}")
 
         sample_id = args[0] if args else kwargs.get("sample_id")
 
+        admin_api_client = Client(
+            token=self.request.headers["token"],
+        )
+
         with managed_session() as db:
             sample = db.scalar(select(Sample).where(Sample.id == sample_id))
             run = db.scalar(select(Run).where(Run.id == sample.run_id))
@@ -79,10 +95,18 @@ def retry_handler(stage_class):
             run_stage = db.scalar(
                 select(stage_class).where(stage_class.run_id == run_id)
             )
-
-            run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_RETRY)
-            db.add(run_stage)
-            db.commit()
+            run_stage_id = run_stage.id
+            admin_api_client.update_stage_progress(
+                run_external_id=run.external_id,
+                stage=stage_slug,
+                progress=0,
+                note=None,
+            )
+            emit_event(
+                RunStageStateChanged(
+                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_RETRY
+                )
+            )
 
     return wrapper
 
@@ -90,8 +114,8 @@ def retry_handler(stage_class):
 @app.task(
     name="run.build_structure",
     autoretry_for=(Exception,),
-    on_failure=error_handler(Building),
-    on_retry=retry_handler(Building),
+    on_failure=error_handler(Building, "BUILDING"),
+    on_retry=retry_handler(Building, "BUILDING"),
     bind=True,
 )
 def build_structure(self, sample_id):
@@ -110,10 +134,13 @@ def build_structure(self, sample_id):
         run_id = run.id
         run_external_id = run.external_id
         run_stage = db.scalar(select(Building).where(Building.run_id == run.id))
+        run_stage_id = run_stage.id
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
-        db.add(run_stage)
-        db.commit()
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+            )
+        )
 
         suffix = f"{self.request.id}-{int(time.time())}"
         network_name = create_network(suffix)
@@ -124,9 +151,9 @@ def build_structure(self, sample_id):
             structure_name=structure_name,
         )
 
-    build_script = build_template.replace(
-        "async function buildCreation(startX, startY, startZ) {}", code
-    )
+        build_script = build_template.replace(
+            "async function buildCreation(startX, startY, startZ) {}", code
+        )
 
     volume = create_volume(build_script)
 
@@ -166,27 +193,28 @@ def build_structure(self, sample_id):
 
         build_command_count = 0
 
-        for log_index, log_line in enumerate(server.logs(stream=True)):
+        container_lookup = {
+            builder_id: "builder",
+            server_id: "server",
+        }
+
+        for log_item in wait_for_containers([builder_id, server_id]):
+            container_id, log_line = log_item.container_id, log_item.log_line
+            container_name = container_lookup[container_id]
             decoded_log_line = log_line.decode("utf-8")
-            print(decoded_log_line)
+            print(f"{container_name}({container_id}): {decoded_log_line}")
 
-            if "/setblock" in decoded_log_line or "/fill" in decoded_log_line:
-                build_command_count += 1
+            if container_name == "server":
+                if "/setblock" in decoded_log_line or "/fill" in decoded_log_line:
+                    build_command_count += 1
 
-            # when we break out of this the container will be done
-            if build_command_count % 50 == 0:
-                admin_api_client.update_stage_progress(
-                    run_external_id=run_external_id,
-                    stage="BUILDING",
-                    progress=0,
-                    note=f"building... ({build_command_count} build commands executed)",
-                )
-
-            if (
-                "builder left the game" in decoded_log_line
-                and builder.status != "running"
-            ):
-                break
+                if build_command_count % 50 == 0:
+                    admin_api_client.update_stage_progress(
+                        run_external_id=run_external_id,
+                        stage="BUILDING",
+                        progress=0,
+                        note=f"building... ({build_command_count} build commands executed)",
+                    )
 
         admin_api_client.update_stage_progress(
             run_external_id=run_external_id,
@@ -246,21 +274,18 @@ def build_structure(self, sample_id):
             db.add(artifact)
         db.commit()
 
-        run_stage = db.scalar(select(Building).where(Building.run_id == run_id))
-
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
-        db.add(run_stage)
-        db.commit()
-
-        return sample_id
+    emit_event(
+        RunStageStateChanged(stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED)
+    )
+    return sample_id
 
 
 @app.task(
     bind=True,
     name="run.export_structure_views",
     autoretry_for=(Exception,),
-    on_failure=error_handler(ExportingContent),
-    on_retry=retry_handler(ExportingContent),
+    on_failure=error_handler(ExportingContent, "EXPORTING_CONTENT"),
+    on_retry=retry_handler(ExportingContent, "EXPORTING_CONTENT"),
 )
 def export_structure_views(self, sample_id):
     admin_api_client = Client(
@@ -286,9 +311,12 @@ def export_structure_views(self, sample_id):
 
         structure_name = f"sample_{sample_id}"
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
-        db.add(run_stage)
-        db.commit()
+        run_stage_id = run_stage.id
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+            )
+        )
 
         command_list = json.loads(
             command_list_artifact.download_artifact().getvalue().decode("utf-8")
@@ -361,7 +389,15 @@ def export_structure_views(self, sample_id):
 
         print(f"Expected frame count: {expected_frame_count}")
 
-        for log_line in builder.logs(stream=True):
+        container_lookup = {
+            builder_id: "builder",
+            server_id: "server",
+        }
+
+        for log_item in wait_for_containers([builder_id, server_id]):
+            container_id, log_line = log_item.container_id, log_item.log_line
+            container_name = container_lookup[container_id]
+            decoded_log_line = log_line.decode("utf-8")
             if time.monotonic() - last_retrieved_time > 20:
                 last_retrieved_time = time.monotonic()
                 frame_count_data = get_file_from_container(
@@ -377,8 +413,7 @@ def export_structure_views(self, sample_id):
                         note=f"exporting cinematic frames (~{frame_count}/{expected_frame_count})",
                     )
 
-            # when we break out of this the container will be done
-            print(log_line.decode("utf-8"))
+            print(f"{container_name}({container_id}): {decoded_log_line}")
 
         admin_api_client.update_stage_progress(
             run_external_id=run_external_id,
@@ -451,8 +486,9 @@ def export_structure_views(self, sample_id):
             select(ExportingContent).where(ExportingContent.run_id == run_id)
         )
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
-        db.add(run_stage)
-        db.commit()
+        run_stage_id = run_stage.id
 
-        return sample_id
+    emit_event(
+        RunStageStateChanged(stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED)
+    )
+    return sample_id

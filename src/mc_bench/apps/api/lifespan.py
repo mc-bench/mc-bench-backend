@@ -12,5 +12,5 @@ async def lifespan(app):
 
     yield
 
-    engine.close()
+    engine.dispose()
     redis_pool.close()

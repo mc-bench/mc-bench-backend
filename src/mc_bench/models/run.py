@@ -1,5 +1,4 @@
 import datetime
-import enum
 import os
 from typing import Dict, List
 
@@ -7,6 +6,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Mapped, object_session, relationship
 
 import mc_bench.schema.postgres as schema
+from mc_bench.constants import GENERATION_STATE, RUN_STAGE_STATE, RUN_STATE, STAGE
+from mc_bench.events.types import (
+    GenerationStateChanged,
+    RunStageStateChanged,
+    RunStateChanged,
+)
 from mc_bench.schema.object_store.runs import KINDS, runs
 from mc_bench.util.object_store import (
     get_client,
@@ -14,45 +19,6 @@ from mc_bench.util.object_store import (
 )
 
 from ._base import Base
-
-
-# Any values added here must also be added to the DB via a migration
-# see d618a24f0bed_add_generation_state_and_run_state_.py for an example
-class RUN_STATE(enum.Enum):
-    CREATED = "CREATED"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    IN_RETRY = "IN_RETRY"
-
-
-class RUN_STAGE_STATE(enum.Enum):
-    PENDING = "PENDING"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    IN_RETRY = "IN_RETRY"
-
-
-# Any values added here must also be added to the DB via a migration
-# see d618a24f0bed_add_generation_state_and_run_state_.py for an example
-class GENERATION_STATE(enum.Enum):
-    CREATED = "CREATED"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-    PARTIAL_FAILED = "PARTIAL_FAILED"
-    IN_RETRY = "IN_RETRY"
-    FAILED = "FAILED"
-
-
-class STAGE(enum.Enum):
-    PROMPT_EXECUTION = "PROMPT_EXECUTION"
-    RESPONSE_PARSING = "RESPONSE_PARSING"
-    BUILDING = "BUILDING"
-    EXPORTING_CONTENT = "EXPORTING_CONTENT"
-    POST_PROCESSING = "POST_PROCESSING"
-    PREPARING_SAMPLE = "PREPARING_SAMPLE"
-
 
 _run_state_cache: Dict[RUN_STATE, int] = {}
 _generation_state_cache: Dict[RUN_STATE, int] = {}
@@ -205,6 +171,20 @@ class Run(Base):
         for stage in self.stages:
             if stage.stage.slug == name:
                 return name
+
+    @classmethod
+    def state_change_handler(cls, event: RunStateChanged):
+        import mc_bench.util.postgres as postgres
+
+        table = cls.__table__
+
+        with postgres.managed_session() as db:
+            run_state_id = run_state_id_for(db, event.new_state)
+            db.execute(
+                table.update()
+                .where(table.c.id == event.run_id)
+                .values(state_id=run_state_id)
+            )
 
 
 class Sample(Base):
@@ -489,6 +469,20 @@ class Generation(Base):
 
         return result
 
+    @classmethod
+    def state_change_handler(cls, event: GenerationStateChanged):
+        import mc_bench.util.postgres as postgres
+
+        table = cls.__table__
+
+        with postgres.managed_session() as db:
+            generation_state_id = generation_state_id_for(db, event.new_state)
+            db.execute(
+                table.update()
+                .where(table.c.id == event.generation_id)
+                .values(state_id=generation_state_id)
+            )
+
 
 class GenerationState(Base):
     __table__ = schema.specification.generation_state
@@ -554,6 +548,20 @@ class RunStage(Base):
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         pass
+
+    @classmethod
+    def state_change_handler(cls, event: RunStageStateChanged):
+        import mc_bench.util.postgres as postgres
+
+        table = cls.__table__
+
+        with postgres.managed_session() as db:
+            run_stage_state_id = run_stage_state_id_for(db, event.new_state)
+            db.execute(
+                table.update()
+                .where(table.c.id == event.stage_id)
+                .values(state_id=run_stage_state_id)
+            )
 
 
 class PromptExecution(RunStage):

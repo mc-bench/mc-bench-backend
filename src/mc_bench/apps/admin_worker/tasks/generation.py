@@ -1,12 +1,12 @@
 import celery
 from sqlalchemy import select, text
 
+from mc_bench.constants import GENERATION_STATE, RUN_STATE
+from mc_bench.events import emit_event
+from mc_bench.events.types import GenerationStateChanged
 from mc_bench.models.run import (
-    GENERATION_STATE,
-    RUN_STATE,
     Generation,
     Run,
-    generation_state_id_for,
     run_state_id_for,
 )
 from mc_bench.util.postgres import managed_session
@@ -102,7 +102,8 @@ def create_runs(
 
 @app.task(name="generation.finalize_generation")
 def finalize_generation(generation_id):
-    with managed_session() as db:
-        generation = db.scalar(select(Generation).where(Generation.id == generation_id))
-        generation.state_id = generation_state_id_for(db, GENERATION_STATE.COMPLETED)
-        db.commit()
+    emit_event(
+        GenerationStateChanged(
+            generation_id=generation_id, new_state=GENERATION_STATE.COMPLETED
+        )
+    )

@@ -6,10 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from mc_bench.auth.permissions import PERM
+from mc_bench.constants import GENERATION_STATE
+from mc_bench.events import emit_event
+from mc_bench.events.types import GenerationStateChanged
 from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt
 from mc_bench.models.run import (
-    GENERATION_STATE,
     Generation,
     generation_state_id_for,
 )
@@ -96,8 +98,11 @@ def generate_runs(
         progress_token=progress_token,
     )
 
-    generation.state_id = generation_state_id_for(db, GENERATION_STATE.IN_PROGRESS)
-    db.add(generation)
+    emit_event(
+        GenerationStateChanged(
+            generation_id=generation.id, new_state=GENERATION_STATE.IN_PROGRESS
+        )
+    )
 
     return {
         "id": generation.external_id,

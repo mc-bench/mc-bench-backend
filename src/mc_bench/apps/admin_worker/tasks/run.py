@@ -2,17 +2,16 @@ import time
 
 from sqlalchemy import select
 
+from mc_bench.constants import RUN_STAGE_STATE
+from mc_bench.events import emit_event
+from mc_bench.events.types import RunStageStateChanged
 from mc_bench.models.run import (
-    RUN_STAGE_STATE,
-    RUN_STATE,
     PostProcessing,
     PreparingSample,
     PromptExecution,
     ResponseParsing,
     Run,
     Sample,
-    run_stage_state_id_for,
-    run_state_id_for,
 )
 from mc_bench.util.postgres import managed_session
 from mc_bench.util.text import parse_known_parts
@@ -35,9 +34,12 @@ def execute_prompt(
             select(PromptExecution).where(PromptExecution.run_id == run_id)
         )
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
-        db.add(run_stage)
-        db.commit()
+        run_stage_id = run_stage.id
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+            )
+        )
 
         response = run.model.default_provider.execute_prompt(
             prompt=run.template.render(
@@ -54,10 +56,15 @@ def execute_prompt(
         sample = Sample(**sample_kwargs)
         db.add(sample)
         db.commit()
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
-        db.commit()
         db.refresh(sample)
-        return sample.id
+        sample_id = sample.id
+        run_stage_id = run_stage.id
+
+    emit_event(
+        RunStageStateChanged(stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED)
+    )
+
+    return sample_id
 
 
 @app.task(name="run.parse_prompt")
@@ -74,9 +81,12 @@ def parse_prompt(
             select(ResponseParsing).where(ResponseParsing.run_id == run.id)
         )
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
-        db.add(run_stage)
-        db.commit()
+        run_stage_id = run_stage.id
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+            )
+        )
 
         # 2. Parse Response
         parsed = parse_known_parts(sample.raw)
@@ -104,18 +114,18 @@ def parse_prompt(
         if parsed.get("description"):
             sample.result_description_text = parsed["description"].strip()
 
+        db.commit()
+
         if not all(
             [parsed.get("code"), parsed.get("inspiration"), parsed.get("description")]
         ):
-            new_state = run_stage_state_id_for(db, RUN_STAGE_STATE.FAILED)
+            new_state = RUN_STAGE_STATE.FAILED
         else:
-            new_state = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
+            new_state = RUN_STAGE_STATE.COMPLETED
 
-        db.commit()
-        run_stage.state_id = new_state
-        db.commit()
+        emit_event(RunStageStateChanged(stage_id=run_stage_id, new_state=new_state))
 
-        if new_state == run_state_id_for(db, RUN_STAGE_STATE.FAILED):
+        if new_state == RUN_STAGE_STATE.FAILED:
             raise RuntimeError("Prompting didn't go well")
 
         return sample_id
@@ -133,15 +143,20 @@ def post_process_build(sample_id):
             select(PostProcessing).where(PostProcessing.run_id == run.id)
         )
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
-        db.add(run_stage)
-        db.commit()
+        run_stage_id = run_stage.id
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+            )
+        )
 
         # TODO: Post processing
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
-        db.commit()
-
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
+            )
+        )
         return sample_id
 
 
@@ -160,13 +175,18 @@ def prepare_sample(sample_id):
             select(PreparingSample).where(PreparingSample.run_id == run.id)
         )
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.IN_PROGRESS)
-        db.add(run_stage)
-        db.commit()
+        run_stage_id = run_stage.id
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+            )
+        )
 
         # TODO: Prepare sample
 
-        run_stage.state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
-        run.state_id = run_state_id_for(db, RUN_STATE.COMPLETED)
-        db.add(run_stage)
-        db.commit()
+        emit_event(
+            RunStageStateChanged(
+                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
+            )
+        )
+        return sample_id

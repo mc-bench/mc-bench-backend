@@ -14,7 +14,7 @@ build-%:
 all-images: build-admin-api build-admin-worker build-api build-worker
 
 install-dev:
-	pip install -e .[dev]
+	pip install -e ".[dev]"
 
 fmt:
 	ruff check --select I --fix
