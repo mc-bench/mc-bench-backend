@@ -363,8 +363,6 @@ bot.once("spawn", async () => {
       Math.floor(startPos.z),
     );
 
-    await commandQueue.add(`/tp ~1000 ~ ~`);
-
     await buildCreation(
       Math.floor(startPos.x),
       Math.floor(startPos.y),
@@ -379,6 +377,10 @@ bot.once("spawn", async () => {
       max: { x: maxX, y: maxY, z: maxZ },
     } = boundingBox;
 
+    console.log("Waiting 10 seconds to be sure all build chunks are loaded!");
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+
+    console.log("Exporting structure(s) to schem file!");
     // Add commands to queue
     await commandQueue.add(`//pos1 ${minX},${minY},${minZ}`);
     await commandQueue.add(`//pos2 ${maxX},${maxY},${maxZ}`);
