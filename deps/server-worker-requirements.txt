@@ -81,6 +81,8 @@ redis==5.2.0
 requests==2.32.3
     # via
     #   -c deps/api-requirements.txt
+    #   -c deps/worker-requirements.in
+    #   -r deps/server-worker-requirements.in
     #   docker
 six==1.16.0
     # via

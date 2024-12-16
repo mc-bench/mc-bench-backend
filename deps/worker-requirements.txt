@@ -44,6 +44,11 @@ certifi==2024.8.30
     #   -c deps/requirements.txt
     #   httpcore
     #   httpx
+    #   requests
+charset-normalizer==3.4.0
+    # via
+    #   -c deps/api-requirements.txt
+    #   requests
 click==8.1.7
     # via
     #   -c deps/api-requirements.txt
@@ -96,6 +101,7 @@ idna==3.10
     #   -c deps/requirements.txt
     #   anyio
     #   httpx
+    #   requests
 jinja2==3.1.4
     # via
     #   -c deps/api-requirements.txt
@@ -157,6 +163,10 @@ redis==5.2.0
     # via
     #   -c deps/requirements.txt
     #   celery
+requests==2.32.3
+    # via
+    #   -c deps/api-requirements.txt
+    #   -r deps/worker-requirements.in
 six==1.16.0
     # via
     #   -c deps/api-requirements.txt
@@ -196,6 +206,11 @@ tzdata==2024.2
     #   -c deps/requirements.txt
     #   celery
     #   kombu
+urllib3==2.2.3
+    # via
+    #   -c deps/api-requirements.txt
+    #   -c deps/requirements.txt
+    #   requests
 vine==5.1.0
     # via
     #   -c deps/requirements.txt

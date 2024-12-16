@@ -35,5 +35,4 @@ class Provider(Base):
             json.loads(self.config) if isinstance(self.config, str) else self.config
         ).copy()
         kwargs["prompt"] = prompt
-        print(kwargs)
         return client.send_prompt(**kwargs)

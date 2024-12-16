@@ -85,6 +85,8 @@ def generate_runs(
             "scopes": [
                 # Permits the bearer to write run progress updates
                 PERM.RUN.PROGRESS_WRITE,
+                # Permits the bearer to retry runs
+                PERM.RUN.ADMIN,  # TODO: Make a standalone retry permission
             ],
         },
         expires_delta=datetime.timedelta(days=2),

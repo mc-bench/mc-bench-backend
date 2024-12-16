@@ -33,3 +33,10 @@ class Client:
             },
         )
         response.raise_for_status()
+
+    def start_run_over(self, run_external_id):
+        response = self.post(
+            f"/api/run/{run_external_id}/task-retry",
+            json={"tasks": ["PROMPT_EXECUTION"]},
+        )
+        response.raise_for_status()

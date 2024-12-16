@@ -1,11 +1,16 @@
+import os
+import subprocess
+import tempfile
 import time
 
 from sqlalchemy import select
 
-from mc_bench.constants import RUN_STAGE_STATE
+from mc_bench.clients.mcbench_admin_api import Client
+from mc_bench.constants import RUN_STAGE_STATE, RUN_STATE
 from mc_bench.events import emit_event
-from mc_bench.events.types import RunStageStateChanged
+from mc_bench.events.types import RunStageStateChanged, RunStateChanged
 from mc_bench.models.run import (
+    CodeValidation,
     PostProcessing,
     PreparingSample,
     PromptExecution,
@@ -17,6 +22,11 @@ from mc_bench.util.postgres import managed_session
 from mc_bench.util.text import parse_known_parts
 
 from ..app import app
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ADMIN_WORKER_DIR = os.path.dirname(HERE)
+ESLINT_CONFIG = os.path.join(ADMIN_WORKER_DIR, "script-eslintrc.js")
+MOCK_SCRIPT = os.path.join(ADMIN_WORKER_DIR, "js_scripts", "mockScript.js")
 
 
 @app.task(
@@ -92,8 +102,6 @@ def parse_prompt(
         parsed = parse_known_parts(sample.raw)
 
         if parsed.get("code"):
-            print("Code in parsed")
-
             if "```" in parsed["code"]:
                 start_index = parsed["code"].find("```")
                 end_index = parsed["code"].index("```", start_index + 1)
@@ -129,6 +137,62 @@ def parse_prompt(
             raise RuntimeError("Prompting didn't go well")
 
         return sample_id
+
+
+@app.task(name="run.code_validation", bind=True)
+def code_validation(self, sample_id):
+    with managed_session() as db:
+        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
+        run = db.scalar(select(Run).where(Run.id == sample.run_id))
+        run_id = run.id
+        num_samples = len(run.samples)
+        run_external_id = run.external_id
+        run_stage = db.scalar(
+            select(CodeValidation).where(PostProcessing.run_id == run.id)
+        )
+        run_stage_id = run_stage.id
+        code = sample.result_code_text
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        with open(MOCK_SCRIPT, "r") as f:
+            mock_script = f.read()
+
+        with open(os.path.join(temp_dir, "code.js"), "w") as f:
+            full_code = f"{mock_script}\n\n{code}"
+            f.write(full_code)
+
+        result = subprocess.run(
+            ["eslint", "--config", ESLINT_CONFIG, "code.js"],
+            cwd=temp_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            print(result.stdout)
+            print(result.stderr)
+            print("Code validation failed. Reprompting...")
+            if num_samples < 5:
+                admin_api_client = Client(token=self.request.headers["token"])
+                admin_api_client.start_run_over(run_external_id)
+
+            else:
+                emit_event(RunStateChanged(run_id=run_id, new_state=RUN_STATE.FAILED))
+
+            emit_event(
+                RunStageStateChanged(
+                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.FAILED
+                )
+            )
+            raise RuntimeError("Code validation failed. Reprompting...")
+
+        else:
+            emit_event(
+                RunStageStateChanged(
+                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
+                )
+            )
+            return sample_id
 
 
 @app.task(name="run.post_processing")
@@ -170,7 +234,7 @@ def prepare_sample(sample_id):
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
-
+        run_id = run.id
         run_stage = db.scalar(
             select(PreparingSample).where(PreparingSample.run_id == run.id)
         )
@@ -189,4 +253,5 @@ def prepare_sample(sample_id):
                 stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
             )
         )
+        emit_event(RunStateChanged(run_id=run_id, new_state=RUN_STATE.COMPLETED))
         return sample_id

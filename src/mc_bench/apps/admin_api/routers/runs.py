@@ -105,6 +105,7 @@ def get_run_status(
     sort_order = [
         "PROMPT_EXECUTION",
         "RESPONSE_PARSING",
+        "CODE_VALIDATION",
         "BUILDING",
         "EXPORTING_CONTENT",
         "POST_PROCESSING",
@@ -147,6 +148,7 @@ def task_retry(
             "sub": str(system_user.external_id),
             "scopes": [
                 PERM.RUN.PROGRESS_WRITE,
+                PERM.RUN.ADMIN,
             ],
         },
         expires_delta=datetime.timedelta(days=2),
@@ -157,6 +159,7 @@ def task_retry(
         sort_order = [
             "PROMPT_EXECUTION",
             "RESPONSE_PARSING",
+            "CODE_VALIDATION",
             "BUILDING",
             "EXPORTING_CONTENT",
             "POST_PROCESSING",
@@ -193,16 +196,6 @@ def task_retry(
                     )
                 )
 
-            if run.generation_id is not None:
-                chained_items.append(
-                    celery.signature(
-                        "generation.finalize_generation",
-                        args=[run.generation_id],
-                        queue="admin",
-                        immutable=True,
-                    )
-                )
-
             emit_event(
                 RunStageStateChanged(
                     stage_id=stage.id, new_state=RUN_STAGE_STATE.PENDING
@@ -210,6 +203,15 @@ def task_retry(
             )
 
         if generation_id is not None:
+            chained_items.append(
+                celery.signature(
+                    "generation.finalize_generation",
+                    args=[generation_id],
+                    queue="admin",
+                    immutable=True,
+                )
+            )
+
             emit_event(
                 GenerationStateChanged(
                     generation_id=generation_id, new_state=GENERATION_STATE.IN_RETRY
@@ -244,12 +246,4 @@ def set_run_progress(
     )
 
     run_stage = [stage for stage in run.stages if stage.stage.slug == request.stage][0]
-    print(
-        run_stage.id,
-        run_stage.stage.slug,
-        request.stage,
-        request.progress,
-        request.note,
-    )
-
     run_stage.set_progress(redis, request.progress, request.note)

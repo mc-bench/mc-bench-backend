@@ -6,3 +6,4 @@ anthropic
 openai
 jinja2
 flower
+requests

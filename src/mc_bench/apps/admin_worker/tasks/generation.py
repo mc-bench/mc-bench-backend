@@ -48,35 +48,30 @@ def create_runs(
 
         headers = {"token": self.request.headers["token"]}
 
-        workflow = celery.chain(
-            celery.group(
-                celery.chain(
-                    app.signature(
-                        "run.execute_prompt",
-                        args=[run_id],
-                        queue="admin",
-                        headers=headers,
-                    ),
-                    app.signature("run.parse_prompt", queue="admin", headers=headers),
-                    app.signature(
-                        "run.build_structure", queue="server", headers=headers
-                    ),
-                    app.signature(
-                        "run.export_structure_views", queue="server", headers=headers
-                    ),
-                    app.signature(
-                        "run.post_processing", queue="admin", headers=headers
-                    ),
-                    app.signature("run.sample_prep", queue="admin", headers=headers),
-                )
-                for run_id in run_ids
-            ),
-            app.signature(
-                "generation.finalize_generation",
-                args=[generation_id],
-                queue="admin",
-                immutable=True,
-            ),
+        workflow = celery.group(
+            celery.chain(
+                app.signature(
+                    "run.execute_prompt",
+                    args=[run_id],
+                    queue="admin",
+                    headers=headers,
+                ),
+                app.signature("run.parse_prompt", queue="admin", headers=headers),
+                app.signature("run.code_validation", queue="admin", headers=headers),
+                app.signature("run.build_structure", queue="server", headers=headers),
+                app.signature(
+                    "run.export_structure_views", queue="server", headers=headers
+                ),
+                app.signature("run.post_processing", queue="admin", headers=headers),
+                app.signature("run.sample_prep", queue="admin", headers=headers),
+                app.signature(
+                    "generation.finalize_generation",
+                    args=[generation_id],
+                    queue="admin",
+                    immutable=True,
+                ),
+            )
+            for run_id in run_ids
         )
 
         workflow.apply_async()
@@ -102,8 +97,36 @@ def create_runs(
 
 @app.task(name="generation.finalize_generation")
 def finalize_generation(generation_id):
-    emit_event(
-        GenerationStateChanged(
-            generation_id=generation_id, new_state=GENERATION_STATE.COMPLETED
+    with managed_session() as db:
+        run_states = db.scalars(
+            select(Run.state_id).where(Run.generation_id == generation_id)
+        ).all()
+
+        if all(
+            run_state == run_state_id_for(db, RUN_STATE.COMPLETED)
+            for run_state in run_states
+        ):
+            generation_state = GENERATION_STATE.COMPLETED
+        elif any(
+            run_state == run_state_id_for(db, RUN_STATE.IN_RETRY)
+            for run_state in run_states
+        ):
+            generation_state = GENERATION_STATE.IN_RETRY
+        elif all(
+            run_state == run_state_id_for(db, RUN_STATE.FAILED)
+            for run_state in run_states
+        ):
+            generation_state = GENERATION_STATE.FAILED
+        elif any(
+            run_state == run_state_id_for(db, RUN_STATE.FAILED)
+            for run_state in run_states
+        ):
+            generation_state = GENERATION_STATE.PARTIALLY_FAILED
+        else:
+            generation_state = GENERATION_STATE.IN_PROGRESS
+
+        emit_event(
+            GenerationStateChanged(
+                generation_id=generation_id, new_state=generation_state
+            )
         )
-    )

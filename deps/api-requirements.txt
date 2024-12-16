@@ -140,7 +140,9 @@ python-multipart==0.0.12
 pyyaml==6.0.2
     # via uvicorn
 requests==2.32.3
-    # via -r deps/api-requirements.in
+    # via
+    #   -c deps/worker-requirements.in
+    #   -r deps/api-requirements.in
 rich==13.9.3
     # via typer
 rsa==4.9

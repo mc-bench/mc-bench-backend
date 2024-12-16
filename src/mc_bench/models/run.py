@@ -145,6 +145,11 @@ class Run(Base):
                 stage_id=stage_id_for(db, STAGE.RESPONSE_PARSING),
                 state_id=pending_stage_state,
             ),
+            CodeValidation(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.CODE_VALIDATION),
+                state_id=pending_stage_state,
+            ),
             Building(
                 run_id=self.id,
                 stage_id=stage_id_for(db, STAGE.BUILDING),
@@ -589,9 +594,28 @@ class ResponseParsing(RunStage):
         kwargs["queue"] = "admin"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
-            kwargs["args"] = [self.run_id]
+            sample_id = self.run.samples[-1].id
+            print(f"Setting sample_id: {sample_id}")
+            kwargs["args"] = [sample_id]
 
         return app.signature("run.parse_prompt", **kwargs)
+
+
+class CodeValidation(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "CODE_VALIDATION",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "admin"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            sample_id = self.run.samples[-1].id
+            print(f"Setting sample_id: {sample_id}")
+            kwargs["args"] = [sample_id]
+
+        return app.signature("run.code_validation", **kwargs)
 
 
 class Building(RunStage):
@@ -604,7 +628,9 @@ class Building(RunStage):
         kwargs["queue"] = "server"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
-            kwargs["args"] = [self.run_id]
+            sample_id = self.run.samples[-1].id
+            print(f"Setting sample_id: {sample_id}")
+            kwargs["args"] = [sample_id]
 
         return app.signature("run.build_structure", **kwargs)
 
@@ -619,7 +645,9 @@ class ExportingContent(RunStage):
         kwargs["queue"] = "server"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
-            kwargs["args"] = [self.run.samples[0].id]
+            sample_id = self.run.samples[-1].id
+            print(f"Setting sample_id: {sample_id}")
+            kwargs["args"] = [sample_id]
 
         return app.signature("run.export_structure_views", **kwargs)
 
@@ -634,7 +662,7 @@ class PostProcessing(RunStage):
         kwargs["queue"] = "admin"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
-            sample_id = self.run.samples[0].id
+            sample_id = self.run.samples[-1].id
             print(f"Setting sample_id: {sample_id}")
             kwargs["args"] = [sample_id]
 
@@ -651,6 +679,8 @@ class PreparingSample(RunStage):
         kwargs["queue"] = "admin"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
-            kwargs["args"] = [self.run.samples[0].id]
+            sample_id = self.run.samples[-1].id
+            print(f"Setting sample_id: {sample_id}")
+            kwargs["args"] = [sample_id]
 
         return app.signature("run.sample_prep", **kwargs)
