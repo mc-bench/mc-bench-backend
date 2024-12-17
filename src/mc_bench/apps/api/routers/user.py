@@ -3,12 +3,13 @@ from typing import List
 
 import sqlalchemy
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mc_bench.apps.api.config import settings
-from mc_bench.auth import GithubOauthClient, XAuthClient
+from mc_bench.auth import GithubOauthClient, XOauthClient
 from mc_bench.models.user import AuthProvider, AuthProviderEmailHash, User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
@@ -26,11 +27,10 @@ github_oauth_client = GithubOauthClient(
     salt=settings.GITHUB_EMAIL_SALT,
 )
 
-x_oauth_client = XAuthClient(
+x_oauth_client = XOauthClient(
     client_id=settings.X_CLIENT_ID,
     client_secret=settings.X_CLIENT_SECRET,
     salt=settings.X_EMAIL_SALT,
-    redirect_uri=settings.REDIRECT_URI,
 )
 
 
@@ -136,11 +136,15 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
 
 @user_router.get("/api/auth/x")
 def x_oauth(code: str, db: Session = Depends(get_managed_session)):
-    try:
-        access_token = x_oauth_client.get_access_token(code)
-        x_user_info = x_oauth_client.get_x_info(access_token=access_token)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to login with X")
+    # try:
+    access_token = x_oauth_client.get_access_token(code)
+    x_user_info = x_oauth_client.get_x_info(access_token=access_token)
+    # except Exception as e:
+    # print(f"X OAuth error: {str(e)}")
+    # raise HTTPException(
+    #     status_code=400, 
+    #     detail=f"Failed to login with X: {str(e)}"
+    # )
 
     user_stmt = (
         select(AuthProviderEmailHash)

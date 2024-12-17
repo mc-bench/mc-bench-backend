@@ -1,4 +1,5 @@
 import requests
+import base64
 
 from mc_bench.auth.emails import hash_email
 from mc_bench.apps.api.config import settings
@@ -59,31 +60,44 @@ class GithubOauthClient:
     
 
 class XOauthClient:
-    def __init__(self, client_id: str, client_secret: str, salt: str, redirect_uri: str):
+    def __init__(self, client_id: str, client_secret: str, salt: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.salt = salt
-        self.redirect_uri = redirect_uri
 
     def get_access_token(self, code: str) -> str:
+        # Create Basic Auth header by combining client_id:client_secret and encoding to base64
+        auth_string = f"{self.client_id}:{self.client_secret}"
+        auth_bytes = auth_string.encode('ascii')
+        base64_auth = base64.b64encode(auth_bytes).decode('ascii')
+        
         # Exchange code for access token
         token_response = requests.post(
-            "https://api.twitter.com/2/oauth2/token",
+            "https://api.x.com/2/oauth2/token",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {base64_auth}",
+            },
             data={
                 "code": code,
-                "grant_type": "authorization_code",
+                "grant_type" :"authorization_code",
                 "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "redirect_uri": self.redirect_uri,
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+                "redirect_uri": settings.REDIRECT_URI,
+                "code_verifier": "challenge"
+            }
         )
+        
+        # Keep debug logging
+        print(f"Token response status code: {token_response.status_code}")
+        print(f"Token response headers: {token_response.headers}")
+        print(f"Token response body: {token_response.text}")
+        
         token_response.raise_for_status()
         return token_response.json()["access_token"]
 
     def get_user_id(self, access_token: str) -> str:
         user_response = requests.get(
-            "https://api.twitter.com/2/users/me",
+            "https://api.x.com/2/users/me",
             headers={
                 "Authorization": f"Bearer {access_token}",
             },
@@ -93,7 +107,7 @@ class XOauthClient:
 
     def get_user_email_hashes(self, access_token: str) -> list:
         email_response = requests.get(
-            "https://api.twitter.com/2/users/me",
+            "https://api.x.com/2/users/me",
             headers={
                 "Authorization": f"Bearer {access_token}",
             },
@@ -107,15 +121,6 @@ class XOauthClient:
         user_id = self.get_user_id(access_token)
         user_email_hashes = self.get_user_email_hashes(access_token)
         return {"user_id": str(user_id), "user_email_hashes": user_email_hashes}
-
-
-# Instantiate the X client (similar to GitHub instantiation)
-x_oauth_client = XOauthClient(
-    client_id=settings.X_CLIENT_ID,
-    client_secret=settings.X_CLIENT_SECRET,
-    salt=settings.OAUTH_SALT,
-    redirect_uri=settings.REDIRECT_URI
-)
 
 
 
