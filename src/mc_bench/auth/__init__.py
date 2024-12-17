@@ -102,29 +102,25 @@ class XOauthClient:
                 "Authorization": f"Bearer {access_token}",
             },
         )
+        print(user_response.json())
         user_response.raise_for_status()
         return user_response.json()["data"]["id"]
 
+
     def get_user_email_hashes(self, access_token: str) -> list:
-        email_response = requests.get(
+        user_response = requests.get(
             "https://api.x.com/2/users/me",
             headers={
                 "Authorization": f"Bearer {access_token}",
             },
-            params={"user.fields": "email"},
         )
-        email_response.raise_for_status()
-        email = email_response.json()["data"].get("email")
-        return [hash_email(email, self.salt)] if email else []
+        print(user_response.json())
+        user_response.raise_for_status()
+        username = user_response.json()["data"]["username"]
+        return [hash_email(username, self.salt)]
 
     def get_x_info(self, access_token: str) -> dict:
         user_id = self.get_user_id(access_token)
         user_email_hashes = self.get_user_email_hashes(access_token)
         return {"user_id": str(user_id), "user_email_hashes": user_email_hashes}
-
-
-
-
-
-
 

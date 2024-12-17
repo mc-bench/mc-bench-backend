@@ -14,7 +14,7 @@ class Settings:
     X_CLIENT_ID = os.getenv("X_CLIENT_ID")
     X_CLIENT_SECRET = os.getenv("X_CLIENT_SECRET")
     X_EMAIL_SALT = os.getenv("X_EMAIL_SALT")
-    REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5173/login")
+    REDIRECT_URI = "http://127.0.0.1:5173/login" # os.getenv("REDIRECT_URI", "http://localhost:5173/login")
 
 
 settings = Settings()
