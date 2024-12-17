@@ -77,8 +77,9 @@ def execute_prompt(
     return sample_id
 
 
-@app.task(name="run.parse_prompt")
+@app.task(name="run.parse_prompt", bind=True)
 def parse_prompt(
+    self,
     sample_id,
 ):
     if sample_id is None:
@@ -87,6 +88,9 @@ def parse_prompt(
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
+        run_id = run.id
+        run_external_id = run.external_id
+        num_samples = len(run.samples)
         run_stage = db.scalar(
             select(ResponseParsing).where(ResponseParsing.run_id == run.id)
         )
@@ -134,6 +138,13 @@ def parse_prompt(
         emit_event(RunStageStateChanged(stage_id=run_stage_id, new_state=new_state))
 
         if new_state == RUN_STAGE_STATE.FAILED:
+            if num_samples < 5:
+                admin_api_client = Client(token=self.request.headers["token"])
+                admin_api_client.start_run_over(run_external_id)
+
+            else:
+                emit_event(RunStateChanged(run_id=run_id, new_state=RUN_STATE.FAILED))
+
             raise RuntimeError("Prompting didn't go well")
 
         return sample_id
