@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mc_bench.apps.api.config import settings
-from mc_bench.auth import GithubOauthClient
+from mc_bench.auth import GithubOauthClient, XAuthClient
 from mc_bench.models.user import AuthProvider, AuthProviderEmailHash, User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
@@ -24,6 +24,13 @@ github_oauth_client = GithubOauthClient(
     client_id=settings.GITHUB_CLIENT_ID,
     client_secret=settings.GITHUB_CLIENT_SECRET,
     salt=settings.GITHUB_EMAIL_SALT,
+)
+
+x_oauth_client = XAuthClient(
+    client_id=settings.X_CLIENT_ID,
+    client_secret=settings.X_CLIENT_SECRET,
+    salt=settings.X_EMAIL_SALT,
+    redirect_uri=settings.REDIRECT_URI,
 )
 
 
@@ -96,6 +103,102 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
             ]
 
             db.add_all(new_github_hashes)
+
+    db.flush()
+    db.refresh(user)
+
+    user_id = str(user.external_id)
+
+    # Create the access token
+    access_token = am.create_access_token(
+        data={
+            "sub": user_id,
+            "scopes": user.scopes,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    # Create the refresh token
+    refresh_token_id, refresh_token = am.create_refresh_token(
+        data={
+            "sub": user_id,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "username": user.username,
+    }
+
+
+@user_router.get("/api/auth/x")
+def x_oauth(code: str, db: Session = Depends(get_managed_session)):
+    try:
+        access_token = x_oauth_client.get_access_token(code)
+        x_user_info = x_oauth_client.get_x_info(access_token=access_token)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to login with X")
+
+    user_stmt = (
+        select(AuthProviderEmailHash)
+        .join(AuthProvider)
+        .where(
+            sqlalchemy.and_(
+                AuthProviderEmailHash.email_hash.in_(
+                    x_user_info["user_email_hashes"]
+                )
+            )
+        )
+    )
+
+    registered_emails = list(db.scalars(user_stmt))
+    x_provider = db.scalar(
+        select(AuthProvider).where(AuthProvider.name == "x")
+    )
+
+    # If no registered emails, create a new user
+    if not registered_emails:
+        user = User(
+            auth_provider_email_hashes=[
+                AuthProviderEmailHash(
+                    auth_provider=x_provider,
+                    email_hash=email_hash,
+                    auth_provider_user_id=str(x_user_info["user_id"]),
+                )
+                for email_hash in x_user_info["user_email_hashes"]
+            ]
+        )
+        db.add(user)
+    else:
+        user = db.scalar(select(User).where(User.id == registered_emails[0].user_id))
+        x_provided_emails = [
+            auth_provider_email_hash
+            for auth_provider_email_hash in registered_emails
+            if auth_provider_email_hash.auth_provider == x_provider
+        ]
+        existing_hashes = set(e.email_hash for e in x_provided_emails)
+        current_hashes = set(x_user_info["user_email_hashes"])
+        new_hashes = current_hashes - existing_hashes
+        removed_hashes = existing_hashes - current_hashes
+
+        # Remove old email hashes that no longer appear
+        if removed_hashes:
+            for x_provided_email in x_provided_emails:
+                if x_provided_email.email_hash in removed_hashes:
+                    db.delete(x_provided_email)
+
+        # Add any new hashes
+        if new_hashes:
+            new_x_hashes = [
+                AuthProviderEmailHash(
+                    user=user, auth_provider=x_provider, email_hash=email_hash
+                )
+                for email_hash in new_hashes
+            ]
+            db.add_all(new_x_hashes)
 
     db.flush()
     db.refresh(user)
