@@ -1,17 +1,31 @@
 import datetime
 from typing import List
 
+import regex
 import sqlalchemy
+import valx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mc_bench.apps.api.config import settings
-from mc_bench.auth import GithubOauthClient
-from mc_bench.models.user import AuthProvider, AuthProviderEmailHash, User
+from mc_bench.auth.emails import hash_email
+from mc_bench.models.user import (
+    AuthProvider,
+    AuthProviderEmailHash,
+    Role,
+    User,
+    UserRole,
+)
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
+
+from ..transport_types.requests import CreateUserRequest, LoginRequest, SignupRequest
+from ..transport_types.responses import (
+    LoginResponse,
+    SignupResponse,
+    ValidateUsernameResponse,
+)
 
 user_router = APIRouter()
 
@@ -20,82 +34,209 @@ am = AuthManager(
     jwt_algorithm=settings.ALGORITHM,
 )
 
-github_oauth_client = GithubOauthClient(
-    client_id=settings.GITHUB_CLIENT_ID,
-    client_secret=settings.GITHUB_CLIENT_SECRET,
-    salt=settings.GITHUB_EMAIL_SALT,
-)
+
+# TODO: Implement some of this on the frontend
+def _validate_username(db: Session, username: str):
+    print("Validating username:", username)
+
+    errors = []
+
+    if len(username.encode("utf-8")) > 64:
+        return {
+            "is_valid": False,
+            "errors": ["Username too long (must be less than 64 characters)."],
+        }
+
+    if len(username) == 0:
+        return {"is_valid": False, "errors": ["Username cannot be empty."]}
+
+    if not only_has_valid_characters(username):
+        errors.append("Username contains invalid characters.")
+
+    split_username = " ".join(regex.split(r"[^a-zA-Z0-9]+", username))
+
+    if result := valx.detect_profanity([split_username], language="All"):
+        print("Profanity result:", result)
+        errors.append("Username contains inappropriate words.")
+
+    if result := valx.detect_hate_speech(split_username) != [
+        "No Hate and Offensive Speech"
+    ]:
+        print("Hate speech result:", result)
+        errors.append("Username contains inappropriate content.")
+
+    user_stmt = select(sqlalchemy.func.count(User.id)).where(
+        User.username_normalized == username.lower()
+    )
+    user_count = db.scalar(user_stmt)
+    if user_count > 0:
+        errors.append("Username already taken.")
+
+    return {"is_valid": len(errors) == 0, "errors": errors}
 
 
-class CreateUserRequest(BaseModel):
-    username: str
-
-
-@user_router.get("/api/auth/github")
-def github_oauth(code: str, db: Session = Depends(get_managed_session)):
-    try:
-        access_token = github_oauth_client.get_access_token(code)
-        github_user_info = github_oauth_client.get_github_info(
-            access_token=access_token
+def _validate_emails(db: Session, emails: List[str]):
+    if len(emails) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No email found from authentication provider. Please choose a different authentication provider or ensure you have a verified email with the provider.",
         )
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to login with Github")
+
+
+def _hash_emails(salt: str, emails: List[str]) -> List[str]:
+    return [hash_email(salt, email) for email in emails]
+
+
+@user_router.post("/api/signup", response_model=SignupResponse)
+def signup(request: SignupRequest, db: Session = Depends(get_managed_session)):
+    validation_result = _validate_username(db, request.username)
+    if not validation_result["is_valid"]:
+        raise HTTPException(
+            status_code=400,
+            detail="\n".join(validation_result["errors"]),
+        )
+
+    auth_provider = db.scalar(
+        select(AuthProvider).where(AuthProvider.name == request.signup_auth_provider)
+    )
+    authentication_payload = auth_provider.get_authentication_payload(
+        **request.signup_auth_provider_data
+    )
+
+    _validate_emails(db, authentication_payload.emails)
+
+    hashed_emails = _hash_emails(settings.EMAIL_SALT, authentication_payload.emails)
 
     user_stmt = (
         select(AuthProviderEmailHash)
         .join(AuthProvider)
-        .where(
-            sqlalchemy.and_(
-                AuthProviderEmailHash.email_hash.in_(
-                    github_user_info["user_email_hashes"]
-                )
-            )
-        )
+        .where(sqlalchemy.and_(AuthProviderEmailHash.email_hash.in_(hashed_emails)))
     )
 
     registered_emails = list(db.scalars(user_stmt))
-    github_provider = db.scalar(
-        select(AuthProvider).where(AuthProvider.name == "github")
+
+    if len(registered_emails) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered. If you already have an account, please login instead.",
+        )
+
+    user = User(
+        username=request.username,
+        username_normalized=request.username.lower(),
+        display_username=request.username,
+        auth_provider_email_hashes=[
+            AuthProviderEmailHash(
+                auth_provider=auth_provider,
+                email_hash=email_hash,
+                auth_provider_user_id=authentication_payload.user_id,
+            )
+            for email_hash in hashed_emails
+        ],
+    )
+    db.add(user)
+    db.flush()
+    db.refresh(user)
+
+    if settings.AUTO_GRANT_ADMIN_ROLE:
+        user_role = UserRole(
+            grantor=db.scalar(select(User).where(User.username == "SYSTEM")),
+            user=user,
+            role=db.scalar(select(Role).where(Role.name == "admin")),
+        )
+        db.add(user_role)
+        db.flush()
+        db.refresh(user)
+
+    user_id = str(user.external_id)
+
+    # Create the access token
+    access_token = am.create_access_token(
+        data={
+            "sub": user_id,
+            "scopes": user.scopes,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
+    # Create the refresh token
+    refresh_token_id, refresh_token = am.create_refresh_token(
+        data={
+            "sub": user_id,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return {
+        "user_id": user_id,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "username": user.username,
+    }
+
+
+# TODO: delete this once this is deployed
+@user_router.get("/api/auth/github")
+def github_oauth(code: str, db: Session = Depends(get_managed_session)):
+    try:
+        auth_provider = db.scalar(
+            select(AuthProvider).where(AuthProvider.name == "github")
+        )
+        authentication_payload = auth_provider.get_authentication_payload(code=code)
+    except Exception:
+        import traceback
+
+        print(traceback.format_exc())
+        raise HTTPException(status_code=400, detail="Failed to login with Github")
+
+    hashed_emails = _hash_emails(settings.EMAIL_SALT, authentication_payload.emails)
+
+    user_stmt = (
+        select(AuthProviderEmailHash)
+        .join(AuthProvider)
+        .where(sqlalchemy.and_(AuthProviderEmailHash.email_hash.in_(hashed_emails)))
+    )
+
+    registered_emails = list(db.scalars(user_stmt))
+
     if not registered_emails:
+        print("Creating new user")
         user = User(
             auth_provider_email_hashes=[
                 AuthProviderEmailHash(
-                    auth_provider=github_provider,
+                    auth_provider=auth_provider,
                     email_hash=email_hash,
-                    auth_provider_user_id=str(github_user_info["user_id"]),
+                    auth_provider_user_id=authentication_payload.user_id,
                 )
-                for email_hash in github_user_info["user_email_hashes"]
+                for email_hash in hashed_emails
             ]
         )
         db.add(user)
     else:
+        print("Updating existing user")
         user = db.scalar(select(User).where(User.id == registered_emails[0].user_id))
-        github_provided_emails = [
+        provided_emails = [
             auth_provider_email_hash
             for auth_provider_email_hash in registered_emails
-            if auth_provider_email_hash.auth_provider == github_provider
+            if auth_provider_email_hash.auth_provider == auth_provider
         ]
-        existing_hashes = set(
-            [email_hash.email_hash for email_hash in github_provided_emails]
-        )
-        current_hashes = set(github_user_info["user_email_hashes"])
+        existing_hashes = set([email_hash.email_hash for email_hash in provided_emails])
+        current_hashes = set(hashed_emails)
         new_hashes = current_hashes - existing_hashes
         removed_hashes = existing_hashes - current_hashes
         if removed_hashes:
-            for github_provided_email in github_provided_emails:
-                if github_provided_email.email_hash in removed_hashes:
-                    db.delete(github_provided_email)
+            for provided_email in provided_emails:
+                if provided_email.email_hash in removed_hashes:
+                    db.delete(provided_email)
         if new_hashes:
-            new_github_hashes = [
+            new_email_hashes = [
                 AuthProviderEmailHash(
-                    user=user, auth_provider=github_provider, email_hash=email_hash
+                    user=user, auth_provider=auth_provider, email_hash=email_hash
                 )
                 for email_hash in new_hashes
             ]
 
-            db.add_all(new_github_hashes)
+            db.add_all(new_email_hashes)
 
     db.flush()
     db.refresh(user)
@@ -124,6 +265,98 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "username": user.username,
+    }
+
+
+@user_router.post("/api/login", response_model=LoginResponse)
+def login(request: LoginRequest, db: Session = Depends(get_managed_session)):
+    try:
+        auth_provider = db.scalar(
+            select(AuthProvider).where(AuthProvider.name == request.login_auth_provider)
+        )
+        authentication_payload = auth_provider.get_authentication_payload(
+            **request.login_auth_provider_data
+        )
+    except Exception:
+        import traceback
+
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to login with {request.login_auth_provider}",
+        )
+
+    hashed_emails = _hash_emails(settings.EMAIL_SALT, authentication_payload.emails)
+    user_stmt = (
+        select(AuthProviderEmailHash)
+        .join(AuthProvider)
+        .where(sqlalchemy.and_(AuthProviderEmailHash.email_hash.in_(hashed_emails)))
+    )
+
+    registered_emails = list(db.scalars(user_stmt))
+
+    if not registered_emails:
+        raise HTTPException(
+            status_code=400,
+            detail="No email found from authentication provider. Please choose a different authentication provider or ensure you have a verified email with the provider.",
+        )
+
+    print("Updating existing user")
+    user = db.scalar(select(User).where(User.id == registered_emails[0].user_id))
+    provided_emails = [
+        auth_provider_email_hash
+        for auth_provider_email_hash in registered_emails
+        if auth_provider_email_hash.auth_provider == auth_provider
+    ]
+    existing_hashes = set([email_hash.email_hash for email_hash in provided_emails])
+    current_hashes = set(hashed_emails)
+    new_hashes = current_hashes - existing_hashes
+    removed_hashes = existing_hashes - current_hashes
+    if removed_hashes:
+        for provided_email in provided_emails:
+            if provided_email.email_hash in removed_hashes:
+                db.delete(provided_email)
+    if new_hashes:
+        new_email_hashes = [
+            AuthProviderEmailHash(
+                user=user,
+                auth_provider=auth_provider,
+                auth_provider_user_id=authentication_payload.user_id,
+                email_hash=email_hash,
+            )
+            for email_hash in new_hashes
+        ]
+
+        db.add_all(new_email_hashes)
+
+    db.flush()
+    db.refresh(user)
+
+    user_id = str(user.external_id)
+    user_name = str(user.username)
+
+    # Create the access token
+    access_token = am.create_access_token(
+        data={
+            "sub": user_id,
+            "scopes": user.scopes,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    # Create the refresh token
+    refresh_token_id, refresh_token = am.create_refresh_token(
+        data={
+            "sub": user_id,
+        },
+        expires_delta=datetime.timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return {
+        "user_id": user_id,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "username": user_name,
     }
 
 
@@ -186,3 +419,13 @@ def refresh_token(
     )
 
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@user_router.get("/api/validate-username", response_model=ValidateUsernameResponse)
+def validate_username(username: str, db: Session = Depends(get_managed_session)):
+    return _validate_username(db, username)
+
+
+def only_has_valid_characters(username: str) -> bool:
+    invalid_chars = regex.compile(r"[^a-zA-Z0-9_\-\p{Extended_Pictographic}]")
+    return not bool(invalid_chars.search(username))

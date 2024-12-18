@@ -8,3 +8,5 @@ anthropic
 openai
 jinja2
 scalar-fastapi
+valx
+regex

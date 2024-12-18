@@ -96,6 +96,8 @@ jiter==0.8.0
     #   -c deps/requirements.txt
     #   anthropic
     #   openai
+joblib==1.4.2
+    # via scikit-learn
 markdown-it-py==3.0.0
     # via rich
 markupsafe==3.0.2
@@ -104,6 +106,10 @@ markupsafe==3.0.2
     #   jinja2
 mdurl==0.1.2
     # via markdown-it-py
+numpy==2.2.0
+    # via
+    #   scikit-learn
+    #   scipy
 openai==1.55.3
     # via
     #   -c deps/requirements.txt
@@ -139,6 +145,8 @@ python-multipart==0.0.12
     # via fastapi
 pyyaml==6.0.2
     # via uvicorn
+regex==2024.11.6
+    # via -r deps/api-requirements.in
 requests==2.32.3
     # via
     #   -c deps/worker-requirements.in
@@ -147,6 +155,12 @@ rich==13.9.3
     # via typer
 rsa==4.9
     # via python-jose
+scalar-fastapi==1.0.3
+    # via -r deps/api-requirements.in
+scikit-learn==1.6.0
+    # via valx
+scipy==1.14.1
+    # via scikit-learn
 shellingham==1.5.4
     # via typer
 six==1.16.0
@@ -161,6 +175,8 @@ sniffio==1.3.1
     #   openai
 starlette==0.41.0
     # via fastapi
+threadpoolctl==3.5.0
+    # via scikit-learn
 tqdm==4.67.1
     # via
     #   -c deps/requirements.txt
@@ -186,6 +202,8 @@ uvicorn[standard]==0.32.0
     #   fastapi-cli
 uvloop==0.21.0
     # via uvicorn
+valx==0.2.4
+    # via -r deps/api-requirements.in
 watchfiles==0.24.0
     # via uvicorn
 websockets==13.1

@@ -26,5 +26,7 @@ user = Table(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
     Column("username", String(64), nullable=True, unique=True, index=True),
+    Column("username_normalized", String(64), nullable=True, unique=True, index=True),
+    Column("display_username", String(64), nullable=True, unique=True, index=True),
     schema="auth",
 )

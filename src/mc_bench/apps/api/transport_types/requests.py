@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .generic import Base
 
@@ -19,3 +19,18 @@ class UserComparisonRequest(Base):
     comparison_details: ComparisonDetailRequest
     # Best to worst
     ordered_sample_ids: List[uuid.UUID]
+
+
+class SignupRequest(Base):
+    username: str
+    signup_auth_provider: str
+    signup_auth_provider_data: Dict[str, str]
+
+
+class LoginRequest(Base):
+    login_auth_provider: str
+    login_auth_provider_data: Dict[str, str]
+
+
+class CreateUserRequest(Base):
+    username: str

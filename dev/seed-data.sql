@@ -122,3 +122,36 @@ INSERT INTO specification.provider (id, created_by, model_id, provider_class, co
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (4, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'gemini-2.0-flash-exp'), 'GEMINI_SDK', '"{\"model\": \"gemini-2.0-flash-exp\", \"max_tokens\": 8192}"', 'Google', true) ON CONFLICT DO NOTHING;
 
 INSERT INTO specification.prompt (id, created_by, name, build_specification, active) VALUES (1, (select id from auth.user where username = 'SYSTEM'), 'Structure: a small wooden platform', 'a small wooden platform', true) ON CONFLICT DO NOTHING;
+
+INSERT INTO auth.user (username)
+VALUES
+    ('huntcsg');
+
+WITH auth_provider as (
+    select
+        id
+    from auth.auth_provider
+    where
+        name = 'github'
+)
+INSERT INTO auth.auth_provider_email_hash (auth_provider_id, auth_provider_user_id, user_id, email_hash)
+VALUES
+    (
+     (select id from auth.auth_provider where name = 'github'),
+     6245448,
+     (select id from auth.user where username = 'huntcsg'),
+     '93dccbf7b5b9f9e27e747ff533857bc0d5fd1265508e3bf6b2d9631c557c3b1e'
+    );
+
+INSERT INTO auth.user_role (created_by, user_id, role_id)
+SELECT
+    (select id from auth.user where username = 'SYSTEM'),
+    auth.user.id,
+    (select id from auth.role where name = 'admin')
+FROM
+    auth.user
+WHERE
+    username in (
+        'huntcsg'
+    )
+ON CONFLICT DO NOTHING;
