@@ -56,18 +56,11 @@ class GithubOauthClient(AuthenticationClient):
             },
         )
         email_response.raise_for_status()
-        return [
-            email["email"]
-            for email in email_response.json()
-            if email["verified"]
-        ]
+        return [email["email"] for email in email_response.json() if email["verified"]]
 
     def get_user_email_hashes(self, access_token):
         emails = self.get_user_emails(access_token)
-        return [
-            hash_email(email, self.salt)
-            for email in emails
-        ]
+        return [hash_email(email, self.salt) for email in emails]
 
     def get_github_info(self, access_token):
         user_id = self.get_user_id(access_token)

@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from pydantic import BaseModel
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, relationship
 
@@ -7,8 +8,6 @@ import mc_bench.schema.postgres as schema
 
 from ._base import Base
 
-from pydantic import BaseModel
-import functools
 
 class AuthenticationPayload(BaseModel):
     user_id: str
@@ -98,19 +97,21 @@ class AuthProvider(Base):
     __mapper_args__ = {"polymorphic_identity": "name"}
 
     _client_factories = {}
-    
+
     @classmethod
     def register_client_factory(cls, name, factory):
         cls._client_factories[name] = factory
-    
+
     @property
     def client(self):
-        if not hasattr(self, '_client'):
+        if not hasattr(self, "_client"):
             factory = self._client_factories.get(self.name)
             if factory:
                 self._client = factory()
             else:
-                raise RuntimeError(f"No client factory registered for provider type {self.name}")
+                raise RuntimeError(
+                    f"No client factory registered for provider type {self.name}"
+                )
         return self._client
 
     def get_access_token(self, code: str) -> str:

@@ -2,9 +2,7 @@ import abc
 from typing import List
 
 
-
 class AuthenticationClient(abc.ABC):
-
     @abc.abstractmethod
     def get_username(self, **kwargs) -> str:
         pass
