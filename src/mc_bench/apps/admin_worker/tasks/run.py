@@ -61,7 +61,7 @@ def execute_prompt(
             "created_by": run.created_by,
             "run_id": run.id,
             "raw": response,
-            "correlation_id": run.generate_correlation_id(),
+            "comparison_correlation_id": run.generate_correlation_id(),
         }
 
         sample = Sample(**sample_kwargs)
