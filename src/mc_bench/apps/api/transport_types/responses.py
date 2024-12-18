@@ -4,6 +4,13 @@ from typing import List
 from .generic import Base
 
 
+class SignupResponse(Base):
+    user_id: uuid.UUID
+    access_token: str
+    refresh_token: str
+    username: str
+
+
 class SampleAssetDetailFile(Base):
     kind: str
     url: str
