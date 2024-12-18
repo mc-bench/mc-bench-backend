@@ -195,17 +195,31 @@ def post_comparison(
             )
         )
     )
-    sample_1 = (
-        samples[0] if samples[0].comparison_sample_id == sample_1_id else samples[1]
-    )
-    sample_2 = (
-        samples[1] if samples[1].comparison_sample_id == sample_1_id else samples[0]
-    )
-    winning_sample = [
-        sample
-        for sample in samples
-        if sample.comparison_sample_id == request.ordered_sample_ids[0]
-    ][0]
+
+    try:
+        assert len(samples) == 2
+        assert sample_1_id != sample_2_id
+        assert set(request.ordered_sample_ids) == {sample_1_id, sample_2_id}
+        assert request.ordered_sample_ids[0] in [sample_1_id, sample_2_id]
+
+    except AssertionError as e:
+        # TODO: error log this
+        print(f"AssertionError: {e}")
+
+        return {
+            "ok": False,
+        }
+        # It's ok if we silently ignore this for now
+        # raise HTTPException(
+        #     status_code=status.HTTP_400_BAD_REQUEST,
+        #     detail="Invalid comparison request",
+        # )
+
+    sample_lookup = {sample.comparison_sample_id: sample for sample in samples}
+    sample_1 = sample_lookup[sample_1_id]
+    sample_2 = sample_lookup[sample_2_id]
+
+    winning_sample = sample_lookup[request.ordered_sample_ids[0]]
 
     metric = db.scalar(
         select(Metric).where(

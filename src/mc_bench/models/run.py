@@ -17,6 +17,7 @@ from mc_bench.util.object_store import (
     get_client,
     get_object_as_bytesio,
 )
+from mc_bench.util.uuid import uuid_from_ints
 
 from ._base import Base
 
@@ -190,6 +191,14 @@ class Run(Base):
                 .where(table.c.id == event.run_id)
                 .values(state_id=run_state_id)
             )
+
+    def generate_correlation_id(self) -> str:
+        template_id = self.template.id
+        prompt_id = self.prompt.id
+        assert template_id is not None
+        assert prompt_id is not None
+
+        return uuid_from_ints(template_id, prompt_id)
 
 
 class Sample(Base):
