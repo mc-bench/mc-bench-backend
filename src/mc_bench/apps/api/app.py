@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(user_router)
 app.include_router(comparison_router)
 
+
 @app.get("/scalar", include_in_schema=False)
 async def scalar_docs():
     return get_scalar_api_reference(

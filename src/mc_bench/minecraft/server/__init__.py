@@ -2,7 +2,7 @@ import io
 import os
 import tarfile
 import time
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 import docker
 import docker.models.containers
@@ -72,11 +72,10 @@ def run_builder(
     suffix: str,
     build_script_volume: docker.models.volumes.Volume,
     structure_name,
+    env: Optional[Dict[str, str]] = None,
 ) -> docker.models.containers.Container:
-    """
-    Run the second container and return its output.
-    Returns None if the server isn't ready.
-    """
+    env = env or {}
+
     client = docker.from_env()
     server_container = client.containers.get(server_container_id)
 
@@ -91,6 +90,7 @@ def run_builder(
             "DELAY": "75",
             "STRUCTURE_NAME": structure_name,
             "OUTDIR": "/data",
+            **env,
         },
         network=network_name,
         remove=False,

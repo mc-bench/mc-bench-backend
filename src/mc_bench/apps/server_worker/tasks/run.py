@@ -379,6 +379,7 @@ def export_structure_views(self, sample_id):
             suffix=suffix,
             build_script_volume=volume,
             structure_name=structure_name,
+            env={"COMMANDS_PER_FRAME": str(get_frames_per_command(len(command_list)))},
         )
         builder_id = builder.id
 
@@ -492,3 +493,8 @@ def export_structure_views(self, sample_id):
         RunStageStateChanged(stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED)
     )
     return sample_id
+
+
+def get_frames_per_command(num_commands: int) -> int:
+    return 10
+    # return math.ceil(num_commands / 4500)

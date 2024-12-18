@@ -26,6 +26,7 @@ const STRUCTURE_NAME =
   process.env.STRUCTURE_NAME ||
   `structure_${new Date().toISOString().replace(/[:.]/g, "-")}`;
 const OUTDIR = process.env.OUTDIR || "out";
+const COMMANDS_PER_FRAME = parseInt(process.env.COMMANDS_PER_FRAME || "1");
 
 class Recorder {
   constructor(options = {}) {
@@ -261,6 +262,7 @@ class CommandQueue {
     this.DELAY = delay;
     this.activePromises = new Set();
     this.lastExecutionTime = 0;
+    this.commandCount = 0;
   }
 
   waitForBlockUpdate(x, y, z) {
@@ -313,16 +315,21 @@ class CommandQueue {
         this.lastExecutionTime = Date.now();
 
         if (coordinates) {
-          await this.waitForBlockUpdate(
-            coordinates.x,
-            coordinates.y,
-            coordinates.z,
-          );
-          await new Promise((resolve) => setTimeout(resolve, 16));
+          this.commandCount++;
 
-          // we take two frames per
-          await recorder.captureFrame();
-          await recorder.captureFrame();
+          if (this.commandCount >= COMMANDS_PER_FRAME) {
+            this.commandCount = 0;
+            await this.waitForBlockUpdate(
+              coordinates.x,
+              coordinates.y,
+              coordinates.z,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 16));
+
+            // we take two frames per command set
+            await recorder.captureFrame();
+            await recorder.captureFrame();
+          }
         }
 
         resolve();
