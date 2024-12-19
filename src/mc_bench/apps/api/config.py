@@ -11,6 +11,10 @@ class Settings:
     REFRESH_TOKEN_EXPIRE_MINUTES = int(
         os.environ.get("REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 30)
     )
+    X_CLIENT_ID = os.getenv("X_CLIENT_ID")
+    X_CLIENT_SECRET = os.getenv("X_CLIENT_SECRET")
+    X_EMAIL_SALT = os.getenv("X_EMAIL_SALT")
+    REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5173/login")
 
 
 settings = Settings()
