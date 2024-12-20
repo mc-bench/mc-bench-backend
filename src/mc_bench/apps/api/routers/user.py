@@ -84,7 +84,7 @@ def _validate_emails(db: Session, emails: List[str]):
 
 
 def _hash_emails(salt: str, emails: List[str]) -> List[str]:
-    return [hash_email(salt, email) for email in emails]
+    return [hash_email(email, salt) for email in emails]
 
 
 @user_router.post("/api/signup", response_model=SignupResponse)
