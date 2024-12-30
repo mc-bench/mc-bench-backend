@@ -1,17 +1,22 @@
 #.PHONY: build-images build-worker build-api build-admin-api build-admin-worker
 
 
-sync-deps:
-	pip-compile -o deps/requirements.txt deps/requirements.in --constraint deps/dev-requirements.in --constraint deps/api-requirements.in --constraint deps/worker-requirements.in
-	pip-compile -o deps/api-requirements.txt deps/api-requirements.in --constraint deps/requirements.txt --constraint deps/worker-requirements.in --constraint deps/dev-requirements.in
-	pip-compile -o deps/worker-requirements.txt deps/worker-requirements.in --constraint deps/requirements.txt --constraint deps/api-requirements.txt --constraint deps/dev-requirements.in
-	pip-compile -o deps/server-worker-requirements.txt deps/server-worker-requirements.in --constraint deps/requirements.txt --constraint deps/api-requirements.txt --constraint deps/dev-requirements.in --constraint deps/worker-requirements.in
-	pip-compile -o deps/dev-requirements.txt deps/dev-requirements.in --constraint deps/requirements.txt --constraint deps/api-requirements.txt --constraint deps/worker-requirements.txt
+sync-deps: build-deps-images
+	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o requirements.txt requirements.in -c known-constraints.in"
+	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o api-requirements.txt api-requirements.in --constraint requirements.txt -c known-constraints.in"
+	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o worker-requirements.txt worker-requirements.in --constraint requirements.txt --constraint api-requirements.txt -c known-constraints.in"
+	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o server-worker-requirements.txt server-worker-requirements.in --constraint requirements.txt --constraint api-requirements.txt --constraint worker-requirements.txt -c known-constraints.in"
+	docker run --platform linux/amd64 --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.11.7 bash -c "cd /deps && pip-compile -o render-worker-requirements.txt render-worker-requirements.in --constraint requirements.txt --constraint api-requirements.txt --constraint worker-requirements.txt --constraint server-worker-requirements.txt -c known-constraints.in"
+	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o dev-requirements.txt dev-requirements.in --constraint requirements.txt --constraint api-requirements.txt --constraint worker-requirements.txt --constraint server-worker-requirements.txt --constraint render-worker-requirements.txt -c known-constraints.in"
 
 build-%:
 	docker build -t mcbench/$* -f images/$*.Dockerfile .
 
 all-images: build-admin-api build-admin-worker build-api build-worker
+
+build-deps-images:
+	docker build --build-arg PYTHON_VERSION=3.12.7 -t mcbench/deps-builder:3.12.7 -f images/deps-builder.Dockerfile .
+	docker build --platform linux/amd64 --build-arg PYTHON_VERSION=3.11.7 -t mcbench/deps-builder:3.11.7 -f images/deps-builder.Dockerfile .
 
 install-dev:
 	pip install -e ".[dev]"
@@ -26,13 +31,10 @@ check:
 check-fix:
 	ruff check --fix
 
-build-local-server-image:
-	cd images/minecraft-server && python build-and-save-image.py --tag built
-
 build-local-builder-image:
 	docker build -f images/builder-runner/builder-runner.Dockerfile -t registry.digitalocean.com/mcbench/minecraft-builder:built images/builder-runner
 
-build-local-images: build-local-builder-image build-local-server-image
+build-local-images: build-local-builder-image
 	docker-compose build
 
 reset:

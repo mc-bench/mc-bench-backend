@@ -59,6 +59,7 @@ def create_runs(
                 app.signature("run.parse_prompt", queue="admin", headers=headers),
                 app.signature("run.code_validation", queue="admin", headers=headers),
                 app.signature("run.build_structure", queue="server", headers=headers),
+                app.signature("run.render_sample", queue="render", headers=headers),
                 app.signature(
                     "run.export_structure_views", queue="server", headers=headers
                 ),

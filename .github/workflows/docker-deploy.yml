@@ -11,7 +11,6 @@ env:
   CONTAINER_PREFIX: "server-worker"
   DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
 
-  MINECRAFT_SERVER_IMAGE_NAME: "mcbench/minecraft-server"
   MINECRAFT_BUILDER_IMAGE_NAME: "mcbench/minecraft-builder"
 
 jobs:
@@ -37,32 +36,6 @@ jobs:
         run: |
           chmod +x ./deploy/server-worker-push.sh
           ./deploy/server-worker-push.sh
-
-  build-and-push-minecraft-server:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Install Python Docker SDK
-        run: pip install docker
-
-      - name: Log in to DO Container Registry
-        run: doctl registry login --expiry-seconds 1200
-
-      - name: Build and push
-        env:
-          GITHUB_SHA: ${{ github.sha }}
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.MINECRAFT_SERVER_IMAGE_NAME }}
-        run: |
-          chmod +x ./deploy/server-worker-push.sh
-          ./deploy/minecraft-server-push.sh
 
   build-and-push-minecraft-builder:
     runs-on: ubuntu-latest

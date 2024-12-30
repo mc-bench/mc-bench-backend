@@ -72,6 +72,7 @@ def create_template(
         description=template.description,
         content=template.content,
         active=True,
+        minecraft_version="1.21.1",
     )
     db.add(template)
     db.flush()

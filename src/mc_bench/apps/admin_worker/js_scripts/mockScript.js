@@ -1,5 +1,5 @@
 /**
- * Places a block at specified coordinates for Minecraft Java 1.20.4
+ * Places a block at specified coordinates
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
  * @param {number} z - Z coordinate
@@ -12,7 +12,7 @@
 async function safeSetBlock(x, y, z, blockType, options = {}) {}
   
 /**
- * Fills a region with blocks in Minecraft Java 1.20.4
+ * Fills a region with blocks
  * @param {number} x1 - First corner X coordinate
  * @param {number} y1 - First corner Y coordinate
  * @param {number} z1 - First corner Z coordinate
@@ -28,3 +28,16 @@ async function safeSetBlock(x, y, z, blockType, options = {}) {}
  * @returns {Promise<void>}
  */
 async function safeFill(x1, y1, z1, x2, y2, z2, blockType, options = {}) {}
+
+/**
+ * Sets the biome for a region
+ * @param {number} x1 - First corner X coordinate
+ * @param {number} y1 - First corner Y coordinate
+ * @param {number} z1 - First corner Z coordinate
+ * @param {number} x2 - Second corner X coordinate
+ * @param {number} y2 - Second corner Y coordinate
+ * @param {number} z2 - Second corner Z coordinate
+ * @param {string} biome - The biome to set (e.g. "plains", "desert")
+ * @returns {Promise<void>}
+ */
+async function safeFillBiome(x1, y1, z1, x2, y2, z2, biome) {}

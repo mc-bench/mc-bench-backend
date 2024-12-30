@@ -8,7 +8,7 @@ const minecraftData = require("minecraft-data");
 // Environment variables with defaults
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = parseInt(process.env.PORT) || 25565;
-const VERSION = process.env.VERSION || "1.20.1";
+const VERSION = process.env.VERSION || "1.21.1";
 const USERNAME = process.env.USERNAME || "builder";
 const DELAY = parseInt(process.env.DELAY) || 250;
 const STRUCTURE_NAME =
@@ -65,11 +65,20 @@ class CommandTracker {
     });
   }
 
+  addFillBiomeCommand(command, x1, y1, z1, x2, y2, z2, biome) {
+    this.commands.push({
+      command,
+      kind: "fillbiome",
+      coordinates: [x1, y1, z1, x2, y2, z2],
+      biome,
+    });
+  }
+
   async saveToFiles() {
     await fs.mkdir(OUTDIR, { recursive: true });
 
     const commandList = this.commands.filter(
-      (cmd) => cmd.kind === "setblock" || cmd.kind === "fill",
+      (cmd) => cmd.kind === "setblock" || cmd.kind === "fill" || cmd.kind === "fillbiome",
     );
 
     await fs.writeFile(
@@ -150,6 +159,8 @@ class CommandQueue {
       commandTracker.addSetBlockCommand(command, ...coordinates);
     } else if (command.startsWith("/fill") && coordinates) {
       commandTracker.addFillCommand(command, ...coordinates);
+    } else if (command.startsWith("/fillbiome") && coordinates) {
+      commandTracker.addFillBiomeCommand(command, ...coordinates);
     }
 
     const promise = new Promise((resolve, reject) => {
@@ -301,7 +312,7 @@ async function safeFill(x1, y1, z1, x2, y2, z2, blockType, options = {}) {
         );
       }
 
-      command += ` [${options.mode}]`;
+      command += ` ${options.mode}`;
 
       // Handle replace filter if specified
       if (options.mode === "replace" && options.replaceFilter) {
@@ -342,6 +353,32 @@ async function safeFill(x1, y1, z1, x2, y2, z2, blockType, options = {}) {
   }
 }
 
+
+/**
+ * Sets the biome for a region
+ * @param {number} x1 - First corner X coordinate
+ * @param {number} y1 - First corner Y coordinate
+ * @param {number} z1 - First corner Z coordinate
+ * @param {number} x2 - Second corner X coordinate
+ * @param {number} y2 - Second corner Y coordinate
+ * @param {number} z2 - Second corner Z coordinate
+ * @param {string} biome - The biome to set (e.g. "plains", "desert")
+ * @returns {Promise<void>}
+ */
+async function safeFillBiome(x1, y1, z1, x2, y2, z2, biome) {
+  x1 = Math.floor(x1);
+  y1 = Math.floor(y1);
+  z1 = Math.floor(z1);
+  x2 = Math.floor(x2);
+  y2 = Math.floor(y2);
+  z2 = Math.floor(z2);
+
+  const biomeName = biome.includes(":") ? biome : `minecraft:${biome}`;
+  const command = `/fillbiome ${x1} ${y1} ${z1} ${x2} ${y2} ${z2} ${biomeName}`;
+  await commandQueue.add(command, [x1, y1, z1, x2, y2, z2]);
+}
+
+
 const bot = mineflayer.createBot({
   host: HOST,
   port: PORT,
@@ -351,7 +388,7 @@ const bot = mineflayer.createBot({
 
 const commandQueue = new CommandQueue();
 const coordinateTracker = new CoordinateTracker();
-commandTracker = new CommandTracker();
+const commandTracker = new CommandTracker();
 
 // Update the spawn handler
 bot.once("spawn", async () => {

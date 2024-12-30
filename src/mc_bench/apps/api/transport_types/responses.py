@@ -23,6 +23,8 @@ class SignupResponse(LoginResponse):
 class SampleAssetDetailFile(Base):
     kind: str
     url: str
+    bucket: str
+    key: str
 
 
 class SampleAssetDetailResponse(Base):

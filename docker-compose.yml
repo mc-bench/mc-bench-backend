@@ -26,6 +26,8 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-3}
       REFRESH_TOKEN_EXPIRE_MINUTES: ${REFRESH_TOKEN_EXPIRE_MINUTES:-60}
       AUTO_GRANT_ADMIN_ROLE: ${AUTO_GRANT_ADMIN_ROLE:-false}
+      EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
+      INTERNAL_OBJECT_BUCKET: "mcbench-backend-object-local"
 
   admin-api:
     build:
@@ -87,6 +89,29 @@ services:
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       ADMIN_API_URL: "http://admin-api:8000"
 
+  render-worker:
+    platform: linux/amd64
+    build:
+      dockerfile: "images/render-worker.Dockerfile"
+      context: "."
+    image: "mcbench/render-worker"
+    environment:
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "mc-bench"
+      POSTGRES_USER: "mc-bench-admin"
+      POSTGRES_PASSWORD: "mc-bench"
+      POSTGRES_SSLMODE: "disable"
+      REDIS_USE_SSL: "false"
+      INTERNAL_OBJECT_BUCKET: "mcbench-backend-object-local"
+      OBJECT_STORE_DSN: "object:9000"
+      OBJECT_STORE_ACCESS_KEY: "fake_key"
+      OBJECT_STORE_SECRET_KEY: "fake_secret"
+      OBJECT_STORE_SECURE: "False"
+      EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
+      ADMIN_API_URL: "http://admin-api:8000"
+
   server-worker:
     build:
       dockerfile: "images/server-worker.Dockerfile"
@@ -113,6 +138,7 @@ services:
       NO_CLEANUP_SERVER_CONTAINER: ${NO_CLEANUP_SERVER_CONTAINER:-false}
       NO_CLEANUP_BUILDER_CONTAINER: ${NO_CLEANUP_BUILDER_CONTAINER:-false}
       NO_IMAGE_PULL: "true"
+      EXPOSE_SERVER_PORTS: ${EXPOSE_SERVER_PORTS:-false}
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -126,6 +152,9 @@ services:
       - "5555:5555"
     environment:
       CELERY_BROKER_URL: "redis://redis:6379/0"
+      FLOWER_UNAUTHENTICATED_API: "true"
+      INTERNAL_OBJECT_BUCKET: "mcbench-backend-object-local"
+      EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
 
 # Uncomment below to test flower github oauth
 #      FLOWER_AUTH_PROVIDER: "flower.views.auth.GithubLoginHandler"

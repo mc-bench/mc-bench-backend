@@ -1,11 +1,12 @@
 import os
+
 from openai import OpenAI
+
 
 class GrokClient:
     def __init__(self):
         self.client = OpenAI(
-            api_key=os.environ["XAI_API_KEY"],
-            base_url="https://api.x.ai/v1"
+            api_key=os.environ["XAI_API_KEY"], base_url="https://api.x.ai/v1"
         )
 
     def send_prompt(self, **kwargs):
@@ -28,4 +29,4 @@ class GrokClient:
             response = self.client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
         except Exception as e:
-            raise Exception(f"Error in Grok API call: {str(e)}") 
+            raise Exception(f"Error in Grok API call: {str(e)}")

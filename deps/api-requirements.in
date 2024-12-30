@@ -10,3 +10,4 @@ jinja2
 scalar-fastapi
 valx
 regex
+mc-data-files==3.83.1rc0

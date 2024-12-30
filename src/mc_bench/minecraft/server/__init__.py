@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import tarfile
 import time
 from typing import Dict, Optional, Union
@@ -9,15 +10,21 @@ import docker.models.containers
 import docker.models.volumes
 
 
-def create_network(suffix) -> str:
+def create_network(suffix, exists_ok=False) -> str:
     """Create a new overlay network and return its name."""
     client = docker.from_env()
     network_name = f"mctest-net-{suffix}"
-    client.networks.create(network_name, driver="bridge", check_duplicate=True)
+    try:
+        client.networks.get(network_name)
+        if not exists_ok:
+            raise ValueError(f"Network {network_name} already exists")
+    except docker.errors.NotFound:
+        client.networks.create(network_name, driver="bridge", check_duplicate=True)
+
     return network_name
 
 
-def start_server(image, network_name: str, suffix, ports=None) -> str:
+def start_server(image, network_name: str, suffix, ports=None, replace=False) -> str:
     """Start the Minecraft server container and return its container ID."""
     client = docker.from_env()
     kwargs = {}
@@ -28,12 +35,29 @@ def start_server(image, network_name: str, suffix, ports=None) -> str:
     if not os.environ.get("NO_IMAGE_PULL"):
         client.images.pull(image)
 
+    container_name = f"mc-server-{suffix}"
+
+    try:
+        current_container = client.containers.get(container_name)
+    except docker.errors.NotFound:
+        current_container = None
+
+    if current_container is not None:
+        if replace:
+            print(f"Stopping existing container {container_name}")
+            current_container.stop()
+            print(f"Removing existing container {container_name}")
+            current_container.remove()
+            print(f"Container {container_name} removed")
+        else:
+            raise ValueError(f"Container {container_name} already exists")
+
     container = client.containers.run(
         image,
         detach=True,
         remove=False,
         network=network_name,
-        name=f"mc-server-{suffix}",
+        name=container_name,
         **kwargs,
     )
     return container
@@ -41,26 +65,29 @@ def start_server(image, network_name: str, suffix, ports=None) -> str:
 
 def wait_for_server(container_id: str, timeout: int = 300) -> bool:
     """
-    Wait for the server to be ready.
-    Returns True if server is ready, False if timeout reached.
+    Wait for the Minecraft server to be ready by checking for the standard
+    server startup completion message: "Done (Xs)!"
 
-    Note: This is a placeholder implementation - you'll need to replace
-    this with your actual readiness check logic.
+    Args:
+        container_id: Docker container ID running the Minecraft server
+        timeout: Maximum time to wait in seconds (default: 300)
+
+    Returns:
+        bool: True if server is ready, False if timeout reached
     """
     client = docker.from_env()
     container = client.containers.get(container_id)
     start_time = time.time()
 
+    # Regex pattern to match Minecraft server ready message
+    # Matches strings like "Done (1.234s)!" or "Done (12.4s)!"
+    ready_pattern = re.compile(r"Done \(\d+\.?\d*s\)!")
+
     while time.time() - start_time < timeout:
-        # Replace this with your actual readiness check
-        # For example, you might want to:
-        # - Check for specific log messages
-        # - Try connecting to the server
-        # - Check for a specific file creation
         logs = container.logs().decode("utf-8")
-        if "Timings Reset" in logs:  # Replace with actual condition
+        if ready_pattern.search(logs):
             return True
-        time.sleep(5)
+        time.sleep(2)
 
     return False
 
@@ -73,6 +100,7 @@ def run_builder(
     build_script_volume: docker.models.volumes.Volume,
     structure_name,
     env: Optional[Dict[str, str]] = None,
+    **kwargs,
 ) -> docker.models.containers.Container:
     env = env or {}
 
@@ -97,6 +125,7 @@ def run_builder(
         detach=True,
         volumes={build_script_volume.name: {"bind": "/build-scripts", "mode": "ro"}},
         name=f"mc-builder-{suffix}",
+        **kwargs,
     )
 
     return builder
@@ -257,7 +286,9 @@ def calculate_expected_frames(command_list):
     return total_frames_for_commands + total_rotation_frames
 
 
-def get_file_from_container(container_id: str, file_path: str, missing_ok=True) -> str:
+def get_file_from_container(
+    container_id: str, file_path: str, missing_ok=True, decode=True
+) -> str:
     """
     Extract the contents of a file from a running Docker container.
 
@@ -300,8 +331,11 @@ def get_file_from_container(container_id: str, file_path: str, missing_ok=True) 
             if file_obj is None:
                 raise ValueError(f"Could not read file {file_path}")
 
-            # Read and decode the contents
-            contents = file_obj.read().decode("utf-8")
+            if decode:
+                # Read and decode the contents
+                contents = file_obj.read().decode("utf-8")
+            else:
+                contents = file_obj.read()
 
         return contents
 

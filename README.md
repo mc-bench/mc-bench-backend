@@ -30,7 +30,7 @@ Any other mechanism should work as well
 
 3. editably install the project
     
-    ```pip install -e .[dev,api,worker]```
+    ```pip install -e .[dev,api,worker,server-worker]```
 
 # Run migrations
 Load the environment variables with
@@ -111,3 +111,17 @@ Run the ruff checker with --fix option
 ```shell
 make check-fix
 ```
+
+# Working on the rendering code
+
+Unfortunately bpy, the python library for Blender, is not compatible with python 3.12.
+If you want to work on the rendering code, you need to use python 3.11.7.
+Once you have installed the python 3.11.7 environment, you can install the dependencies with:
+
+```shell
+pip install -e .[render-worker]
+```
+
+# Other Useful Guides
+
+- [Build local gameservers](docs/build_local_gameservers.md)

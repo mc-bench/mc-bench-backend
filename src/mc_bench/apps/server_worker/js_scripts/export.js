@@ -19,7 +19,7 @@ if (!glContext) {
 // Environment variables with defaults
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = parseInt(process.env.PORT) || 25565;
-const VERSION = process.env.VERSION || "1.20.1";
+const VERSION = process.env.VERSION || "1.21.1";
 const USERNAME = process.env.USERNAME || "builder";
 const DELAY = parseInt(process.env.DELAY) || 250;
 const STRUCTURE_NAME =
@@ -778,7 +778,14 @@ bot.once("spawn", async () => {
           command.coordinates[1].y,
           command.coordinates[1].z,
         );
-      } else {
+      } else if (command.kind === "setblock") {
+        commandQueue.add(
+          command.command,
+          command.coordinates.x,
+          command.coordinates.y,
+          command.coordinates.z,
+        );
+      } else if (command.kind === "setbiome") {
         commandQueue.add(
           command.command,
           command.coordinates.x,

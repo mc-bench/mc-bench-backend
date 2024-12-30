@@ -35,8 +35,17 @@ from ..app import app
 from ..config import settings
 from ..templates import build_template, export_template
 
-MINECRAFT_SERVER_IMAGE = os.environ["MINECRAFT_SERVER_IMAGE"]
-MINECRAFT_BUILDER_IMAGE = os.environ["MINECRAFT_BUILDER_IMAGE"]
+
+def _get_server_image(minecraft_version: str) -> str:
+    default_image = f"registry.digitalocean.com/mcbench/gameservers:minecraft-{minecraft_version}-latest"
+    return os.environ.get("MINECRAFT_SERVER_IMAGE", default_image)
+
+
+def _get_builder_image() -> str:
+    return os.environ.get(
+        "MINECRAFT_BUILDER_IMAGE",
+        "registry.digitalocean.com/mcbench/minecraft-builder:1718738",
+    )
 
 
 def error_handler(stage_class, stage_slug):
@@ -129,6 +138,7 @@ def build_structure(self, sample_id):
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
+        minecraft_version = run.template.minecraft_version
         code = sample.result_code_text
         sample_id = sample.id
         run_id = run.id
@@ -169,7 +179,20 @@ def build_structure(self, sample_id):
             note="starting ephemeral minecraft server",
         )
 
-        server = start_server(MINECRAFT_SERVER_IMAGE, network_name, suffix)
+        server_args = dict(
+            image=_get_server_image(minecraft_version),
+            network_name=network_name,
+            suffix=suffix,
+        )
+
+        if settings.EXPOSE_SERVER_PORTS:
+            import random
+
+            server_args["ports"] = {
+                "25565/tcp": random.choice(range(26565, 27565 + 1000)),
+            }
+
+        server = start_server(**server_args)
         server_id = server.id
 
         wait_for_server(server_id)
@@ -181,14 +204,19 @@ def build_structure(self, sample_id):
             note="starting the build",
         )
 
-        builder = run_builder(
-            image=MINECRAFT_BUILDER_IMAGE,
+        builder_args = dict(
+            image=_get_builder_image(),
             network_name=network_name,
             server_container_id=server_id,
             suffix=suffix,
             build_script_volume=volume,
             structure_name=structure_name,
+            env={
+                "VERSION": minecraft_version,
+            },
         )
+
+        builder = run_builder(**builder_args)
         builder_id = builder.id
 
         build_command_count = 0
@@ -300,6 +328,7 @@ def export_structure_views(self, sample_id):
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
         run = db.scalar(select(Run).where(Run.id == sample.run_id))
+        minecraft_version = run.template.minecraft_version
         sample_id = sample.id
         run_id = run.id
         run_external_id = run.external_id
@@ -342,6 +371,20 @@ def export_structure_views(self, sample_id):
             "const commandList = []", f"const commandList = {json.dumps(command_list)}"
         )
 
+        if not settings.EXPORT_STRUCTURE_VIEWS:
+            run_stage = db.scalar(
+                select(ExportingContent).where(ExportingContent.run_id == run_id)
+            )
+
+            run_stage_id = run_stage.id
+
+            emit_event(
+                RunStageStateChanged(
+                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
+                )
+            )
+            return sample_id
+
     suffix = f"{self.request.id}-{int(time.time())}"
     network_name = create_network(suffix)
 
@@ -359,7 +402,20 @@ def export_structure_views(self, sample_id):
             note="starting ephemeral minecraft server",
         )
 
-        server = start_server(MINECRAFT_SERVER_IMAGE, network_name, suffix)
+        server_args = dict(
+            image=_get_server_image(minecraft_version),
+            network_name=network_name,
+            suffix=suffix,
+        )
+
+        if settings.EXPOSE_SERVER_PORTS:
+            import random
+
+            server_args["ports"] = {
+                "25565/tcp": random.choice(range(26565, 27565 + 1000)),
+            }
+
+        server = start_server(**server_args)
         server_id = server.id
         progress = 0.0
 
@@ -373,7 +429,7 @@ def export_structure_views(self, sample_id):
         )
 
         builder = run_builder(
-            image=MINECRAFT_BUILDER_IMAGE,
+            image=_get_builder_image(),
             network_name=network_name,
             server_container_id=server_id,
             suffix=suffix,

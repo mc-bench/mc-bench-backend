@@ -128,6 +128,14 @@ def get_comparison_batch(
             .where(Sample.comparison_sample_id == sample_1)
         )
 
+        sample_1_artifact = db.scalar(
+            select(Sample).where(Sample.comparison_sample_id == sample_1)
+        ).get_comparison_artifact()
+
+        sample_2_artifact = db.scalar(
+            select(Sample).where(Sample.comparison_sample_id == sample_2)
+        ).get_comparison_artifact()
+
         # assets = []
         # for sample_id in [sample_1, sample_2]:
         #     assets.append({
@@ -147,12 +155,24 @@ def get_comparison_batch(
             {
                 "sample_id": sample_1,
                 "files": [
-                    {"kind": "gltf_scene", "url": "/my_awesome_house.gltf"},
+                    {
+                        "kind": "gltf_scene",
+                        "url": "/my_awesome_house.gltf",
+                        "bucket": settings.EXTERNAL_OBJECT_BUCKET,
+                        "key": sample_1_artifact.key,
+                    },
                 ],
             },
             {
                 "sample_id": sample_2,
-                "files": [{"kind": "gltf_scene", "url": "/my_cool_house.gltf"}],
+                "files": [
+                    {
+                        "kind": "gltf_scene",
+                        "url": "/my_cool_house.gltf",
+                        "bucket": settings.EXTERNAL_OBJECT_BUCKET,
+                        "key": sample_2_artifact.key,
+                    }
+                ],
             },
         ]
 
@@ -237,8 +257,17 @@ def post_comparison(
     db.add(comparison)
     db.flush()
 
+    sample_1_run = db.scalar(
+        select(Sample).where(Sample.comparison_sample_id == sample_1_id)
+    ).run
+
+    sample_2_run = db.scalar(
+        select(Sample).where(Sample.comparison_sample_id == sample_2_id)
+    ).run
+
     return {
-        "ok": True,
+        "sample_1_model": sample_1_run.model.slug,
+        "sample_2_model": sample_2_run.model.slug,
     }
 
 

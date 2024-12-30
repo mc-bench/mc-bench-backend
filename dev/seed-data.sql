@@ -1,5 +1,6 @@
 INSERT INTO specification.template (created_by,
                                     active,
+                                    minecraft_version,
                                     name,
                                     description,
                                     content)
@@ -9,9 +10,10 @@ VALUES ((select id
              username =
              'SYSTEM'),
         true,
+        '1.21.1',
         'Default JS Output w/ Guidelines',
         'Default JS Output w/ Guidelines',
-        'You are an expert Minecraft architect, designer, and JavaScript coder tasked with creating structures in a flat Minecraft Java 1.20.1 server. Your goal is to produce a Minecraft structure via code, considering aspects such as accents, block variety, symmetry and asymmetry, overall aesthetics, and most importantly, adherence to the platonic ideal of the requested creation.
+        'You are an expert Minecraft builder, and JavaScript coder tasked with creating structures in a flat Minecraft Java {{ minecraft_version }} server. Your goal is to produce a Minecraft structure via code, considering aspects such as accents, block variety, symmetry and asymmetry, overall aesthetics, and most importantly, adherence to the platonic ideal of the requested creation.
 
 First, carefully read the build specification:
 
@@ -52,12 +54,25 @@ async function safeFill(x1, y1, z1, x2, y2, z2, blockType, options = {}) {}
  * @returns {Promise<void>}
  */
 async function safeSetBlock(x, y, z, blockType, options = {}) {}
+
+/**
+ * Sets the biome for a region
+ * @param {number} x1 - First corner X coordinate
+ * @param {number} y1 - First corner Y coordinate
+ * @param {number} z1 - First corner Z coordinate
+ * @param {number} x2 - Second corner X coordinate
+ * @param {number} y2 - Second corner Y coordinate
+ * @param {number} z2 - Second corner Z coordinate
+ * @param {string} biome - The biome to set (e.g. "plains", "desert")
+ * @returns {Promise<void>}
+ */
+async function safeFillBiome(x1, y1, z1, x2, y2, z2, biome) {}
 ```
 
 Your task is to implement the `buildCreation` function:
 
 ```javascript
-/**
+/** 
  * Builds a structure using safeSetBlock and safeFill function calls
  * @param startX
  * @param startY
@@ -74,6 +89,12 @@ IMPORTANT: You must only use block types from the following list:
 <block_types_list>
 {{block_types_list}}
 </block_types_list>
+
+IMPORTANT: You may use biomes from the following list:
+
+<biomes_list>
+{{biomes_list}}
+</biomes_list>
 
 Before providing your final output, plan your approach inside <build_planning> tags. Consider the following:
 
@@ -98,9 +119,17 @@ Describe how the creation is supposed to look in a paragraph.
 </description>
 
 <code>
+/**
+ * Builds a structure using safeFill, safeSetBlock, and safeFillBiome functions
+ * Anything that should be above ground level should be above startY
+ * @param startX - The X coordinate of the starting point
+ * @param startY - The Y coordinate of the starting point, the ground level
+ * @param startZ - The Z coordinate of the starting point
+ * @returns {Promise<void>}
+ */
 async function buildCreation(startX, startY, startZ) {
   // JavaScript code implementing the structure
-  // using safeFill and safeSetBlock functions
+  // using safeFill, safeSetBlock, and safeFillBiome functions
 }
 </code>
 
@@ -109,7 +138,14 @@ Remember:
 - Ensure your code is syntactically correct and only uses allowed block types.
 - Be creative and aim for a wide dynamic range in your builds.
 - The code must work in a one-shot manner, as there is no opportunity for iteration.
-- The code MUST be enclosed in <code></code> tags.') ON CONFLICT DO NOTHING;
+- The code MUST be enclosed in <code></code> tags.
+- Blocks will be placed in a live minecraft server and will behave with the physics and behavior of the Minecraft game engine.
+- Blocks that are "underground" should be placed at or below startY.
+- Blocks that are "above ground level" should be placed above startY.
+- If the blocks being placed do not have a relationship to the ground, they should be placed above startY or a suitable empty area should be cleared with air.
+- This build will exported for display purposes. If you wish to include any portion of the ground as part of the build, you must explicitly place the ground blocks (default ground level is startY).
+- The build is intended for human consumption in game and for visual display. When producing the build, consider how it can be viewed, explored, and used.
+') ON CONFLICT DO NOTHING;
 
 INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-5-sonnet-20241022', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gpt-4o-2024-11-20', true) ON CONFLICT DO NOTHING;
@@ -142,7 +178,7 @@ VALUES
      (select id from auth.auth_provider where name = 'github'),
      6245448,
      (select id from auth.user where username = 'huntcsg'),
-     '93dccbf7b5b9f9e27e747ff533857bc0d5fd1265508e3bf6b2d9631c557c3b1e'
+     '720dba52a94493d495a3a8fcd668388a44a98e2bba5685ef6f339933fdd72e53'
     );
 
 INSERT INTO auth.user_role (created_by, user_id, role_id)

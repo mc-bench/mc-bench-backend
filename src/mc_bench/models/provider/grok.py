@@ -7,4 +7,4 @@ class GrokProvider(Provider):
     __mapper_args__ = {"polymorphic_identity": "GROK_SDK"}
 
     def get_client(self):
-        return GrokClient() 
+        return GrokClient()

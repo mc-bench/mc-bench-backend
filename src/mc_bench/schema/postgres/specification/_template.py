@@ -34,5 +34,6 @@ template = Table(
     Column("content", String, nullable=False),
     Column("active", Boolean, nullable=True),
     Column("frozen", Boolean, nullable=True),
+    Column("minecraft_version", String, nullable=False),
     schema="specification",
 )

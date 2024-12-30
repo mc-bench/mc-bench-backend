@@ -10,6 +10,7 @@ from mc_bench.constants import RUN_STAGE_STATE, RUN_STATE
 from mc_bench.events import emit_event
 from mc_bench.events.types import RunStageStateChanged, RunStateChanged
 from mc_bench.models.run import (
+    Artifact,
     CodeValidation,
     PostProcessing,
     PreparingSample,
@@ -18,10 +19,12 @@ from mc_bench.models.run import (
     Run,
     Sample,
 )
+from mc_bench.util.object_store import get_client
 from mc_bench.util.postgres import managed_session
 from mc_bench.util.text import parse_known_parts
 
 from ..app import app
+from ..config import settings
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ADMIN_WORKER_DIR = os.path.dirname(HERE)
@@ -258,7 +261,39 @@ def prepare_sample(sample_id):
             )
         )
 
-        # TODO: Prepare sample
+        artifact = sample.get_render_artifact()
+        if not artifact:
+            raise RuntimeError("No render artifact found")
+
+        object_client = get_client()
+
+        render_artifact_spec = sample.comparison_artifact_spec(db)
+        for key in ["rendered_model_glb"]:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                artifact_bytes = artifact.download_artifact()
+                with open(os.path.join(tmp_dir, "artifact.glb"), "wb") as f:
+                    f.write(artifact_bytes.getvalue())
+
+                object_client.fput_object(
+                    bucket_name=settings.EXTERNAL_OBJECT_BUCKET,
+                    object_name=render_artifact_spec[key]["object_prototype"]
+                    .materialize(**render_artifact_spec[key]["object_parts"])
+                    .get_path(),
+                    file_path=os.path.join(tmp_dir, "artifact.glb"),
+                )
+
+        for key, spec in render_artifact_spec.items():
+            artifact = Artifact(
+                kind=spec["artifact_kind"],
+                run_id=run_id,
+                sample_id=sample_id,
+                bucket=settings.EXTERNAL_OBJECT_BUCKET,
+                key=spec["object_prototype"]
+                .materialize(**spec["object_parts"])
+                .get_path(),
+            )
+            db.add(artifact)
+        db.commit()
 
         emit_event(
             RunStageStateChanged(

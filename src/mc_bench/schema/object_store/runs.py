@@ -5,6 +5,7 @@ class KINDS:
     RUN = "RUN"
     SAMPLE = "SAMPLE"
     ARTIFACTS = "ARTIFACTS"
+    COMPARISON_SAMPLES = "COMPARISON_SAMPLES"
 
     # leaf nodes
     NBT_STRUCTURE_FILE = "NBT_STRUCTURE_FILE"
@@ -24,6 +25,8 @@ class KINDS:
     SOUTHSIDE_CAPTURE_PNG = "SOUTHSIDE_CAPTURE_PNG"
     WESTSIDE_CAPTURE_PNG = "WESTSIDE_CAPTURE_PNG"
     BUILD_CINEMATIC_MP4 = "BUILD_CINEMATIC_MP4"
+    RENDERED_MODEL_GLB = "RENDERED_MODEL_GLB"
+    RENDERED_MODEL_GLB_COMPARISON_SAMPLE = "RENDERED_MODEL_GLB_COMPARISON_SAMPLE"
 
 
 runs = Prototype(
@@ -92,6 +95,10 @@ runs = Prototype(
                                     kind=KINDS.BUILD_CINEMATIC_MP4,
                                     pattern="{name}-build-timelapse.mp4",
                                 ),
+                                Prototype(
+                                    kind=KINDS.RENDERED_MODEL_GLB,
+                                    pattern="{name}-rendered-model.glb",
+                                ),
                             ],
                         )
                     ],
@@ -99,4 +106,15 @@ runs = Prototype(
             ],
         )
     ]
+)
+
+comparison_samples = Prototype(
+    kind=KINDS.COMPARISON_SAMPLES,
+    pattern="comparison_samples",
+    children=[
+        Prototype(
+            kind=KINDS.RENDERED_MODEL_GLB_COMPARISON_SAMPLE,
+            pattern="sample-{sample_id}.glb",
+        ),
+    ],
 )

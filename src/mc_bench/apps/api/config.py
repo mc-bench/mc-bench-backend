@@ -14,5 +14,8 @@ class Settings:
     )
     AUTO_GRANT_ADMIN_ROLE = os.environ.get("AUTO_GRANT_ADMIN_ROLE", "false") == "true"
 
+    EXTERNAL_OBJECT_BUCKET = os.environ.get("EXTERNAL_OBJECT_BUCKET")
+    INTERNAL_OBJECT_BUCKET = os.environ.get("INTERNAL_OBJECT_BUCKET")
+
 
 settings = Settings()

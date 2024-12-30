@@ -1,20 +1,19 @@
+import json
 from typing import List
 
 import jinja2
+import minecraft_data
 from sqlalchemy import func, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, object_session, relationship
 
 import mc_bench.schema.postgres as schema
-from mc_bench.minecraft.data import get_block_types
 
 from ._base import Base
 
 
 class Template(Base):
     __table__ = schema.specification.template
-
-    minecraft_version = "1.20.1"  # TODO: make this data driven
 
     author = relationship(
         "User", foreign_keys=[schema.specification.template.c.created_by]
@@ -69,8 +68,25 @@ class Template(Base):
         return self._usage_expression.scalar_subquery()
 
     def get_default_template_kwargs(self):
+        mc_data = minecraft_data.MinecraftDataFiles(
+            version=self.minecraft_version,
+            game_type=minecraft_data.PC,
+        )
+
+        with open(mc_data.get("blocks", "blocks.json"), "r") as f:
+            blocks = json.load(f)
+
+        block_types = [block["name"] for block in blocks]
+
+        with open(mc_data.get("biomes", "biomes.json"), "r") as f:
+            biomes = json.load(f)
+
+        biome_types = [biome["name"] for biome in biomes]
+
         return {
-            "block_types_list": "\n".join(get_block_types(self.minecraft_version)),
+            "block_types_list": "\n".join(block_types),
+            "biomes_list": "\n".join(biome_types),
+            "minecraft_version": self.minecraft_version,
         }
 
     def render(self, **kwargs):

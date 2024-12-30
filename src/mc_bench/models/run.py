@@ -1,6 +1,6 @@
 import datetime
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Mapped, object_session, relationship
@@ -12,7 +12,7 @@ from mc_bench.events.types import (
     RunStageStateChanged,
     RunStateChanged,
 )
-from mc_bench.schema.object_store.runs import KINDS, runs
+from mc_bench.schema.object_store.runs import KINDS, comparison_samples, runs
 from mc_bench.util.object_store import (
     get_client,
     get_object_as_bytesio,
@@ -156,6 +156,11 @@ class Run(Base):
                 stage_id=stage_id_for(db, STAGE.BUILDING),
                 state_id=pending_stage_state,
             ),
+            RenderingSample(
+                run_id=self.id,
+                stage_id=stage_id_for(db, STAGE.RENDERING_SAMPLE),
+                state_id=pending_stage_state,
+            ),
             ExportingContent(
                 run_id=self.id,
                 stage_id=stage_id_for(db, STAGE.EXPORTING_CONTENT),
@@ -242,6 +247,33 @@ class Sample(Base):
         ]
         if summaries:
             return summaries[0]
+
+    def get_schematic_artifact(self):
+        schematics = [
+            artifact
+            for artifact in self.artifacts
+            if artifact.kind.name == KINDS.BUILD_SCHEMATIC
+        ]
+        if schematics:
+            return schematics[0]
+
+    def get_render_artifact(self) -> Optional["Artifact"]:
+        renders = [
+            artifact
+            for artifact in self.artifacts
+            if artifact.kind.name == KINDS.RENDERED_MODEL_GLB
+        ]
+        if renders:
+            return renders[0]
+
+    def get_comparison_artifact(self):
+        comparisons = [
+            artifact
+            for artifact in self.artifacts
+            if artifact.kind.name == KINDS.RENDERED_MODEL_GLB_COMPARISON_SAMPLE
+        ]
+        if comparisons:
+            return comparisons[0]
 
     def build_artifact_spec(self, db, structure_name):
         run_external_id = self.run.external_id
@@ -398,6 +430,54 @@ class Sample(Base):
                     getattr(KINDS, f"{side.upper()}SIDE_CAPTURE_PNG"),
                 ),
             }
+
+        return spec
+
+    def render_artifact_spec(self, db):
+        run_external_id = self.run.external_id
+        sample_external_id = self.external_id
+
+        spec = {
+            "rendered_model_glb": {
+                "object_parts": {
+                    "run_id": run_external_id,
+                    "sample_id": sample_external_id,
+                    "name": f'{self.run.external_id}_{self.external_id}_{datetime.datetime.now().isoformat().replace(":", "_")}',
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(
+                        ArtifactKind.name == KINDS.RENDERED_MODEL_GLB
+                    )
+                ),
+                "object_prototype": runs.get(
+                    KINDS.RUN,
+                    KINDS.SAMPLE,
+                    KINDS.ARTIFACTS,
+                    KINDS.RENDERED_MODEL_GLB,
+                ),
+            },
+        }
+
+        return spec
+
+    def comparison_artifact_spec(self, db):
+        comparison_sample_id = self.comparison_sample_id
+
+        spec = {
+            "rendered_model_glb": {
+                "object_parts": {
+                    "sample_id": comparison_sample_id,
+                },
+                "artifact_kind": db.scalar(
+                    select(ArtifactKind).where(
+                        ArtifactKind.name == KINDS.RENDERED_MODEL_GLB_COMPARISON_SAMPLE
+                    )
+                ),
+                "object_prototype": comparison_samples.get(
+                    KINDS.RENDERED_MODEL_GLB_COMPARISON_SAMPLE,
+                ),
+            },
+        }
 
         return spec
 
@@ -693,3 +773,18 @@ class PreparingSample(RunStage):
             kwargs["args"] = [sample_id]
 
         return app.signature("run.sample_prep", **kwargs)
+
+
+class RenderingSample(RunStage):
+    __mapper_args__ = {
+        "polymorphic_identity": "RENDERING_SAMPLE",
+    }
+
+    def get_task_signature(self, app, progress_token, pass_args=True):
+        kwargs = {}
+        kwargs["queue"] = "render"
+        kwargs["headers"] = {"token": progress_token}
+        if pass_args:
+            kwargs["args"] = [self.sample_id]
+
+        return app.signature("run.render_sample", **kwargs)
