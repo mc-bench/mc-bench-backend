@@ -18,36 +18,12 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def upgrade() -> None: # This I need to check a bit more 
+def upgrade() -> None:
     op.execute("""\
         INSERT INTO specification.provider_class (created_by, name) VALUES (
             (select id from auth.user where username = 'SYSTEM'),
             'GROK_SDK'
         ) ON CONFLICT (name) DO NOTHING;
-
-        INSERT INTO specification.model (created_by, slug, active) VALUES (
-            (select id from auth.user where username = 'SYSTEM'),
-            'grok-2-1212',
-            true
-        ) ON CONFLICT (slug) DO NOTHING;
-
-        INSERT INTO specification.provider (
-            id,
-            created_by,
-            model_id,
-            provider_class,
-            config,
-            name,
-            is_default
-        ) VALUES (
-            5,
-            (select id from auth.user where username = 'SYSTEM'),
-            (select id from specification.model where slug = 'grok-2-1212'),
-            'GROK_SDK',
-            '{"model": "grok-2-1212", "max_tokens": 131072}',
-            'Grok',
-            true
-        ) ON CONFLICT (id) DO NOTHING;
     """)
 
 
