@@ -8,6 +8,7 @@ from mc_bench.models.model import Model
 # from mc_bench.auth.permissions import PERM
 # from mc_bench.server.auth import AuthManager
 from ..config import settings
+from mc_bench.apps.api.transport_types.responses import LeaderboardResponse
 
 leaderboard_router = APIRouter(prefix="/api")
 
@@ -21,7 +22,8 @@ leaderboard_router = APIRouter(prefix="/api")
     "/leaderboard",
     tags=["leaderboard"],
     summary="Get model leaderboard",
-    description="Returns a list of models with their run statistics, sorted by success rate"
+    description="Returns a list of models with their run statistics, sorted by success rate",
+    response_model=LeaderboardResponse
 )
 def get_leaderboard(db: Session = Depends(get_managed_session)):
     # Get total runs and success count per model
@@ -51,7 +53,10 @@ def get_leaderboard(db: Session = Depends(get_managed_session)):
     # Sort by success rate descending
     leaderboard.sort(key=lambda x: x["success_rate"], reverse=True)
     
-    return leaderboard
+    # Return with the new response model
+    return {
+        "data": leaderboard
+    }
 
 # Sample response
 # isaac@Mac mc-bench-backend % curl http://localhost:8000/api/leaderboard

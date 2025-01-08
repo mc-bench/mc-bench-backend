@@ -50,3 +50,14 @@ class MetricResponse(Base):
     id: uuid.UUID
     name: str
     description: str
+
+
+class LeaderboardEntry(Base):
+    model: str
+    total_runs: int
+    successful_runs: int
+    success_rate: float
+
+
+class LeaderboardResponse(Base):
+    data: List[LeaderboardEntry]
