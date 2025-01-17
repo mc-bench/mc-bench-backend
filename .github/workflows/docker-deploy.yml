@@ -78,7 +78,6 @@ jobs:
     needs:
       - prepare
       - build-and-push-server-worker
-      - build-and-push-minecraft-server
       - build-and-push-minecraft-builder
     runs-on: ubuntu-latest
     strategy:
