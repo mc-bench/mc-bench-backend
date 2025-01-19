@@ -12,12 +12,17 @@ from mc_bench.minecraft.schematic import load_schematic, to_placed_blocks
 from mc_bench.models.run import Artifact, RenderingSample, Run, Sample
 from mc_bench.util.object_store import get_client as get_object_store_client
 from mc_bench.util.postgres import managed_session
+from mc_bench.worker import run_stage_error_handler, run_stage_retry_handler
 
 from ..app import app
 from ..config import settings
 
 
-@app.task(name="run.render_sample")
+@app.task(
+    name="run.render_sample",
+    on_failure=run_stage_error_handler(RenderingSample, "RENDERING_SAMPLE"),
+    on_retry=run_stage_retry_handler(RenderingSample, "RENDERING_SAMPLE"),
+)
 def render_sample(sample_id):
     if sample_id is None:
         raise RuntimeError("sample_id is required")

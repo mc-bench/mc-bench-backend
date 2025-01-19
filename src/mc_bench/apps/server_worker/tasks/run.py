@@ -30,6 +30,7 @@ from mc_bench.models.run import (
 from mc_bench.util.docker import wait_for_containers
 from mc_bench.util.object_store import get_client
 from mc_bench.util.postgres import managed_session
+from mc_bench.worker import run_stage_error_handler, run_stage_retry_handler
 
 from ..app import app
 from ..config import settings
@@ -48,83 +49,11 @@ def _get_builder_image() -> str:
     )
 
 
-def error_handler(stage_class, stage_slug):
-    def wrapper(self, exc, task_id, args, kwargs, einfo):
-        if self.request.retries < self.max_retries:
-            print(f"Task {task_id} is in retry, not marking as failed")
-            return
-
-        print(f"Task {task_id} failed: {exc}")
-
-        admin_api_client = Client(
-            token=self.request.headers["token"],
-        )
-
-        sample_id = args[0] if args else kwargs.get("sample_id")
-
-        with managed_session() as db:
-            sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-            run = db.scalar(select(Run).where(Run.id == sample.run_id))
-            sample_id = sample.id
-            run_id = run.id
-            run_stage = db.scalar(
-                select(stage_class).where(stage_class.run_id == run_id)
-            )
-            run_stage_id = run_stage.id
-            admin_api_client.update_stage_progress(
-                run_external_id=run.external_id,
-                stage=stage_slug,
-                progress=0,
-                note=None,
-            )
-            emit_event(
-                RunStageStateChanged(
-                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.FAILED
-                )
-            )
-
-    return wrapper
-
-
-def retry_handler(stage_class, stage_slug):
-    def wrapper(self, exc, task_id, args, kwargs, einfo):
-        print(f"Task {task_id} failed: {exc}")
-
-        sample_id = args[0] if args else kwargs.get("sample_id")
-
-        admin_api_client = Client(
-            token=self.request.headers["token"],
-        )
-
-        with managed_session() as db:
-            sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-            run = db.scalar(select(Run).where(Run.id == sample.run_id))
-            sample_id = sample.id
-            run_id = run.id
-            run_stage = db.scalar(
-                select(stage_class).where(stage_class.run_id == run_id)
-            )
-            run_stage_id = run_stage.id
-            admin_api_client.update_stage_progress(
-                run_external_id=run.external_id,
-                stage=stage_slug,
-                progress=0,
-                note=None,
-            )
-            emit_event(
-                RunStageStateChanged(
-                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_RETRY
-                )
-            )
-
-    return wrapper
-
-
 @app.task(
     name="run.build_structure",
     autoretry_for=(Exception,),
-    on_failure=error_handler(Building, "BUILDING"),
-    on_retry=retry_handler(Building, "BUILDING"),
+    on_failure=run_stage_error_handler(Building, "BUILDING"),
+    on_retry=run_stage_retry_handler(Building, "BUILDING"),
     bind=True,
 )
 def build_structure(self, sample_id):
@@ -312,8 +241,8 @@ def build_structure(self, sample_id):
     bind=True,
     name="run.export_structure_views",
     autoretry_for=(Exception,),
-    on_failure=error_handler(ExportingContent, "EXPORTING_CONTENT"),
-    on_retry=retry_handler(ExportingContent, "EXPORTING_CONTENT"),
+    on_failure=run_stage_error_handler(ExportingContent, "EXPORTING_CONTENT"),
+    on_retry=run_stage_retry_handler(ExportingContent, "EXPORTING_CONTENT"),
 )
 def export_structure_views(self, sample_id):
     admin_api_client = Client(

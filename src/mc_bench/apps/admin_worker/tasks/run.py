@@ -22,6 +22,7 @@ from mc_bench.models.run import (
 from mc_bench.util.object_store import get_client
 from mc_bench.util.postgres import managed_session
 from mc_bench.util.text import parse_known_parts
+from mc_bench.worker import run_stage_error_handler, run_stage_retry_handler
 
 from ..app import app
 from ..config import settings
@@ -37,6 +38,8 @@ MOCK_SCRIPT = os.path.join(ADMIN_WORKER_DIR, "js_scripts", "mockScript.js")
     autoretry_for=(Exception,),
     retry_backoff=5,
     max_retries=5,
+    on_failure=run_stage_error_handler(PromptExecution, "PROMPT_EXECUTION"),
+    on_retry=run_stage_retry_handler(PromptExecution, "PROMPT_EXECUTION"),
 )
 def execute_prompt(
     run_id,
@@ -81,7 +84,12 @@ def execute_prompt(
     return sample_id
 
 
-@app.task(name="run.parse_prompt", bind=True)
+@app.task(
+    name="run.parse_prompt",
+    bind=True,
+    error_handler=run_stage_error_handler(ResponseParsing, "RESPONSE_PARSING"),
+    retry_handler=run_stage_retry_handler(ResponseParsing, "RESPONSE_PARSING"),
+)
 def parse_prompt(
     self,
     sample_id,
@@ -154,7 +162,12 @@ def parse_prompt(
         return sample_id
 
 
-@app.task(name="run.code_validation", bind=True)
+@app.task(
+    name="run.code_validation",
+    bind=True,
+    error_handler=run_stage_error_handler(CodeValidation, "CODE_VALIDATION"),
+    retry_handler=run_stage_retry_handler(CodeValidation, "CODE_VALIDATION"),
+)
 def code_validation(self, sample_id):
     with managed_session() as db:
         sample = db.scalar(select(Sample).where(Sample.id == sample_id))
@@ -210,7 +223,11 @@ def code_validation(self, sample_id):
             return sample_id
 
 
-@app.task(name="run.post_processing")
+@app.task(
+    name="run.post_processing",
+    error_handler=run_stage_error_handler(PostProcessing, "POST_PROCESSING"),
+    retry_handler=run_stage_retry_handler(PostProcessing, "POST_PROCESSING"),
+)
 def post_process_build(sample_id):
     if sample_id is None:
         raise RuntimeError("sample_id is required")
@@ -239,7 +256,11 @@ def post_process_build(sample_id):
         return sample_id
 
 
-@app.task(name="run.sample_prep")
+@app.task(
+    name="run.sample_prep",
+    error_handler=run_stage_error_handler(PreparingSample, "PREPARING_SAMPLE"),
+    retry_handler=run_stage_retry_handler(PreparingSample, "PREPARING_SAMPLE"),
+)
 def prepare_sample(sample_id):
     if sample_id is None:
         raise RuntimeError("sample_id is required")
@@ -270,30 +291,30 @@ def prepare_sample(sample_id):
         render_artifact_spec = sample.comparison_artifact_spec(db)
         for key in ["rendered_model_glb"]:
             with tempfile.TemporaryDirectory() as tmp_dir:
-                artifact_bytes = artifact.download_artifact()
-                with open(os.path.join(tmp_dir, "artifact.glb"), "wb") as f:
-                    f.write(artifact_bytes.getvalue())
-
-                object_client.fput_object(
-                    bucket_name=settings.EXTERNAL_OBJECT_BUCKET,
-                    object_name=render_artifact_spec[key]["object_prototype"]
-                    .materialize(**render_artifact_spec[key]["object_parts"])
-                    .get_path(),
-                    file_path=os.path.join(tmp_dir, "artifact.glb"),
+                artifact.download_contents_to_filepath(
+                    client=object_client,
+                    filepath=os.path.join(tmp_dir, "artifact.glb"),
                 )
 
-        for key, spec in render_artifact_spec.items():
-            artifact = Artifact(
-                kind=spec["artifact_kind"],
-                run_id=run_id,
-                sample_id=sample_id,
-                bucket=settings.EXTERNAL_OBJECT_BUCKET,
-                key=spec["object_prototype"]
-                .materialize(**spec["object_parts"])
-                .get_path(),
-            )
-            db.add(artifact)
-        db.commit()
+                object_key = (
+                    render_artifact_spec[key]["object_prototype"]
+                    .materialize(**render_artifact_spec[key]["object_parts"])
+                    .get_path()
+                )
+
+                sample_artifact = Artifact(
+                    kind=render_artifact_spec[key]["artifact_kind"],
+                    run_id=run_id,
+                    sample_id=sample_id,
+                    bucket=settings.EXTERNAL_OBJECT_BUCKET,
+                    key=object_key,
+                )
+
+                sample_artifact.upload_contents_from_filepath(
+                    client=object_client,
+                    filepath=os.path.join(tmp_dir, "artifact.glb"),
+                )
+                db.add(sample_artifact)
 
         emit_event(
             RunStageStateChanged(

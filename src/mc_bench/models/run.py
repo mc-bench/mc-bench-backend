@@ -510,6 +510,26 @@ class Artifact(Base):
             object_name=self.key,
         )
 
+    def download_contents_to_filepath(self, client=None, filepath=None):
+        if client is None:
+            client = get_client()
+
+        return client.fget_object(
+            bucket_name=self.bucket,
+            object_name=self.key,
+            file_path=filepath,
+        )
+
+    def upload_contents_from_filepath(self, client=None, filepath=None):
+        if client is None:
+            client = get_client()
+
+        return client.fput_object(
+            bucket_name=self.bucket,
+            object_name=self.key,
+            file_path=filepath,
+        )
+
 
 class ArtifactKind(Base):
     __table__ = schema.sample.artifact_kind
