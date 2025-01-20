@@ -163,7 +163,8 @@ INSERT INTO specification.prompt (id, created_by, name, build_specification, act
 
 INSERT INTO auth.user (username)
 VALUES
-    ('huntcsg');
+    ('huntcsg'),
+    ('Isaac');
 
 WITH auth_provider as (
     select
@@ -179,6 +180,12 @@ VALUES
      6245448,
      (select id from auth.user where username = 'huntcsg'),
      '720dba52a94493d495a3a8fcd668388a44a98e2bba5685ef6f339933fdd72e53'
+    ),
+    (
+     (select id from auth.auth_provider where name = 'github'),
+     147355120,
+     (select id from auth.user where username = 'IsaacGemal'),
+     'f89ba90d514fbeefd5d2115b3f49fd7520480d9f94937a1e4794598aa124450a'
     );
 
 INSERT INTO auth.user_role (created_by, user_id, role_id)
@@ -190,6 +197,7 @@ FROM
     auth.user
 WHERE
     username in (
-        'huntcsg'
+        'huntcsg',
+        'Isaac'
     )
 ON CONFLICT DO NOTHING;
