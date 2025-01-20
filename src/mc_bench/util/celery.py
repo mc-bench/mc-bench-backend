@@ -21,6 +21,8 @@ DEFAULT_WORKER_CONF = dict(
     worker_prefetch_multiplier=1,
     # experimental to maybe avoid memory leaks
     worker_max_tasks_per_child=16,
+    # We want to make sure to retry connection to the broker on startup
+    broker_connection_retry_on_startup=True,
 )
 
 DEFAULT_CLIENT_CONF = dict()

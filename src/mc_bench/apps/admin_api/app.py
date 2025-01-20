@@ -8,6 +8,7 @@ from mc_bench.apps.admin_api.routers.generations import generation_router
 from mc_bench.apps.admin_api.routers.models import model_router
 from mc_bench.apps.admin_api.routers.prompts import prompt_router
 from mc_bench.apps.admin_api.routers.runs import run_router
+from mc_bench.apps.admin_api.routers.samples import sample_router
 from mc_bench.apps.admin_api.routers.templates import template_router
 
 from .lifespan import lifespan
@@ -27,6 +28,7 @@ app.include_router(prompt_router)
 app.include_router(model_router)
 app.include_router(generation_router)
 app.include_router(run_router)
+app.include_router(sample_router)
 
 
 @app.get("/scalar", include_in_schema=False)

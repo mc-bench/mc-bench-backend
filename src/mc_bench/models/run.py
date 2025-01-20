@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import datetime
 import os
 from typing import Dict, List, Optional
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Mapped, object_session, relationship
+from sqlalchemy.orm import Mapped, declared_attr, object_session, relationship
 
 import mc_bench.schema.postgres as schema
 from mc_bench.constants import GENERATION_STATE, RUN_STAGE_STATE, RUN_STATE, STAGE
@@ -20,6 +22,7 @@ from mc_bench.util.object_store import (
 from mc_bench.util.uuid import uuid_from_ints
 
 from ._base import Base
+from .log import Log
 
 _run_state_cache: Dict[RUN_STATE, int] = {}
 _generation_state_cache: Dict[RUN_STATE, int] = {}
@@ -81,7 +84,7 @@ class Run(Base):
     state: Mapped["RunState"] = relationship("RunState", uselist=False)
 
     samples: Mapped[List["Sample"]] = relationship(
-        "Sample", uselist=True, back_populates="run"
+        "Sample", uselist=True, back_populates="run", order_by="Sample.created"
     )
     artifacts: Mapped[List["Artifact"]] = relationship(
         "Artifact", uselist=True, back_populates="run"
@@ -206,6 +209,10 @@ class Run(Base):
         return uuid_from_ints(template_id, prompt_id)
 
 
+class SampleApprovalState(Base):
+    __table__ = schema.scoring.sample_approval_state
+
+
 class Sample(Base):
     __table__ = schema.sample.sample
 
@@ -213,20 +220,61 @@ class Sample(Base):
     artifacts: Mapped[List["Artifact"]] = relationship(
         "Artifact", uselist=True, back_populates="sample"
     )
+    user: Mapped["User"] = relationship(  # noqa: F821
+        "User", lazy="joined", foreign_keys=[schema.sample.sample.c.created_by]
+    )
 
-    def to_dict(self):
+    approval_state: Mapped["SampleApprovalState"] = relationship(
+        "SampleApprovalState", lazy="joined"
+    )
+
+    logs: Mapped[List["Log"]] = relationship(
+        "Log",
+        uselist=True,
+        secondary=schema.research.sample_log,
+        back_populates="sample",
+    )
+
+    def to_dict(
+        self,
+        include_logs=False,
+        include_run=False,
+        include_run_detail=False,
+        include_artifacts=False,
+    ):
         ret = {
             "id": self.external_id,
             "created": self.created,
+            "created_by": self.user.username,
             "result_inspiration_text": self.result_inspiration_text,
             "result_description_text": self.result_description_text,
             "result_code_text": self.result_code_text,
             "raw": self.raw,
             "active": self.active,
+            "approval_state": self.approval_state.name if self.approval_state else None,
+            "is_complete": self.is_complete,
+            "is_pending": self.is_pending,
         }
+
+        if include_logs:
+            ret["logs"] = [log.to_dict() for log in self.logs]
+
+        if include_artifacts:
+            ret["artifacts"] = [artifact.to_dict() for artifact in self.artifacts]
 
         if self.last_modified is not None:
             ret["last_modified"] = self.last_modified
+
+        if include_run:
+            ret["run"] = {
+                "model": {"slug": self.run.model.slug},
+                "prompt": {"name": self.run.prompt.name},
+                "template": {"name": self.run.template.name},
+            }
+        elif include_run_detail:
+            ret["run"] = self.run.to_dict(
+                include_samples=False, include_artifacts=False, include_stages=False
+            )
 
         return ret
 
@@ -621,7 +669,13 @@ class RunStage(Base):
     run: Mapped["Run"] = relationship("Run", back_populates="stages")
     state: Mapped["RunStageState"] = relationship("RunStageState", uselist=False)
 
-    __mapper_args__ = {"polymorphic_on": "stage_slug"}
+    @declared_attr
+    def __mapper_args__(cls):
+        # For the base class
+        if cls.__name__ == "RunStage":
+            return {"polymorphic_on": "stage_slug"}
+        # For subclasses
+        return {"polymorphic_identity": cls.SLUG}
 
     def to_dict(self, db=None, redis=None):
         db = object_session(self)
@@ -679,24 +733,25 @@ class RunStage(Base):
 
 
 class PromptExecution(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "PROMPT_EXECUTION",
-    }
+    SLUG = "PROMPT_EXECUTION"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "admin"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
-            kwargs["args"] = [self.run_id]
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": None,
+                }
+            ]
 
         return app.signature("run.execute_prompt", **kwargs)
 
 
 class ResponseParsing(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "RESPONSE_PARSING",
-    }
+    SLUG = "RESPONSE_PARSING"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
@@ -704,16 +759,18 @@ class ResponseParsing(RunStage):
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
-            print(f"Setting sample_id: {sample_id}")
-            kwargs["args"] = [sample_id]
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": sample_id,
+                }
+            ]
 
         return app.signature("run.parse_prompt", **kwargs)
 
 
 class CodeValidation(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "CODE_VALIDATION",
-    }
+    SLUG = "CODE_VALIDATION"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
@@ -721,16 +778,18 @@ class CodeValidation(RunStage):
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
-            print(f"Setting sample_id: {sample_id}")
-            kwargs["args"] = [sample_id]
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": sample_id,
+                }
+            ]
 
         return app.signature("run.code_validation", **kwargs)
 
 
 class Building(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "BUILDING",
-    }
+    SLUG = "BUILDING"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
@@ -738,16 +797,18 @@ class Building(RunStage):
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
-            print(f"Setting sample_id: {sample_id}")
-            kwargs["args"] = [sample_id]
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": sample_id,
+                }
+            ]
 
         return app.signature("run.build_structure", **kwargs)
 
 
 class ExportingContent(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "EXPORTING_CONTENT",
-    }
+    SLUG = "EXPORTING_CONTENT"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
@@ -755,16 +816,18 @@ class ExportingContent(RunStage):
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
-            print(f"Setting sample_id: {sample_id}")
-            kwargs["args"] = [sample_id]
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": sample_id,
+                }
+            ]
 
         return app.signature("run.export_structure_views", **kwargs)
 
 
 class PostProcessing(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "POST_PROCESSING",
-    }
+    SLUG = "POST_PROCESSING"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
@@ -772,16 +835,18 @@ class PostProcessing(RunStage):
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
-            print(f"Setting sample_id: {sample_id}")
-            kwargs["args"] = [sample_id]
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": sample_id,
+                }
+            ]
 
         return app.signature("run.post_processing", **kwargs)
 
 
 class PreparingSample(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "PREPARING_SAMPLE",
-    }
+    SLUG = "PREPARING_SAMPLE"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
@@ -789,22 +854,30 @@ class PreparingSample(RunStage):
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
-            print(f"Setting sample_id: {sample_id}")
-            kwargs["args"] = [sample_id]
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": sample_id,
+                }
+            ]
 
-        return app.signature("run.sample_prep", **kwargs)
+        return app.signature("run.prepare_sample", **kwargs)
 
 
 class RenderingSample(RunStage):
-    __mapper_args__ = {
-        "polymorphic_identity": "RENDERING_SAMPLE",
-    }
+    SLUG = "RENDERING_SAMPLE"
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "render"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
-            kwargs["args"] = [self.sample_id]
+            sample_id = self.run.samples[-1].id
+            kwargs["args"] = [
+                {
+                    "run_id": self.run.id,
+                    "sample_id": sample_id,
+                }
+            ]
 
         return app.signature("run.render_sample", **kwargs)

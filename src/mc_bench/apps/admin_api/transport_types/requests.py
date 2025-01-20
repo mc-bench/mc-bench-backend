@@ -1,5 +1,6 @@
 import uuid
-from typing import Any, Dict, List, Optional
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -68,3 +69,32 @@ class StageProgress(Base):
     stage: str
     progress: float
     note: Optional[str] = None
+
+
+class PagingRequest(Base):
+    page: int = 1
+    page_size: int = 50
+    sort_by: Optional[str] = None
+    sort_direction: Optional[str] = "asc"
+
+
+class SampleApprovalState(str, Enum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+
+
+class SampleFilterRequest(Base):
+    model_id: Optional[Union[uuid.UUID, List[uuid.UUID]]] = None
+    template_id: Optional[Union[uuid.UUID, List[uuid.UUID]]] = None
+    prompt_id: Optional[Union[uuid.UUID, List[uuid.UUID]]] = None
+    run_id: Optional[Union[uuid.UUID, List[uuid.UUID]]] = None
+    approval_state: Optional[Union[SampleApprovalState, List[SampleApprovalState]]] = (
+        None
+    )
+    pending: Optional[bool] = None
+    complete: Optional[bool] = None
+
+
+class SampleActionRequest(Base):
+    note: str

@@ -24,3 +24,11 @@ class PERM:
         WRITE = "run:write"
         ADMIN = "run:admin"
         PROGRESS_WRITE = "run:progress:write"
+
+    class SAMPLE:
+        READ = "sample:read"
+        REVIEW = "sample:review"
+        ADMIN = "sample:admin"
+
+    class VOTING:
+        ADMIN = "voting:admin"

@@ -1,4 +1,4 @@
-from . import auth, sample, scoring, specification
+from . import auth, research, sample, scoring, specification
 from ._metadata import metadata
 
 __all__ = [
@@ -7,4 +7,5 @@ __all__ = [
     "sample",
     "specification",
     "scoring",
+    "research",
 ]

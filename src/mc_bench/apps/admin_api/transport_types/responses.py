@@ -1,8 +1,20 @@
 import datetime
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generic, List, Literal, Optional, TypeVar
 
 from .generic import Base
+
+# Define the generic type variable
+T = TypeVar("T")
+
+
+class LogResponse(Base):
+    id: uuid.UUID
+    created: datetime.datetime
+    created_by: str
+    note: str
+    kind: str
+    action: str
 
 
 class RunBaseResponse(Base):
@@ -42,15 +54,22 @@ class RunDetailResponse(RunBaseResponse):
     stages: List["RunStageResponse"]
 
 
-class SampleResponse(Base):
-    id: uuid.UUID
-    created: datetime.datetime
-    result_inspiration_text: Optional[str] = None
-    result_description_text: Optional[str] = None
-    result_code_text: Optional[str] = None
-    raw: Optional[str] = None
-    last_modified: Optional[datetime.datetime] = None
-    last_modified_by: Optional[str] = None
+class ModelInfo(Base):
+    slug: str
+
+
+class PromptInfo(Base):
+    name: str
+
+
+class TemplateInfo(Base):
+    name: str
+
+
+class RunInfo(Base):
+    model: "ModelInfo"
+    prompt: "PromptInfo"
+    template: "TemplateInfo"
 
 
 class ArtifactResponse(Base):
@@ -59,6 +78,28 @@ class ArtifactResponse(Base):
     kind: str
     bucket: str
     key: str
+
+
+class SampleResponse(Base):
+    id: uuid.UUID
+    created: datetime.datetime
+    created_by: str
+    result_inspiration_text: Optional[str] = None
+    result_description_text: Optional[str] = None
+    result_code_text: Optional[str] = None
+    raw: Optional[str] = None
+    last_modified: Optional[datetime.datetime] = None
+    last_modified_by: Optional[str] = None
+    is_pending: bool
+    is_complete: bool
+    approval_state: Optional[Literal["APPROVED", "REJECTED", None]] = None
+    run: Optional[RunInfo] = None
+
+
+class SampleDetailResponse(SampleResponse):
+    logs: List[LogResponse]
+    artifacts: List[ArtifactResponse]
+    run: RunBaseResponse
 
 
 class GenerationBaseResponse(Base):
@@ -178,3 +219,17 @@ class TemplateDetailResponse(TemplateBaseResponse):
 
 class RunRetryResponse(Base):
     pass
+
+
+class PagingResponse(Base):
+    page: int
+    page_size: int
+    total_pages: int
+    total_items: int
+    has_next: bool
+    has_previous: bool
+
+
+class PagedListResponse(Base, Generic[T]):
+    data: List[T]
+    paging: PagingResponse

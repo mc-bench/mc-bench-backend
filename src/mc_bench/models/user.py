@@ -35,18 +35,6 @@ class Role(Base):
     )
 
 
-class UserRole(Base):
-    __table__ = schema.auth.user_role
-
-    grantor: Mapped["User"] = relationship(
-        uselist=False, foreign_keys=[__table__.c.created_by]
-    )
-    user: Mapped["User"] = relationship(
-        uselist=False, foreign_keys=[__table__.c.user_id]
-    )
-    role: Mapped["Role"] = relationship(uselist=False)
-
-
 class Permission(Base):
     __table__ = schema.auth.permission
 

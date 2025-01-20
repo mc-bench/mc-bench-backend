@@ -3,12 +3,6 @@ import os
 import time
 from io import BytesIO
 
-from sqlalchemy import select
-
-from mc_bench.clients.mcbench_admin_api import Client
-from mc_bench.constants import RUN_STAGE_STATE
-from mc_bench.events import emit_event
-from mc_bench.events.types import RunStageStateChanged
 from mc_bench.minecraft.server import (
     calculate_expected_frames,
     cleanup,
@@ -24,13 +18,10 @@ from mc_bench.models.run import (
     Artifact,
     Building,
     ExportingContent,
-    Run,
-    Sample,
 )
 from mc_bench.util.docker import wait_for_containers
 from mc_bench.util.object_store import get_client
-from mc_bench.util.postgres import managed_session
-from mc_bench.worker import run_stage_error_handler, run_stage_retry_handler
+from mc_bench.worker.run_stage import StageContext, run_stage_task
 
 from ..app import app
 from ..config import settings
@@ -49,50 +40,34 @@ def _get_builder_image() -> str:
     )
 
 
-@app.task(
+@run_stage_task(
     name="run.build_structure",
-    autoretry_for=(Exception,),
-    on_failure=run_stage_error_handler(Building, "BUILDING"),
-    on_retry=run_stage_retry_handler(Building, "BUILDING"),
-    bind=True,
+    app=app,
+    stage=Building,
+    max_retries=0,
+    retry_on_failure=False,
+    restart_run_on_failure=False,
 )
-def build_structure(self, sample_id):
-    if sample_id is None:
-        raise RuntimeError("sample_id is required")
+def build_structure(stage_context: StageContext):
+    sample = stage_context.sample
+    run = stage_context.run
+    minecraft_version = run.template.minecraft_version
+    code = sample.result_code_text
+    sample_id = sample.id
+    run_id = run.id
 
-    admin_api_client = Client(
-        token=self.request.headers["token"],
+    suffix = f"{stage_context.task_id}-{int(time.time())}"
+    network_name = create_network(suffix)
+    structure_name = f"sample_{sample_id}"
+
+    file_spec = sample.build_artifact_spec(
+        db=stage_context.db,
+        structure_name=structure_name,
     )
 
-    with managed_session() as db:
-        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-        run = db.scalar(select(Run).where(Run.id == sample.run_id))
-        minecraft_version = run.template.minecraft_version
-        code = sample.result_code_text
-        sample_id = sample.id
-        run_id = run.id
-        run_external_id = run.external_id
-        run_stage = db.scalar(select(Building).where(Building.run_id == run.id))
-        run_stage_id = run_stage.id
-
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
-            )
-        )
-
-        suffix = f"{self.request.id}-{int(time.time())}"
-        network_name = create_network(suffix)
-        structure_name = f"sample_{sample_id}"
-
-        file_spec = sample.build_artifact_spec(
-            db=db,
-            structure_name=structure_name,
-        )
-
-        build_script = build_template.replace(
-            "async function buildCreation(startX, startY, startZ) {}", code
-        )
+    build_script = build_template.replace(
+        "async function buildCreation(startX, startY, startZ) {}", code
+    )
 
     volume = create_volume(build_script)
 
@@ -101,9 +76,7 @@ def build_structure(self, sample_id):
     server_id = None
 
     try:
-        admin_api_client.update_stage_progress(
-            run_external_id=run_external_id,
-            stage="BUILDING",
+        stage_context.update_stage_progress(
             progress=0,
             note="starting ephemeral minecraft server",
         )
@@ -126,9 +99,7 @@ def build_structure(self, sample_id):
 
         wait_for_server(server_id)
 
-        admin_api_client.update_stage_progress(
-            run_external_id=run_external_id,
-            stage="BUILDING",
+        stage_context.update_stage_progress(
             progress=0,
             note="starting the build",
         )
@@ -166,16 +137,12 @@ def build_structure(self, sample_id):
                     build_command_count += 1
 
                 if build_command_count % 50 == 0:
-                    admin_api_client.update_stage_progress(
-                        run_external_id=run_external_id,
-                        stage="BUILDING",
+                    stage_context.update_stage_progress(
                         progress=0,
                         note=f"building... ({build_command_count} build commands executed)",
                     )
 
-        admin_api_client.update_stage_progress(
-            run_external_id=run_external_id,
-            stage="BUILDING",
+        stage_context.update_stage_progress(
             progress=0.9,
             note="build complete, uploading artifacts",
         )
@@ -190,7 +157,6 @@ def build_structure(self, sample_id):
                 container_path=file_spec[file_key]["container_path"],
                 host_path=file_spec[file_key]["host_path_directory"],
             )
-
     finally:
         cleanup(network_name, server_id, builder_id, volume)
 
@@ -217,104 +183,65 @@ def build_structure(self, sample_id):
         length=len(build_script.encode("utf-8")),
     )
 
-    with managed_session() as db:
-        for file_key, spec in file_spec.items():
-            artifact = Artifact(
-                kind=spec["artifact_kind"],
-                run_id=run_id,
-                sample_id=sample_id,
-                bucket=settings.INTERNAL_OBJECT_BUCKET,
-                key=spec["object_prototype"]
-                .materialize(**spec["object_parts"])
-                .get_path(),
-            )
-            db.add(artifact)
-        db.commit()
+    for file_key, spec in file_spec.items():
+        artifact = Artifact(
+            kind=spec["artifact_kind"],
+            run_id=run_id,
+            sample_id=sample_id,
+            bucket=settings.INTERNAL_OBJECT_BUCKET,
+            key=spec["object_prototype"].materialize(**spec["object_parts"]).get_path(),
+        )
+        stage_context.db.add(artifact)
+    stage_context.db.commit()
 
-    emit_event(
-        RunStageStateChanged(stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED)
-    )
-    return sample_id
+    return stage_context.run_id, stage_context.sample.id
 
 
-@app.task(
-    bind=True,
+@run_stage_task(
     name="run.export_structure_views",
-    autoretry_for=(Exception,),
-    on_failure=run_stage_error_handler(ExportingContent, "EXPORTING_CONTENT"),
-    on_retry=run_stage_retry_handler(ExportingContent, "EXPORTING_CONTENT"),
+    app=app,
+    stage=ExportingContent,
+    max_retries=0,
+    retry_on_failure=False,
+    restart_run_on_failure=False,
 )
-def export_structure_views(self, sample_id):
-    admin_api_client = Client(
-        token=self.request.headers["token"],
+def export_structure_views(stage_context: StageContext):
+    sample = stage_context.sample
+    run = stage_context.run
+    minecraft_version = run.template.minecraft_version
+    sample_id = sample.id
+    run_id = run.id
+    command_list_artifact = sample.get_command_list_artifact()
+    summary_artifact = sample.get_build_summary_artifact()
+
+    structure_name = f"sample_{sample_id}"
+
+    command_list = json.loads(
+        command_list_artifact.download_artifact().getvalue().decode("utf-8")
     )
 
-    if sample_id is None:
-        raise RuntimeError("sample_id is required")
+    file_spec = sample.export_artifact_spec(stage_context.db, structure_name)
 
-    time.sleep(15)
+    stage_context.update_stage_progress(
+        progress=0,
+        note="generating build script",
+    )
 
-    with managed_session() as db:
-        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-        run = db.scalar(select(Run).where(Run.id == sample.run_id))
-        minecraft_version = run.template.minecraft_version
-        sample_id = sample.id
-        run_id = run.id
-        run_external_id = run.external_id
-        command_list_artifact = sample.get_command_list_artifact()
-        summary_artifact = sample.get_build_summary_artifact()
-        run_stage = db.scalar(
-            select(ExportingContent).where(ExportingContent.run_id == run_id)
-        )
-
-        structure_name = f"sample_{sample_id}"
-
-        run_stage_id = run_stage.id
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+    export_script = export_template.replace(
+        "const summary = {}",
+        f'const summary = {json.dumps(
+            json.loads(
+                summary_artifact.download_artifact().getvalue().decode("utf-8")
             )
-        )
+        )}',
+    ).replace(
+        "const commandList = []", f"const commandList = {json.dumps(command_list)}"
+    )
 
-        command_list = json.loads(
-            command_list_artifact.download_artifact().getvalue().decode("utf-8")
-        )
+    if not settings.EXPORT_STRUCTURE_VIEWS:
+        return stage_context.run_id, stage_context.sample_id
 
-        file_spec = sample.export_artifact_spec(db, structure_name)
-
-        admin_api_client.update_stage_progress(
-            run_external_id=run_external_id,
-            stage="EXPORTING_CONTENT",
-            progress=0,
-            note="generating build script",
-        )
-
-        export_script = export_template.replace(
-            "const summary = {}",
-            f'const summary = {json.dumps(
-                json.loads(
-                    summary_artifact.download_artifact().getvalue().decode("utf-8")
-                )
-            )}',
-        ).replace(
-            "const commandList = []", f"const commandList = {json.dumps(command_list)}"
-        )
-
-        if not settings.EXPORT_STRUCTURE_VIEWS:
-            run_stage = db.scalar(
-                select(ExportingContent).where(ExportingContent.run_id == run_id)
-            )
-
-            run_stage_id = run_stage.id
-
-            emit_event(
-                RunStageStateChanged(
-                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
-                )
-            )
-            return sample_id
-
-    suffix = f"{self.request.id}-{int(time.time())}"
+    suffix = f"{stage_context.task_id}-{int(time.time())}"
     network_name = create_network(suffix)
 
     volume = create_volume(export_script)
@@ -324,9 +251,7 @@ def export_structure_views(self, sample_id):
     server_id = None
 
     try:
-        admin_api_client.update_stage_progress(
-            run_external_id=run_external_id,
-            stage="EXPORTING_CONTENT",
+        stage_context.update_stage_progress(
             progress=0,
             note="starting ephemeral minecraft server",
         )
@@ -350,9 +275,7 @@ def export_structure_views(self, sample_id):
 
         wait_for_server(server_id)
 
-        admin_api_client.update_stage_progress(
-            run_external_id=run_external_id,
-            stage="EXPORTING_CONTENT",
+        stage_context.update_stage_progress(
             progress=progress,
             note="starting build",
         )
@@ -392,18 +315,14 @@ def export_structure_views(self, sample_id):
                 if frame_count_data:
                     frame_count = int(frame_count_data.strip())
                     progress = frame_count / expected_frame_count
-                    admin_api_client.update_stage_progress(
-                        run_external_id=run_external_id,
-                        stage="EXPORTING_CONTENT",
+                    stage_context.update_stage_progress(
                         progress=progress,
                         note=f"exporting cinematic frames (~{frame_count}/{expected_frame_count})",
                     )
 
             print(f"{container_name}({container_id}): {decoded_log_line}")
 
-        admin_api_client.update_stage_progress(
-            run_external_id=run_external_id,
-            stage="EXPORTING_CONTENT",
+        stage_context.update_stage_progress(
             progress=progress,
             note="uploading content",
         )
@@ -453,31 +372,20 @@ def export_structure_views(self, sample_id):
             ),
         )
 
-    with managed_session() as db:
-        for key, spec in file_spec.items():
-            artifact = Artifact(
-                kind=spec["artifact_kind"],
-                run_id=run_id,
-                sample_id=sample_id,
-                bucket=settings.INTERNAL_OBJECT_BUCKET,
-                key=spec["object_prototype"]
-                .materialize(**spec["object_parts"])
-                .get_path(),
-            )
-            db.add(artifact)
-
-        db.commit()
-
-        run_stage = db.scalar(
-            select(ExportingContent).where(ExportingContent.run_id == run_id)
+    for key, spec in file_spec.items():
+        artifact = Artifact(
+            kind=spec["artifact_kind"],
+            run_id=run_id,
+            sample_id=sample_id,
+            bucket=settings.INTERNAL_OBJECT_BUCKET,
+            key=spec["object_prototype"].materialize(**spec["object_parts"]).get_path(),
         )
+        stage_context.db.add(artifact)
 
-        run_stage_id = run_stage.id
+    run_id = stage_context.run_id
+    sample_id = stage_context.sample.id
 
-    emit_event(
-        RunStageStateChanged(stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED)
-    )
-    return sample_id
+    return run_id, sample_id
 
 
 def get_frames_per_command(num_commands: int) -> int:

@@ -58,13 +58,22 @@ def get_comparison_batch(
 
     sample_ids = db.execute(
         sqlalchemy.text("""\
-        WITH correlation_ids AS (
+        WITH approval_state AS (
+            SELECT
+                id approved_state_id
+            FROM
+                scoring.sample_approval_state
+            WHERE
+                name = 'APPROVED'
+        ),
+        correlation_ids AS (
             SELECT
                 comparison_correlation_id id
             FROM
                 sample.sample
+                cross join approval_state
             WHERE
-                active = true
+                sample.approval_state_id = approval_state.approved_state_id
             GROUP BY
                 comparison_correlation_id
             HAVING
@@ -84,9 +93,10 @@ def get_comparison_batch(
                     sample.comparison_correlation_id
                 FROM 
                     sample.sample
-                WHERE 
-                    active = true
-                    AND comparison_correlation_id = correlation_ids.id
+                    cross join approval_state
+                WHERE
+                    sample.approval_state_id = approval_state.approved_state_id
+                    AND sample.comparison_correlation_id = correlation_ids.id
                 ORDER BY 
                     random()
                 LIMIT 1
@@ -97,10 +107,11 @@ def get_comparison_batch(
                     sample.comparison_correlation_id
                 FROM 
                     sample.sample
+                    cross join approval_state
                 WHERE 
-                    active = true
-                    AND comparison_correlation_id = correlation_ids.id
-                    AND comparison_sample_id != sample_1.comparison_sample_id  -- Ensure we don't select the same sample twice
+                    sample.approval_state_id = approval_state.approved_state_id
+                    AND sample.comparison_correlation_id = correlation_ids.id
+                    AND sample.comparison_sample_id != sample_1.comparison_sample_id  -- Ensure we don't select the same sample twice
                 ORDER BY 
                     random()
                 LIMIT 1

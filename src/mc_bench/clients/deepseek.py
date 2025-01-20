@@ -6,8 +6,8 @@ import openai
 class DeepSeekClient:
     def __init__(self):
         self.client = openai.OpenAI(
-            api_key=os.environ["DEEPSEEK_API_KEY"], 
-            base_url="https://api.deepseek.com/v1"
+            api_key=os.environ["DEEPSEEK_API_KEY"],
+            base_url="https://api.deepseek.com/v1",
         )
 
     def send_prompt(self, **kwargs):
@@ -27,5 +27,5 @@ class DeepSeekClient:
         try:
             chat_completion = self.client.chat.completions.create(**kwargs)
             return chat_completion.choices[0].message.content
-        except Exception as e:  
+        except Exception as e:
             raise Exception(f"Error calling DeepSeek API: {str(e)}")

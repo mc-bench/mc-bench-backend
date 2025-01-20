@@ -33,6 +33,8 @@ from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_database
 
+from ..celery import celery as celery_app
+
 run_router = APIRouter()
 
 am = AuthManager(
@@ -131,6 +133,7 @@ def task_retry(
     task_retry_request: TaskRetryRequest,
     external_id: str,
     db: Session = Depends(get_managed_session),
+    redis: StrictRedis = Depends(get_redis_database(RedisDatabase.CACHE)),
 ):
     run = (
         db.query(Run)
@@ -181,10 +184,11 @@ def task_retry(
 
         chained_items = []
         for stage in stages_to_retry:
+            stage.set_progress(redis, 0, None)
             if not chained_items:
                 chained_items.append(
                     stage.get_task_signature(
-                        app=celery,
+                        app=celery_app,
                         progress_token=progress_token,
                         pass_args=True,
                     )
@@ -192,7 +196,7 @@ def task_retry(
             else:
                 chained_items.append(
                     stage.get_task_signature(
-                        app=celery,
+                        app=celery_app,
                         progress_token=progress_token,
                         pass_args=False,
                     )
@@ -204,23 +208,24 @@ def task_retry(
                 )
             )
 
-        if generation_id is not None:
-            chained_items.append(
-                celery.signature(
-                    "generation.finalize_generation",
-                    args=[generation_id],
-                    queue="admin",
-                    immutable=True,
-                )
-            )
+        # TODO: This is a hack to not set sample pending if we are about to generate a new sample
+        if run.samples and task_name != "PROMPT_EXECUTION":
+            sample = run.samples[-1]
+            sample.is_pending = True
+            sample.is_complete = False
+            db.add(sample)
+            db.commit()
 
+        tasks = celery.chain(*chained_items)
+
+        if generation_id is not None:
             emit_event(
                 GenerationStateChanged(
                     generation_id=generation_id, new_state=GENERATION_STATE.IN_RETRY
                 )
             )
 
-        celery.chain(*chained_items).apply_async()
+        tasks.apply_async()
         return {}
     else:
         raise HTTPException(

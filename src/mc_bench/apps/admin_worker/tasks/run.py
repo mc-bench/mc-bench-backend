@@ -1,14 +1,7 @@
 import os
 import subprocess
 import tempfile
-import time
 
-from sqlalchemy import select
-
-from mc_bench.clients.mcbench_admin_api import Client
-from mc_bench.constants import RUN_STAGE_STATE, RUN_STATE
-from mc_bench.events import emit_event
-from mc_bench.events.types import RunStageStateChanged, RunStateChanged
 from mc_bench.models.run import (
     Artifact,
     CodeValidation,
@@ -16,13 +9,11 @@ from mc_bench.models.run import (
     PreparingSample,
     PromptExecution,
     ResponseParsing,
-    Run,
     Sample,
 )
 from mc_bench.util.object_store import get_client
-from mc_bench.util.postgres import managed_session
 from mc_bench.util.text import parse_known_parts
-from mc_bench.worker import run_stage_error_handler, run_stage_retry_handler
+from mc_bench.worker.run_stage import StageContext, run_stage_task
 
 from ..app import app
 from ..config import settings
@@ -33,153 +24,100 @@ ESLINT_CONFIG = os.path.join(ADMIN_WORKER_DIR, "script-eslintrc.js")
 MOCK_SCRIPT = os.path.join(ADMIN_WORKER_DIR, "js_scripts", "mockScript.js")
 
 
-@app.task(
+@run_stage_task(
     name="run.execute_prompt",
-    autoretry_for=(Exception,),
-    retry_backoff=5,
+    app=app,
+    stage=PromptExecution,
     max_retries=5,
-    on_failure=run_stage_error_handler(PromptExecution, "PROMPT_EXECUTION"),
-    on_retry=run_stage_retry_handler(PromptExecution, "PROMPT_EXECUTION"),
+    retry_backoff=5,
+    retry_on_failure=True,
 )
-def execute_prompt(
-    run_id,
-):
-    with managed_session() as db:
-        run = db.scalar(select(Run).where(Run.id == run_id))
-        run_stage = db.scalar(
-            select(PromptExecution).where(PromptExecution.run_id == run_id)
+def execute_prompt(stage_context: StageContext):
+    response = stage_context.run.model.default_provider.execute_prompt(
+        prompt=stage_context.run.template.render(
+            build_specification=stage_context.run.prompt.build_specification,
         )
-
-        run_stage_id = run_stage.id
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
-            )
-        )
-
-        response = run.model.default_provider.execute_prompt(
-            prompt=run.template.render(
-                build_specification=run.prompt.build_specification,
-            )
-        )
-
-        sample_kwargs = {
-            "created_by": run.created_by,
-            "run_id": run.id,
-            "raw": response,
-            "comparison_correlation_id": run.generate_correlation_id(),
-        }
-
-        sample = Sample(**sample_kwargs)
-        db.add(sample)
-        db.commit()
-        db.refresh(sample)
-        sample_id = sample.id
-        run_stage_id = run_stage.id
-
-    emit_event(
-        RunStageStateChanged(stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED)
     )
 
-    return sample_id
+    sample_kwargs = {
+        "created_by": stage_context.run.created_by,
+        "run_id": stage_context.run.id,
+        "raw": response,
+        "comparison_correlation_id": stage_context.run.generate_correlation_id(),
+    }
+
+    sample = Sample(**sample_kwargs)
+    stage_context.db.add(sample)
+    stage_context.db.commit()
+    stage_context.db.refresh(sample)
+    sample_id = sample.id
+
+    run_id = stage_context.run_id
+
+    return run_id, sample_id
 
 
-@app.task(
+@run_stage_task(
     name="run.parse_prompt",
-    bind=True,
-    error_handler=run_stage_error_handler(ResponseParsing, "RESPONSE_PARSING"),
-    retry_handler=run_stage_retry_handler(ResponseParsing, "RESPONSE_PARSING"),
+    app=app,
+    max_retries=0,
+    stage=ResponseParsing,
+    retry_on_failure=False,
+    restart_run_on_failure=True,
 )
 def parse_prompt(
-    self,
-    sample_id,
+    stage_context: StageContext,
 ):
-    if sample_id is None:
-        raise RuntimeError("sample_id is required")
+    parsed = parse_known_parts(stage_context.sample.raw)
 
-    with managed_session() as db:
-        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-        run = db.scalar(select(Run).where(Run.id == sample.run_id))
-        run_id = run.id
-        run_external_id = run.external_id
-        num_samples = len(run.samples)
-        run_stage = db.scalar(
-            select(ResponseParsing).where(ResponseParsing.run_id == run.id)
-        )
+    if parsed.get("code"):
+        if "```" in parsed["code"]:
+            start_index = parsed["code"].find("```")
+            end_index = parsed["code"].index("```", start_index + 1)
+            code = parsed["code"][start_index:end_index]
+            code_lines = []
+            for line in code.split("\n"):
+                if "```" in line:
+                    continue
+                code_lines.append(line)
+            print("num code lines: ", len(code_lines))
+            parsed["code"] = "\n".join(code_lines)
 
-        run_stage_id = run_stage.id
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
-            )
-        )
+        stage_context.sample.result_code_text = parsed["code"].strip()
 
-        # 2. Parse Response
-        parsed = parse_known_parts(sample.raw)
+    if parsed.get("inspiration"):
+        stage_context.sample.result_inspiration_text = parsed["inspiration"].strip()
 
-        if parsed.get("code"):
-            if "```" in parsed["code"]:
-                start_index = parsed["code"].find("```")
-                end_index = parsed["code"].index("```", start_index + 1)
-                code = parsed["code"][start_index:end_index]
-                code_lines = []
-                for line in code.split("\n"):
-                    if "```" in line:
-                        continue
-                    code_lines.append(line)
-                print("num code lines: ", len(code_lines))
-                parsed["code"] = "\n".join(code_lines)
+    if parsed.get("description"):
+        stage_context.sample.result_description_text = parsed["description"].strip()
 
-            sample.result_code_text = parsed["code"].strip()
+    stage_context.db.commit()
 
-        if parsed.get("inspiration"):
-            sample.result_inspiration_text = parsed["inspiration"].strip()
+    if not all(
+        [
+            parsed.get("code"),
+            parsed.get("inspiration"),
+            parsed.get("description"),
+        ]
+    ):
+        raise RuntimeError("Prompting didn't go well")
 
-        if parsed.get("description"):
-            sample.result_description_text = parsed["description"].strip()
+    run_id = stage_context.run_id
+    sample_id = stage_context.sample.id
 
-        db.commit()
-
-        if not all(
-            [parsed.get("code"), parsed.get("inspiration"), parsed.get("description")]
-        ):
-            new_state = RUN_STAGE_STATE.FAILED
-        else:
-            new_state = RUN_STAGE_STATE.COMPLETED
-
-        emit_event(RunStageStateChanged(stage_id=run_stage_id, new_state=new_state))
-
-        if new_state == RUN_STAGE_STATE.FAILED:
-            if num_samples < 5:
-                admin_api_client = Client(token=self.request.headers["token"])
-                admin_api_client.start_run_over(run_external_id)
-
-            else:
-                emit_event(RunStateChanged(run_id=run_id, new_state=RUN_STATE.FAILED))
-
-            raise RuntimeError("Prompting didn't go well")
-
-        return sample_id
+    return run_id, sample_id
 
 
-@app.task(
+@run_stage_task(
     name="run.code_validation",
-    bind=True,
-    error_handler=run_stage_error_handler(CodeValidation, "CODE_VALIDATION"),
-    retry_handler=run_stage_retry_handler(CodeValidation, "CODE_VALIDATION"),
+    app=app,
+    max_retries=0,
+    stage=CodeValidation,
+    retry_on_failure=False,
+    restart_run_on_failure=True,
 )
-def code_validation(self, sample_id):
-    with managed_session() as db:
-        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-        run = db.scalar(select(Run).where(Run.id == sample.run_id))
-        run_id = run.id
-        num_samples = len(run.samples)
-        run_external_id = run.external_id
-        run_stage = db.scalar(
-            select(CodeValidation).where(PostProcessing.run_id == run.id)
-        )
-        run_stage_id = run_stage.id
-        code = sample.result_code_text
+def code_validation(stage_context: StageContext):
+    code = stage_context.sample.result_code_text
 
     with tempfile.TemporaryDirectory() as temp_dir:
         with open(MOCK_SCRIPT, "r") as f:
@@ -197,129 +135,74 @@ def code_validation(self, sample_id):
         )
 
         if result.returncode != 0:
-            print(result.stdout)
-            print(result.stderr)
-            print("Code validation failed. Reprompting...")
-            if num_samples < 5:
-                admin_api_client = Client(token=self.request.headers["token"])
-                admin_api_client.start_run_over(run_external_id)
+            raise RuntimeError("Code validation failed.")
 
-            else:
-                emit_event(RunStateChanged(run_id=run_id, new_state=RUN_STATE.FAILED))
+    run_id = stage_context.run_id
+    sample_id = stage_context.sample.id
 
-            emit_event(
-                RunStageStateChanged(
-                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.FAILED
-                )
-            )
-            raise RuntimeError("Code validation failed. Reprompting...")
-
-        else:
-            emit_event(
-                RunStageStateChanged(
-                    stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
-                )
-            )
-            return sample_id
+    return run_id, sample_id
 
 
-@app.task(
+@run_stage_task(
     name="run.post_processing",
-    error_handler=run_stage_error_handler(PostProcessing, "POST_PROCESSING"),
-    retry_handler=run_stage_retry_handler(PostProcessing, "POST_PROCESSING"),
+    app=app,
+    stage=PostProcessing,
+    max_retries=0,
 )
-def post_process_build(sample_id):
-    if sample_id is None:
-        raise RuntimeError("sample_id is required")
+def post_process_build(stage_context: StageContext):
+    run_id = stage_context.run_id
+    sample_id = stage_context.sample.id
 
-    with managed_session() as db:
-        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-        run = db.scalar(select(Run).where(Run.id == sample.run_id))
-        run_stage = db.scalar(
-            select(PostProcessing).where(PostProcessing.run_id == run.id)
-        )
-
-        run_stage_id = run_stage.id
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
-            )
-        )
-
-        # TODO: Post processing
-
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
-            )
-        )
-        return sample_id
+    return run_id, sample_id
 
 
-@app.task(
-    name="run.sample_prep",
-    error_handler=run_stage_error_handler(PreparingSample, "PREPARING_SAMPLE"),
-    retry_handler=run_stage_retry_handler(PreparingSample, "PREPARING_SAMPLE"),
+@run_stage_task(
+    name="run.prepare_sample",
+    app=app,
+    stage=PreparingSample,
+    max_retries=1,
+    terminal_stage=True,
 )
-def prepare_sample(sample_id):
-    if sample_id is None:
-        raise RuntimeError("sample_id is required")
+def prepare_sample(stage_context: StageContext):
+    artifact = stage_context.sample.get_render_artifact()
 
-    time.sleep(15)
+    if not artifact:
+        raise RuntimeError("No render artifact found")
 
-    with managed_session() as db:
-        sample = db.scalar(select(Sample).where(Sample.id == sample_id))
-        run = db.scalar(select(Run).where(Run.id == sample.run_id))
-        run_id = run.id
-        run_stage = db.scalar(
-            select(PreparingSample).where(PreparingSample.run_id == run.id)
-        )
+    object_client = get_client()
 
-        run_stage_id = run_stage.id
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.IN_PROGRESS
+    render_artifact_spec = stage_context.sample.comparison_artifact_spec(
+        stage_context.db
+    )
+
+    for key in ["rendered_model_glb"]:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            artifact.download_contents_to_filepath(
+                client=object_client,
+                filepath=os.path.join(tmp_dir, "artifact.glb"),
             )
-        )
 
-        artifact = sample.get_render_artifact()
-        if not artifact:
-            raise RuntimeError("No render artifact found")
-
-        object_client = get_client()
-
-        render_artifact_spec = sample.comparison_artifact_spec(db)
-        for key in ["rendered_model_glb"]:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                artifact.download_contents_to_filepath(
-                    client=object_client,
-                    filepath=os.path.join(tmp_dir, "artifact.glb"),
-                )
-
-                object_key = (
-                    render_artifact_spec[key]["object_prototype"]
-                    .materialize(**render_artifact_spec[key]["object_parts"])
-                    .get_path()
-                )
-
-                sample_artifact = Artifact(
-                    kind=render_artifact_spec[key]["artifact_kind"],
-                    run_id=run_id,
-                    sample_id=sample_id,
-                    bucket=settings.EXTERNAL_OBJECT_BUCKET,
-                    key=object_key,
-                )
-
-                sample_artifact.upload_contents_from_filepath(
-                    client=object_client,
-                    filepath=os.path.join(tmp_dir, "artifact.glb"),
-                )
-                db.add(sample_artifact)
-
-        emit_event(
-            RunStageStateChanged(
-                stage_id=run_stage_id, new_state=RUN_STAGE_STATE.COMPLETED
+            object_key = (
+                render_artifact_spec[key]["object_prototype"]
+                .materialize(**render_artifact_spec[key]["object_parts"])
+                .get_path()
             )
-        )
-        emit_event(RunStateChanged(run_id=run_id, new_state=RUN_STATE.COMPLETED))
-        return sample_id
+
+            sample_artifact = Artifact(
+                kind=render_artifact_spec[key]["artifact_kind"],
+                run_id=stage_context.run.id,
+                sample_id=stage_context.sample.id,
+                bucket=settings.EXTERNAL_OBJECT_BUCKET,
+                key=object_key,
+            )
+
+            sample_artifact.upload_contents_from_filepath(
+                client=object_client,
+                filepath=os.path.join(tmp_dir, "artifact.glb"),
+            )
+            stage_context.db.add(sample_artifact)
+
+    run_id = stage_context.run_id
+    sample_id = stage_context.sample.id
+
+    return run_id, sample_id

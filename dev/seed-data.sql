@@ -186,7 +186,7 @@ VALUES
     (
      (select id from auth.auth_provider where name = 'github'),
      147355120,
-     (select id from auth.user where username = 'IsaacGemal'),
+     (select id from auth.user where username = 'Isaac'),
      'f89ba90d514fbeefd5d2115b3f49fd7520480d9f94937a1e4794598aa124450a'
     );
 

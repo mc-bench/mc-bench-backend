@@ -10,13 +10,7 @@ from sqlalchemy.orm import Session
 
 from mc_bench.apps.api.config import settings
 from mc_bench.auth.emails import hash_email
-from mc_bench.models.user import (
-    AuthProvider,
-    AuthProviderEmailHash,
-    Role,
-    User,
-    UserRole,
-)
+from mc_bench.models.user import AuthProvider, AuthProviderEmailHash, Role, User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
 
@@ -139,12 +133,9 @@ def signup(request: SignupRequest, db: Session = Depends(get_managed_session)):
     db.refresh(user)
 
     if settings.AUTO_GRANT_ADMIN_ROLE:
-        user_role = UserRole(
-            grantor=db.scalar(select(User).where(User.username == "SYSTEM")),
-            user=user,
-            role=db.scalar(select(Role).where(Role.name == "admin")),
-        )
-        db.add(user_role)
+        role = db.scalar(select(Role).where(Role.name == "admin"))
+        user.roles.append(role)
+        db.add(user)
         db.flush()
         db.refresh(user)
 

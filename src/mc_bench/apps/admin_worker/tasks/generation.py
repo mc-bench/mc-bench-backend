@@ -52,7 +52,12 @@ def create_runs(
             celery.chain(
                 app.signature(
                     "run.execute_prompt",
-                    args=[run_id],
+                    args=[
+                        {
+                            "run_id": run_id,
+                            "sample_id": None,
+                        }
+                    ],
                     queue="admin",
                     headers=headers,
                 ),
@@ -64,13 +69,7 @@ def create_runs(
                     "run.export_structure_views", queue="server", headers=headers
                 ),
                 app.signature("run.post_processing", queue="admin", headers=headers),
-                app.signature("run.sample_prep", queue="admin", headers=headers),
-                app.signature(
-                    "generation.finalize_generation",
-                    args=[generation_id],
-                    queue="admin",
-                    immutable=True,
-                ),
+                app.signature("run.prepare_sample", queue="admin", headers=headers),
             )
             for run_id in run_ids
         )
@@ -122,7 +121,7 @@ def finalize_generation(generation_id):
             run_state == run_state_id_for(db, RUN_STATE.FAILED)
             for run_state in run_states
         ):
-            generation_state = GENERATION_STATE.PARTIALLY_FAILED
+            generation_state = GENERATION_STATE.PARTIAL_FAILED
         else:
             generation_state = GENERATION_STATE.IN_PROGRESS
 
