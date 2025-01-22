@@ -24,6 +24,8 @@ class DeepSeekClient:
                     "content": kwargs.pop("prompt"),
                 }
             ]
-        chat_completion = self.client.chat.completions.create(**kwargs)
-        return chat_completion.choices[0].message.content
-        
+        try:
+            chat_completion = self.client.chat.completions.create(**kwargs)
+            return chat_completion.choices[0].message.content
+        except Exception as e:  
+            raise Exception(f"Error calling DeepSeek API: {str(e)}")
