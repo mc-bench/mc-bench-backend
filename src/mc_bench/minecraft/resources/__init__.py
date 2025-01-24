@@ -88,6 +88,7 @@ import re
 import textwrap
 from functools import lru_cache
 from math import cos, radians, sin
+from typing import List
 
 import minecraft_assets
 import minecraft_data
@@ -150,19 +151,23 @@ def _match_predicates(predicates, states):
     matches = []
     for key, value in predicates.items():
         if key == "OR":
-            matches.append(any(
-                [
-                    _match_predicates(other_predicates, states)
-                    for other_predicates in value
-                ]
-            ))
+            matches.append(
+                any(
+                    [
+                        _match_predicates(other_predicates, states)
+                        for other_predicates in value
+                    ]
+                )
+            )
         elif key == "AND":
-            matches.append(all(
-                [
-                    _match_predicates(other_predicates, states)
-                    for other_predicates in value
-                ]
-            ))
+            matches.append(
+                all(
+                    [
+                        _match_predicates(other_predicates, states)
+                        for other_predicates in value
+                    ]
+                )
+            )
         elif "|" in value:
             matches.append(states.get(key, "false") in value.split("|"))
         elif states.get(key, "false") != value:
@@ -187,6 +192,7 @@ def _make_predicates(predicate_str):
 
 
 PREDICATE_REGEX = re.compile(r"(.*)\[(.*)\]")
+
 
 def _make_predicate_sets_from_variant_keys(states: dict):
     predicate_sets = []
@@ -228,6 +234,13 @@ class ResourceLoader:
         with open(self._data_files.get("blocks", "blocks.json"), "r") as f:
             self._blocks = json.load(f)
 
+        self._block_data_lookup = {}
+        for block in self._blocks:
+            self._block_data_lookup[block["name"]] = block
+
+    def get_block_data(self, base_name):
+        return self._block_data_lookup.get(base_name, None)
+
     def get_models(self, canonical_name):
         split_name = canonical_name.split("[")
         if len(split_name) > 1:
@@ -244,7 +257,6 @@ class ResourceLoader:
             name = canonical_name
 
         block_states = BlockStates(self.get_block_states(name))
-
         model_specifications = block_states.get_model_specifications(states)
 
         models = []
@@ -259,6 +271,8 @@ class ResourceLoader:
                         texture_key = face_data["texture"]
                         if texture_key.startswith("#"):
                             texture_key = texture_key[1:]
+                            face_data["texture"] = textures[texture_key]
+                        elif texture_key in textures:
                             face_data["texture"] = textures[texture_key]
 
                 models.append(
@@ -288,6 +302,7 @@ class ResourceLoader:
             while value.startswith("#"):
                 key = value[1:]
                 value = model_spec["textures"][key]
+
             if texture_key not in textures:
                 textures[texture_key] = textures[key]
 
@@ -971,59 +986,61 @@ class MinecraftModel:
                 # Calculate vertical scale factor based on texture dimensions
                 vertical_scale = (
                     width / height
-                )  # This will be 1 for square textures, 0.5 for 16x32, etc.
+                )  # This will be 1 for square textures, 0.25 for 16x64, etc.
         else:
             vertical_scale = 1.0  # Default to no scaling if texture can't be loaded
 
-        # Normalize UVs from Minecraft (0-16) to Blender (0-1) space
+        # Normalize UVs from Minecraft (0-16) to UV space
         u1, v1, u2, v2 = face.uv
 
-        # Scale vertical coordinates to only use top frame
-        v1 = v1 * vertical_scale
-        v2 = v2 * vertical_scale
+        # Convert Minecraft coordinates (0-16) to normalized UV coordinates (0-1)
+        u1 = u1 / 16
+        u2 = u2 / 16
+        v1 = v1 / 16
+        v2 = v2 / 16
 
-        # UV mappings that match the new vertex order while preserving original texture appearance
+        # UV mappings that match the vertex order while preserving original texture appearance
         if direction == "down":  # [0,1,5,4]
             uvs = [
-                (u1 / 16, 1 - v2 / 16),  # Bottom-left
-                (u2 / 16, 1 - v2 / 16),  # Bottom-right
-                (u2 / 16, 1 - v1 / 16),  # Top-right
-                (u1 / 16, 1 - v1 / 16),  # Top-left
+                (u1, 1 - v2),  # Bottom-left
+                (u2, 1 - v2),  # Bottom-right
+                (u2, 1 - v1),  # Top-right
+                (u1, 1 - v1),  # Top-left
             ]
         elif direction == "up":  # [7,6,2,3]
             uvs = [
-                (u1 / 16, 1 - v2 / 16),  # Bottom-left
-                (u2 / 16, 1 - v2 / 16),  # Bottom-right
-                (u2 / 16, 1 - v1 / 16),  # Top-right
-                (u1 / 16, 1 - v1 / 16),  # Top-left
+                (u1, 1 - v2),  # Bottom-left
+                (u2, 1 - v2),  # Bottom-right
+                (u2, 1 - v1),  # Top-right
+                (u1, 1 - v1),  # Top-left
             ]
         elif direction == "north":  # [1,0,3,2]
             uvs = [
-                (u1 / 16, 1 - v2 / 16),  # Bottom-left
-                (u2 / 16, 1 - v2 / 16),  # Bottom-right
-                (u2 / 16, 1 - v1 / 16),  # Top-right
-                (u1 / 16, 1 - v1 / 16),  # Top-left
+                (u1, 1 - v2),  # Bottom-left
+                (u2, 1 - v2),  # Bottom-right
+                (u2, 1 - v1),  # Top-right
+                (u1, 1 - v1),  # Top-left
             ]
         elif direction == "south":  # [4,5,6,7]
             uvs = [
-                (u1 / 16, 1 - v2 / 16),  # Bottom-left
-                (u2 / 16, 1 - v2 / 16),  # Bottom-right
-                (u2 / 16, 1 - v1 / 16),  # Top-right
-                (u1 / 16, 1 - v1 / 16),  # Top-left
+                (u1, 1 - v2),  # Bottom-left
+                (u2, 1 - v2),  # Bottom-right
+                (u2, 1 - v1),  # Top-right
+                (u1, 1 - v1),  # Top-left
             ]
         elif direction == "west":  # [0,4,7,3]
             uvs = [
-                (u1 / 16, 1 - v2 / 16),  # Bottom-left
-                (u2 / 16, 1 - v2 / 16),  # Bottom-right
-                (u2 / 16, 1 - v1 / 16),  # Top-right
-                (u1 / 16, 1 - v1 / 16),  # Top-left
+                (u1, 1 - v2),  # Bottom-left
+                (u2, 1 - v2),  # Bottom-right
+                (u2, 1 - v1),  # Top-right
+                (u1, 1 - v1),  # Top-left
             ]
         elif direction == "east":  # east [5,1,2,6]
             uvs = [
-                (u1 / 16, 1 - v2 / 16),  # Bottom-left
-                (u2 / 16, 1 - v2 / 16),  # Bottom-right
-                (u2 / 16, 1 - v1 / 16),  # Top-right
-                (u1 / 16, 1 - v1 / 16),  # Top-left
+                (u1, 1 - v2),  # Bottom-left
+                (u2, 1 - v2),  # Bottom-right
+                (u2, 1 - v1),  # Top-right
+                (u1, 1 - v1),  # Top-left
             ]
 
         # Apply face rotation
@@ -1078,7 +1095,26 @@ class MinecraftModel:
                     rotated_uvs.append((new_u, new_v))
                 uvs = rotated_uvs
 
-        return uvs
+        # Apply vertical scaling as the final step
+        scaled_uvs = []
+        for u, v in uvs:
+            # First normalize v to 0-1 range if it's negative
+            if v < 0:
+                v = v + 1
+
+            # Invert v coordinate since Minecraft uses top-indexed textures
+            v = 1 - v
+
+            # Then map to the first frame by scaling the coordinate
+            # For example, with a 16x64 texture (scale=0.25), we map to first 0-0.25 range
+            v = v * vertical_scale
+
+            # Invert back to maintain correct orientation
+            v = 1 - v
+
+            scaled_uvs.append((u, v))
+
+        return scaled_uvs
 
     def _apply_element_rotation(self, vertices, element):
         """Apply element-level rotation transformation with proper rescaling.
@@ -1164,7 +1200,10 @@ class MinecraftBlock:
         # TODO: Use this somehow
         self.states = states or {}
 
-    def to_blender_block(self):
+    def to_blender_block(self, adjacent_blocks=None):
+        adjacent_blocks = adjacent_blocks or {}
+        # TODO: Use adjacent blocks as necessary
+
         # Convert block models
         blender_models = []
         for model in self.models:
@@ -1193,7 +1232,7 @@ class PlacedMinecraftBlock:
         self.z = z
         self.block = block
 
-    def to_blender_block(self):
+    def to_blender_block(self, adjacent_blocks=None):
         """Convert placed Minecraft block to Blender format.
 
         Handles:
@@ -1201,12 +1240,13 @@ class PlacedMinecraftBlock:
         2. Converting Minecraft world coordinates to Blender coordinates
         3. Positioning the block correctly in Blender space
         """
+        adjacent_blocks = adjacent_blocks or {}
         # Convert Minecraft world coordinates to Blender coordinates
         blender_x = self.x
         blender_y = -self.z  # Minecraft Z -> Blender -Y
         blender_z = self.y  # Minecraft Y -> Blender Z
 
-        block = self.block.to_blender_block()
+        block = self.block.to_blender_block(adjacent_blocks=adjacent_blocks)
 
         # Create and return the placed block
         return rendering.PlacedBlock(block=block, x=blender_x, y=blender_y, z=blender_z)
@@ -1219,6 +1259,53 @@ class PlacedMinecraftBlock:
             self.block.debug_info(indent + 2),
         ]
         return "\n".join(info)
+
+
+class MinecraftWorld:
+    def __init__(self, blocks: List[PlacedMinecraftBlock]):
+        self.blocks = blocks
+        self.location_index = {}
+        for block in self.blocks:
+            self.location_index[block.x, block.y, block.z] = block
+
+    def get_adjacent_blocks(self, x, y, z):
+        """Get blocks adjacent to the given block, including diagonals.
+
+        Returns a dictionary mapping (x,y,z) coordinates to PlacedMinecraftBlock objects
+        for all adjacent blocks, including diagonally adjacent ones.
+
+        Args:
+            x: X coordinate to check adjacency for
+            y: Y coordinate to check adjacency for
+            z: Z coordinate to check adjacency for
+
+        Returns:
+            Dict mapping (x,y,z) tuples to PlacedMinecraftBlock objects
+        """
+        adjacent = {}
+        # Check all neighboring blocks in a 3x3x3 cube
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                for dz in [-1, 0, 1]:
+                    # Skip the center block itself
+                    if dx == dy == dz == 0:
+                        continue
+
+                    coords = (x + dx, y + dy, z + dz)
+                    if coords in self.location_index:
+                        adjacent[coords] = self.location_index[coords]
+
+        return adjacent
+
+    def to_blender_blocks(self):
+        blender_blocks = []
+        for block in self.blocks:
+            blender_block = block.to_blender_block(
+                adjacent_blocks=self.get_adjacent_blocks(block.x, block.y, block.z)
+            )
+            blender_blocks.append(blender_block)
+
+        return blender_blocks
 
 
 def create_rotation_matrix(axis, angle_degrees):
