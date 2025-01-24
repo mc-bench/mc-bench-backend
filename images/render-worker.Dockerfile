@@ -8,5 +8,7 @@ RUN pip install -r render-worker-requirements.txt
 COPY . /usr/lib/mc-bench-backend
 RUN pip install /usr/lib/mc-bench-backend[render-worker]
 
+ENV NUM_WORKERS=1
+
 ENTRYPOINT []
-CMD ["celery", "-A", "mc_bench.apps.render_worker", "worker", "-Q", "render"]
+CMD exec celery -A mc_bench.apps.render_worker worker -Q render --concurrency $NUM_WORKERS
