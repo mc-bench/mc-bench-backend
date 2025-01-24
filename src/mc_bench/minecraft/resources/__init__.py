@@ -119,6 +119,7 @@ class BlockStates:
             for predicates, variant in predicate_sets:
                 if _match_predicates(predicates, states):
                     selected_variant = variant
+                    break
 
             if selected_variant is None:
                 raise Exception(
@@ -146,27 +147,31 @@ class BlockStates:
 
 
 def _match_predicates(predicates, states):
+    matches = []
     for key, value in predicates.items():
         if key == "OR":
-            return any(
+            matches.append(any(
                 [
                     _match_predicates(other_predicates, states)
                     for other_predicates in value
                 ]
-            )
+            ))
         elif key == "AND":
-            return all(
+            matches.append(all(
                 [
                     _match_predicates(other_predicates, states)
                     for other_predicates in value
                 ]
-            )
+            ))
         elif "|" in value:
-            return states.get(key, "false") in value.split("|")
+            matches.append(states.get(key, "false") in value.split("|"))
         elif states.get(key, "false") != value:
-            return False
+            matches.append(False)
         else:
-            return True
+            matches.append(True)
+
+    if matches:
+        return all(matches)
 
     # we conspire to have a wildcard predicate that matches everything at the
     # end of predicate list, if possible
@@ -183,17 +188,16 @@ def _make_predicates(predicate_str):
 
 PREDICATE_REGEX = re.compile(r"(.*)\[(.*)\]")
 
-
 def _make_predicate_sets_from_variant_keys(states: dict):
     predicate_sets = []
     default_predicate = None
     for key, value in states.items():
-        result = PREDICATE_REGEX.findall(key)
+        result = key
         if not result:
             default_predicate = key
             continue
         else:
-            predicates = _make_predicates(result[1])
+            predicates = _make_predicates(key)
             predicate_sets.append((predicates, value))
 
     if default_predicate is not None:
