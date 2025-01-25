@@ -1,9 +1,11 @@
+import json
 import os
 import tempfile
 
-from mc_bench.minecraft.rendering import Renderer
+from mc_bench.minecraft.biome_lookup import BiomeLookup
+from mc_bench.minecraft.rendering import Renderer, TimeOfDay
 from mc_bench.minecraft.resources import ResourceLoader
-from mc_bench.minecraft.schematic import load_schematic, to_placed_blocks
+from mc_bench.minecraft.schematic import load_schematic, to_minecraft_world
 from mc_bench.models.run import Artifact, RenderingSample
 from mc_bench.util.object_store import get_client as get_object_store_client
 from mc_bench.worker.run_stage import StageContext, run_stage_task
@@ -26,19 +28,47 @@ def render_sample(stage_context: StageContext):
     )
 
     schematic_artifact = stage_context.sample.get_schematic_artifact()
+    command_list_artifact = stage_context.sample.get_command_list_artifact()
+    summary_artifact = stage_context.sample.get_build_summary_artifact()
+
+    command_list = json.loads(
+        command_list_artifact.download_artifact().getvalue().decode("utf-8")
+    )
+    summary = json.loads(
+        summary_artifact.download_artifact().getvalue().decode("utf-8")
+    )
 
     with tempfile.TemporaryDirectory() as temp_dir:
         schematic_filepath = os.path.join(temp_dir, "build.schem")
+
         rendered_model_glb_filepath = os.path.join(temp_dir, "build-rendered-model.glb")
+
         with open(schematic_filepath, "wb") as f:
             f.write(schematic_artifact.download_artifact().getvalue())
 
-        blocks = load_schematic(schematic_filepath)
-        placed_blocks = to_placed_blocks(blocks, resource_loader)
+        biome_fills = []
+        for command in command_list:
+            if command["kind"] == "fill" and command["command"].startswith(
+                "/fillbiome"
+            ):
+                biome_fills.append(command)
+
+        biome_lookup = BiomeLookup(
+            biome_data=biome_fills, bounding_box=summary["boundingBox"]
+        )
+
+        loaded_schematic = load_schematic(schematic_filepath, biome_lookup)
+        minecraft_world = to_minecraft_world(loaded_schematic, resource_loader)
+        placed_blocks = minecraft_world.to_blender_blocks()
 
         renderer = Renderer()
-        renderer.convert_blocks_to_file(
-            placed_blocks=placed_blocks, output_filepath=rendered_model_glb_filepath
+        renderer.render_blocks(
+            placed_blocks=placed_blocks,
+            types=["glb"],
+            time_of_day=TimeOfDay.NOON,
+            pre_export=False,
+            name=rendered_model_glb_filepath,
+            fast_render=settings.FAST_RENDER,
         )
 
         object_client = get_object_store_client()

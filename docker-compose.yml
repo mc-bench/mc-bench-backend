@@ -113,6 +113,7 @@ services:
       OBJECT_STORE_SECURE: "False"
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       ADMIN_API_URL: "http://admin-api:8000"
+      FAST_RENDER: "true"
 
   server-worker:
     build:

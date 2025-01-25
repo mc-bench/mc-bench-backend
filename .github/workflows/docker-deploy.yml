@@ -7,8 +7,10 @@ on:
 
 env:
   REGISTRY: "registry.digitalocean.com"
-  IMAGE_NAME: "mcbench/server-worker"
-  CONTAINER_PREFIX: "server-worker"
+  SERVER_WORKER_IMAGE_NAME: "mcbench/server-worker"
+  RENDER_WORKER_IMAGE_NAME: "mcbench/render-worker"
+  SERVER_WORKER_CONTAINER_PREFIX: "server-worker"
+  RENDER_WORKER_CONTAINER_PREFIX: "render-worker"
   DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
 
   MINECRAFT_BUILDER_IMAGE_NAME: "mcbench/minecraft-builder"
@@ -32,10 +34,33 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
           REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_NAME: ${{ env.SERVER_WORKER_IMAGE_NAME }}
         run: |
           chmod +x ./deploy/server-worker-push.sh
           ./deploy/server-worker-push.sh
+
+  build-and-push-render-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Build and push
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.RENDER_WORKER_IMAGE_NAME }}
+        run: |
+          chmod +x ./deploy/render-worker-push.sh
+          ./deploy/render-worker-push.sh
 
   build-and-push-minecraft-builder:
     runs-on: ubuntu-latest
@@ -60,7 +85,7 @@ jobs:
           chmod +x ./deploy/server-worker-push.sh
           ./deploy/minecraft-builder-push.sh
 
-  prepare:
+  prepare-server-worker:
     runs-on: ubuntu-latest
     outputs:
       ip-list: ${{ steps.set-ips.outputs.ip-list }}
@@ -74,15 +99,61 @@ jobs:
         run: |
           echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "server-worker-dev") | .ip]') >> $GITHUB_OUTPUT
 
-  deploy:
+  prepare-render-worker:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "render-worker-dev") | .ip]') >> $GITHUB_OUTPUT
+
+  deploy-server-worker:
     needs:
-      - prepare
+      - prepare-server-worker
       - build-and-push-server-worker
       - build-and-push-minecraft-builder
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ip: ${{ fromJson(needs.prepare.outputs.ip-list) }}
+        ip: ${{ fromJson(needs.prepare-server-worker.outputs.ip-list) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.SERVER_WORKER_IMAGE_NAME }}
+          GITHUB_SHA: ${{ github.sha }}
+          CONTAINER_PREFIX: ${{ env.SERVER_WORKER_CONTAINER_PREFIX }}
+        run: |
+          # Set up SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          # Copy deploy script to server and execute
+          scp -i ~/.ssh/deploy_key ./deploy/server-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME GITHUB_SHA=$GITHUB_SHA CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"
+
+  deploy-render-worker:
+    needs:
+      - prepare-render-worker
+      - build-and-push-render-worker
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-render-worker.outputs.ip-list) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -95,7 +166,7 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           GITHUB_SHA: ${{ github.sha }}
-          CONTAINER_PREFIX: ${{ env.CONTAINER_PREFIX }}
+          CONTAINER_PREFIX: ${{ env.RENDER_WORKER_CONTAINER_PREFIX }}
         run: |
           # Set up SSH
           mkdir -p ~/.ssh
@@ -103,6 +174,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
           
-          # Copy deploy script to server and execute
-          scp -i ~/.ssh/deploy_key ./deploy/server-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          # Copy deploy script to render worker and execute
+          scp -i ~/.ssh/deploy_key ./deploy/render-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
           ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME GITHUB_SHA=$GITHUB_SHA CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"
+
