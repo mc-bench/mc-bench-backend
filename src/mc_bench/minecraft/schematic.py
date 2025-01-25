@@ -4,8 +4,10 @@ from nbt import nbt
 
 from .resources import PlacedMinecraftBlock, ResourceLoader
 
+from .biome_lookup import BiomeLookup
 
-def load_schematic(filename):
+
+def load_schematic(filename, biome_lookup: BiomeLookup):
     # Load NBT file
     nbt_file = nbt.NBTFile(filename, "rb")
     schematic = nbt_file["Schematic"]
@@ -22,10 +24,10 @@ def load_schematic(filename):
     block_data = list(schematic["Blocks"]["Data"].value)
 
     # Parse into blocks array
-    return parse_minecraft_schematic(width, height, length, palette, block_data)
+    return parse_minecraft_schematic(width, height, length, palette, block_data, biome_lookup)
 
 
-def parse_minecraft_schematic(width, height, length, palette, block_data):
+def parse_minecraft_schematic(width, height, length, palette, block_data, biome_lookup: BiomeLookup):
     blocks = []
 
     # Convert palette to a lookup dictionary
@@ -48,6 +50,8 @@ def parse_minecraft_schematic(width, height, length, palette, block_data):
                 block = {
                     "position": (x, y, z),
                     "type": block_type.removeprefix("minecraft:"),
+                    "biome": biome_lookup.get_biome_at(x, y, z),
+                    "adjacent_biomes": biome_lookup.get_nearby_biomes(x, y, z),
                 }
                 blocks.append(block)
 
@@ -67,6 +71,8 @@ def to_placed_blocks(
                 x=block["position"][0],
                 y=block["position"][1],
                 z=block["position"][2],
+                biome=block["biome"],
+                adjacent_biomes=block["adjacent_biomes"],
             ).to_blender_block()
         )
 

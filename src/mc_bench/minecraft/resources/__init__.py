@@ -88,12 +88,13 @@ import re
 import textwrap
 from functools import lru_cache
 from math import cos, radians, sin
-from typing import List
+from typing import List, Tuple
 
 import minecraft_assets
 import minecraft_data
 import numpy as np
 import PIL.Image
+from ..biome_lookup import DEFAULT_BIOME
 
 from .. import rendering
 
@@ -219,6 +220,10 @@ class ResourceLoader:
             minecraft_data.GameType.PC, version
         )
 
+        self._data_files_1_16_2 = minecraft_data.MinecraftDataFiles(
+            minecraft_data.GameType.PC, "1.16.2"
+        )
+
         with open(self._asset_dir / "blocks_models.json", "r") as f:
             self._block_models = json.load(f)
 
@@ -231,12 +236,22 @@ class ResourceLoader:
         with open(self._data_files.get("tints", "tints.json"), "r") as f:
             self._tints = json.load(f)
 
+        with open(self._data_files.get("biomes", "biomes.json"), "r") as f:
+            self._biomes = json.load(f)
+
+        self.biome_tints = BiomeTints(self._biomes, self._tints)
+
         with open(self._data_files.get("blocks", "blocks.json"), "r") as f:
             self._blocks = json.load(f)
 
         self._block_data_lookup = {}
         for block in self._blocks:
             self._block_data_lookup[block["name"]] = block
+
+    def get_tints(self, block_name, biome_name):
+        return self._all_tints.get(block_name, {}).get(
+            biome_name, self._all_tints.get(block_name, {}).get("default")
+        )
 
     def get_block_data(self, base_name):
         return self._block_data_lookup.get(base_name, None)
@@ -417,13 +432,56 @@ class ResourceLoader:
     @lru_cache(maxsize=None)
     def get_block(self, canonical_name):
         models = self.get_models(canonical_name)
-        return BlockData(canonical_name, models)
+
+        name = canonical_name.split("[")[0]
+        tint_lookup = self.biome_tints.get_block_tint_lookup(name)
+        return BlockData(canonical_name, models, tint_lookup)
+
+
+class BiomeTints:
+    def __init__(self, biomes, biome_lookup_data):
+        biome_defaults = {}
+        for biome in biomes:
+            biome_defaults[biome['name']] = biome['color']
+
+        self.tint_lookup = {}
+        for key, tint_data in biome_lookup_data.items():
+            if key == 'constant':
+                for block_constants in tint_data['data']:
+                    for key in block_constants['keys']:
+                        self.tint_lookup[key] = {}
+                        for biome_key in biome_defaults:
+                            self.tint_lookup[key][biome_key] = int_to_rgb_hex(block_constants['color'])
+                continue
+
+            self.tint_lookup[key] = {}
+            for biome_key, value in biome_defaults.items():
+                self.tint_lookup[key][biome_key] = int_to_rgb_hex(value)
+            for biome_keys in tint_data['data']:
+                if biome_keys['color'] == 0:
+                    continue
+                for biome_key in biome_keys['keys']:
+                    self.tint_lookup[key][biome_key] = int_to_rgb_hex(biome_keys['color'])
+
+
+    def get_block_tint_lookup(self, block_name):
+        if block_name in self.tint_lookup:
+            return self.tint_lookup[block_name]
+        elif block_name.startswith('grass'):
+            return self.tint_lookup['grass']
+        elif block_name.startswith('redstone'):
+            return self.tint_lookup['redstone']
+        elif 'cauldron' in block_name:
+            return collections.defaultdict(lambda: "#FFFFFF")
+        else:
+            return self.tint_lookup['foliage']
 
 
 class BlockData:
-    def __init__(self, canonical_name, models):
+    def __init__(self, canonical_name, models, tint_lookup=None):
         self.canonical_name = canonical_name
         self.models = list(models)
+        self.tint_lookup = tint_lookup
 
     @classmethod
     def from_resource_loader(cls, rl, canonical_name):
@@ -433,7 +491,8 @@ class BlockData:
     def to_minecraft_block(self):
         models = []
         for idx, model in enumerate(self.models):
-            models.append(model.to_minecraft_model(name=f"model_{idx}"))
+            models.append(model.to_minecraft_model(name=f"model_{idx}", tint_lookup=self.tint_lookup))
+
         return MinecraftBlock(
             self.canonical_name,
             models,
@@ -488,7 +547,7 @@ class ModelData:
         self.y_rotation = y
         self.z_rotation = z
 
-    def to_minecraft_model(self, name=None):
+    def to_minecraft_model(self, name=None, tint_lookup=None):
         return MinecraftModel.from_specification(
             name or "model",
             self._specification,
@@ -496,6 +555,7 @@ class ModelData:
             x_rotation=self.x_rotation,
             y_rotation=self.y_rotation,
             z_rotation=self.z_rotation,
+            tint_lookup=tint_lookup,
         )
 
 
@@ -534,6 +594,7 @@ class MinecraftModelFace:
         cullface=None,
         rotation=0,
         tintindex=-1,
+        tint_lookup=None,
     ):
         self.name = name
         self.direction = direction
@@ -542,6 +603,7 @@ class MinecraftModelFace:
         self.cullface = cullface
         self.rotation = rotation  # 0, 90, 180, or 270 degrees
         self.tintindex = tintindex
+        self.tint_lookup = tint_lookup
 
     def to_blender_face(self):
         # TODO: Implement conversion logic
@@ -564,6 +626,67 @@ class MinecraftModelFace:
             f"{indent_str}  Tint Index: {self.tintindex}",
         ]
         return "\n".join(info)
+    
+    def tint_from_biomes(self, biome, adjacent_biomes):
+        if self.tintindex == -1:
+            return None
+
+        main_biome_color = self.tint_lookup[biome]
+        adjacent_biomes_colors: List[Tuple[str, int]] = [self.tint_lookup[biome] for biome in adjacent_biomes]
+
+        return blend_colors(main_biome_color, adjacent_biomes_colors)
+
+
+def blend_colors(main_color: str, adjacent_colors: List[Tuple[str, int]]) -> str:
+    """Given a hex color and a list of hex colors and their integer distances between 1-10, blend the colors together.
+    
+    Uses a simple linear gradient where closer colors have more influence on the blend.
+    Returns the original color if no adjacent colors are provided.
+    
+    Args:
+        main_color: Hex color string in format '#RRGGBB'
+        adjacent_colors: List of tuples containing (hex_color, distance) where distance is 1-10
+    
+    Returns:
+        Blended hex color string in format '#RRGGBB'
+    """
+    # Return original if no adjacent colors
+    if not adjacent_colors:
+        return main_color
+    
+    # Convert main color hex to RGB values
+    main_r = int(main_color[1:3], 16)
+    main_g = int(main_color[3:5], 16)
+    main_b = int(main_color[5:7], 16)
+    
+    # Initialize weighted sums
+    total_weight = 1.0  # Main color has weight of 1
+    weighted_r = main_r
+    weighted_g = main_g 
+    weighted_b = main_b
+    
+    # Add weighted contributions from adjacent colors
+    for adj_color, distance in adjacent_colors:
+        # Convert distance 1-10 to weight 1.0-0.1
+        weight = (11 - distance) / 10.0
+        
+        # Add weighted RGB values
+        adj_r = int(adj_color[1:3], 16)
+        adj_g = int(adj_color[3:5], 16)
+        adj_b = int(adj_color[5:7], 16)
+        
+        weighted_r += adj_r * weight
+        weighted_g += adj_g * weight
+        weighted_b += adj_b * weight
+        total_weight += weight
+    
+    # Calculate final RGB values
+    final_r = min(255, max(0, int(weighted_r / total_weight)))
+    final_g = min(255, max(0, int(weighted_g / total_weight)))
+    final_b = min(255, max(0, int(weighted_b / total_weight)))
+    
+    # Convert back to hex
+    return f"#{final_r:02X}{final_g:02X}{final_b:02X}"
 
 
 class ModelElementRotation:
@@ -725,6 +848,8 @@ class MinecraftModel:
         x_rotation=0,
         y_rotation=0,
         z_rotation=0,
+        biome=None,
+        adjacent_biomes=None,
     ):
         self.name = name
         self.parent = parent
@@ -738,6 +863,8 @@ class MinecraftModel:
         self.x_rotation = x_rotation
         self.y_rotation = y_rotation
         self.z_rotation = z_rotation
+        self.biome = biome or DEFAULT_BIOME
+        self.adjacent_biomes = adjacent_biomes or []
 
     @classmethod
     def from_specification(
@@ -749,6 +876,7 @@ class MinecraftModel:
         x_rotation=0,
         y_rotation=0,
         z_rotation=0,
+        tint_lookup=None,
     ):
         """Create a MinecraftModel from a model specification dictionary."""
         elements = []
@@ -766,6 +894,7 @@ class MinecraftModel:
                     cullface=face_data.get("cullface"),
                     rotation=face_data.get("rotation", 0),
                     tintindex=face_data.get("tintindex", -1),
+                    tint_lookup=tint_lookup,
                 )
 
             elements.append(
@@ -822,7 +951,7 @@ class MinecraftModel:
 
         return "\n".join(info)
 
-    def to_blender_model(self):
+    def to_blender_model(self, biome=None, adjacent_biomes=None):
         """Convert Minecraft model to Blender format.
 
         Coordinate System Conversion:
@@ -925,6 +1054,7 @@ class MinecraftModel:
                     texture=face.texture,
                     uvs=uvs,
                     source=face,
+                    tint=face.tint_from_biomes(biome, adjacent_biomes),
                 )
                 blender_faces.append(blender_face)
 
@@ -1196,18 +1326,17 @@ class MinecraftBlock:
 
     def __init__(self, canonical_name, models, states=None):
         self.canonical_name = canonical_name
-        self.models = list(models)
-        # TODO: Use this somehow
+        self.models = list(models)  
         self.states = states or {}
 
-    def to_blender_block(self, adjacent_blocks=None):
+    def to_blender_block(self, adjacent_blocks=None, biome=None, adjacent_biomes=None):
         adjacent_blocks = adjacent_blocks or {}
         # TODO: Use adjacent blocks as necessary
 
         # Convert block models
         blender_models = []
         for model in self.models:
-            blender_model = model.to_blender_model()
+            blender_model = model.to_blender_model(biome=biome, adjacent_biomes=adjacent_biomes)
             blender_models.append(blender_model)
 
         # Create the block
@@ -1226,11 +1355,13 @@ class MinecraftBlock:
 class PlacedMinecraftBlock:
     """Represents a Minecraft block placed in the world at specific coordinates."""
 
-    def __init__(self, block, x=0.0, y=0.0, z=0.0):
+    def __init__(self, block, x=0.0, y=0.0, z=0.0, biome=None, adjacent_biomes=None):
         self.x = x
         self.y = y
         self.z = z
         self.block = block
+        self.biome = biome
+        self.adjacent_biomes = adjacent_biomes
 
     def to_blender_block(self, adjacent_blocks=None):
         """Convert placed Minecraft block to Blender format.
@@ -1246,7 +1377,7 @@ class PlacedMinecraftBlock:
         blender_y = -self.z  # Minecraft Z -> Blender -Y
         blender_z = self.y  # Minecraft Y -> Blender Z
 
-        block = self.block.to_blender_block(adjacent_blocks=adjacent_blocks)
+        block = self.block.to_blender_block(adjacent_blocks=adjacent_blocks, biome=self.biome, adjacent_biomes=self.adjacent_biomes)
 
         # Create and return the placed block
         return rendering.PlacedBlock(block=block, x=blender_x, y=blender_y, z=blender_z)
@@ -1329,3 +1460,21 @@ def rotate_point(point, origin, rotation_matrix):
 
     # Translate to origin, rotate, translate back
     return (rotation_matrix @ (point - origin)) + origin
+
+
+def int_to_rgb_hex(color_int: int) -> str:
+    """Convert an integer color value to #RGB hex format.
+
+    Args:
+        color_int: Integer color value (e.g. 0xFF0000 for red)
+
+    Returns:
+        String in #RRGGBB format (e.g. '#FF0000' for red)
+    """
+    # Extract RGB components
+    r = (color_int >> 16) & 0xFF
+    g = (color_int >> 8) & 0xFF
+    b = color_int & 0xFF
+
+    # Format as hex string with # prefix
+    return f"#{r:02X}{g:02X}{b:02X}"

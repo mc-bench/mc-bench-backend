@@ -118,12 +118,13 @@ class Element:
 
 
 class Face:
-    def __init__(self, name, vertex_indices, texture, uvs, source=None):
+    def __init__(self, name, vertex_indices, texture, uvs, source=None, tint=None):
         self.name = name
         self.vertex_indices = vertex_indices
         self.texture = texture
         self.uvs = uvs
         self.source = source
+        self.tint = tint
 
     def __repr__(self):
         attrs = [
@@ -132,6 +133,7 @@ class Face:
             f"texture={self.texture!r}",
             f"uvs={self.uvs!r}",
             f"source={self.source!r}",
+            f"tint={self.tint!r}",
         ]
         formatted_attrs = textwrap.indent((",\n".join(attrs)), "    ")
         return f"Face(\n{formatted_attrs}\n)"
@@ -458,3 +460,28 @@ class Renderer:
             compress=True,  # Compress the file
             relative_remap=True,  # Make paths relative
         )
+
+
+def hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
+    """Convert a hex color string to RGB tuple with values between 0 and 1.
+
+    Args:
+        hex_color: Hex color string (e.g. '#79c05f' or '79c05f')
+
+    Returns:
+        Tuple of (red, green, blue) values normalized between 0 and 1
+
+    Example:
+        >>> hex_to_rgb('#79c05f')
+        (0.4745098039215686, 0.7529411764705882, 0.37254901960784315)
+    """
+    # Remove '#' if present
+    hex_color = hex_color.lstrip("#")
+
+    # Convert hex to RGB values (0-255)
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+
+    # Normalize to 0-1 range
+    return (r / 255.0, g / 255.0, b / 255.0)
