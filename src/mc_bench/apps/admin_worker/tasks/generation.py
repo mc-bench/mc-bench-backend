@@ -21,6 +21,7 @@ def create_runs(
     prompt_ids=None,
     template_ids=None,
     model_ids=None,
+    num_samples=1,
 ):
     with managed_session() as db:
         generation = db.scalar(select(Generation).where(Generation.id == generation_id))
@@ -28,18 +29,19 @@ def create_runs(
         for template_id in template_ids:
             for prompt_id in prompt_ids:
                 for model_id in model_ids:
-                    run = Run(
-                        generation_id=generation_id,
-                        created_by=generation.created_by,
-                        template_id=template_id,
-                        prompt_id=prompt_id,
-                        model_id=model_id,
-                        state_id=run_state_id_for(db, RUN_STATE.CREATED),
-                    )
-                    db.add(run)
-                    db.flush()
-                    stages = run.make_stages(db)
-                    db.add_all(stages)
+                    for _ in range(num_samples):
+                        run = Run(
+                            generation_id=generation_id,
+                            created_by=generation.created_by,
+                            template_id=template_id,
+                            prompt_id=prompt_id,
+                            model_id=model_id,
+                            state_id=run_state_id_for(db, RUN_STATE.CREATED),
+                        )
+                        db.add(run)
+                        db.flush()
+                        stages = run.make_stages(db)
+                        db.add_all(stages)
         db.commit()
 
         run_ids = db.scalars(

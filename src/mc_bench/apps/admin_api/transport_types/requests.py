@@ -37,6 +37,7 @@ class GenerationRequest(Base):
     prompt_ids: List[uuid.UUID]
     template_ids: List[uuid.UUID]
     model_ids: List[uuid.UUID]
+    num_samples: int = 1
 
 
 class CreateTemplateRequest(BaseModel):

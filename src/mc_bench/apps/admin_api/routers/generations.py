@@ -97,6 +97,7 @@ def generate_runs(
         prompt_ids=prompt_ids,
         model_ids=model_ids,
         template_ids=template_ids,
+        num_samples=generation_request.num_samples,
         progress_token=progress_token,
     )
 

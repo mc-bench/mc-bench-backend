@@ -8,7 +8,9 @@ def send_task(name, *args, **kwargs):
     return celery.send_task(name, *args, **kwargs)
 
 
-def create_runs(generation_id, prompt_ids, model_ids, template_ids, progress_token):
+def create_runs(
+    generation_id, prompt_ids, model_ids, template_ids, num_samples, progress_token
+):
     return send_task(
         "generation.create_runs",
         kwargs=dict(
@@ -16,6 +18,7 @@ def create_runs(generation_id, prompt_ids, model_ids, template_ids, progress_tok
             prompt_ids=prompt_ids,
             model_ids=model_ids,
             template_ids=template_ids,
+            num_samples=num_samples,
         ),
         headers={"token": progress_token},
     )
