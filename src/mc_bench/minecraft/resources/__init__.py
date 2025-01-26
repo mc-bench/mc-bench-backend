@@ -1444,12 +1444,12 @@ class MinecraftWorld:
         # +X is east 
         # +Z is south
         directions = {
-            "down": (0, -1, 0),  # -Y
-            "up": (0, 1, 0),     # +Y
+            # "down": (0, -1, 0),  # -Y
+            # "up": (0, 1, 0),     # +Y
             "north": (0, 0, -1), # -Z
-            "south": (0, 0, 1),  # +Z
-            "west": (-1, 0, 0),  # -X
-            "east": (1, 0, 0),   # +X
+            # "south": (0, 0, 1),  # +Z
+            # "west": (-1, 0, 0),  # -X
+            # "east": (1, 0, 0),   # +X
         }
 
         # if block.block.base_name == 'grass_block' and block.y > 0:
