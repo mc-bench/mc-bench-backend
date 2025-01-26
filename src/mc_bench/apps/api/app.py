@@ -6,6 +6,7 @@ from scalar_fastapi import get_scalar_api_reference
 
 from mc_bench.apps.api.routers.comparison import comparison_router
 from mc_bench.apps.api.routers.user import user_router
+from mc_bench.apps.api.routers.leaderboard import leaderboard_router
 
 from .lifespan import lifespan
 
@@ -24,6 +25,7 @@ app.add_middleware(
 
 app.include_router(user_router)
 app.include_router(comparison_router)
+app.include_router(leaderboard_router)
 
 
 @app.get("/scalar", include_in_schema=False)
