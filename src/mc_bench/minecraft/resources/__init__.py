@@ -88,7 +88,7 @@ import re
 import textwrap
 from functools import lru_cache
 from math import cos, radians, sin
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import minecraft_assets
 import minecraft_data
@@ -1042,9 +1042,9 @@ class MinecraftModel:
 
             blender_faces = []
             for direction, face in element.faces.items():
-                if face.cullface and adjacent_blocks[face.cullface].adjacent:
-                    if 'grass_block' in adjacent_blocks[face.cullface].reference_block.block.canonical_name:
-                        print("Culling: ", self.name, face.cullface, adjacent_blocks[face.cullface])
+                # Cull face if it is supposed to and there is an adjacent block
+                # in the relevant direction
+                if face.cullface and adjacent_blocks[face.cullface]:
                     continue
 
                 # Get vertex indices and UVs for this face direction
@@ -1417,56 +1417,56 @@ class MinecraftWorld:
             self.location_index[block.x, block.y, block.z] = block
 
     def get_adjacent_blocks(self, block: PlacedMinecraftBlock):
-        """Get blocks adjacent to the given block, including diagonals.
-
-        Returns a dictionary mapping (x,y,z) coordinates to PlacedMinecraftBlock objects
-        for all adjacent blocks, including diagonally adjacent ones.
-
+        """Get blocks adjacent to the given block for face culling.
+        
         Args:
-            x: X coordinate to check adjacency for
-            y: Y coordinate to check adjacency for
-            z: Z coordinate to check adjacency for
-
+            block: The block to check adjacency for
+            
         Returns:
-            Dict mapping (x,y,z) tuples to PlacedMinecraftBlock objects
+            Dict mapping face directions to boolean values indicating if that face should be culled
         """
-        adjacent = {
-            "down": AdjecencyInfo(reference_block=block, adjacent=False),
-            "up": AdjecencyInfo(reference_block=block, adjacent=False),
-            "north": AdjecencyInfo(reference_block=block, adjacent=False),
-            "south": AdjecencyInfo(reference_block=block, adjacent=False),
-            "west": AdjecencyInfo(reference_block=block, adjacent=False),
-            "east": AdjecencyInfo(reference_block=block, adjacent=False),
-        }
-
-        # Minecraft coordinate system:
-        # +Y is up
-        # +X is east 
-        # +Z is south
+        # Define direction vectors for each face
         directions = {
-            # "down": (0, -1, 0),  # -Y
-            # "up": (0, 1, 0),     # +Y
-            "north": (0, 0, -1), # -Z
-            # "south": (0, 0, 1),  # +Z
-            # "west": (-1, 0, 0),  # -X
-            # "east": (1, 0, 0),   # +X
+            "north": (0, 0, -1),  # -Z in Minecraft
+            "south": (0, 0, 1),   # +Z in Minecraft
+            "east": (1, 0, 0),    # +X in Minecraft
+            "west": (-1, 0, 0),   # -X in Minecraft
+            "up": (0, 1, 0),      # +Y in Minecraft
+            "down": (0, -1, 0),   # -Y in Minecraft
         }
-
-        # if block.block.base_name == 'grass_block' and block.y > 0:
-            # print("\n\nGrass: ", block.block.canonical_name, block.x, block.y, block.z)
-
-        for direction, (dx, dy, dz) in directions.items():
-            # print("Direction: ", direction, "block_coords: ", (block.x, block.y, block.z), "other_coords: ", (block.x + dx, block.y + dy, block.z + dz))
-            coords = (block.x + dx, block.y + dy, block.z + dz)
-            if coords in self.location_index:
-                other_block = self.location_index[coords]
-                if 'glass' in block.block.canonical_name and block.block.canonical_name == other_block.block.canonical_name:
-                    adjacent[direction] = AdjecencyInfo(reference_block=block, block=other_block, adjacent=True)
-                elif not block.block.transparent and not other_block.block.transparent: # todo: check if cube
-                    adjacent[direction] = AdjecencyInfo(reference_block=block, block=other_block, adjacent=True)
-                else:
-                    pass
-
+        
+        adjacent = {}
+        
+        # Check each direction
+        for face, direction in directions.items():
+            # Calculate adjacent position
+            adj_x = block.x + direction[0]
+            adj_y = block.y + direction[1]
+            adj_z = block.z + direction[2]
+            
+            # Get block at adjacent position
+            adjacent_block = self.location_index.get((adj_x, adj_y, adj_z))
+            
+            # Determine if face should be culled
+            should_cull = False
+            if adjacent_block:
+                # Don't render face if adjacent block is opaque and:
+                # 1. Not below world (y >= 0)
+                # 2. Is a full cube
+                # 3. Special case: If both blocks are glass-type, cull faces between them
+                if adj_y >= 0:
+                    is_glass = "glass" in block.block.canonical_name.lower()
+                    adj_is_glass = "glass" in adjacent_block.block.canonical_name.lower()
+                    
+                    if is_glass and adj_is_glass and block.block.canonical_name == adjacent_block.block.canonical_name:
+                        # Cull faces between identical glass blocks
+                        should_cull = True
+                    elif not adjacent_block.block.transparent:
+                        # Cull faces against opaque blocks
+                        should_cull = True
+            
+            adjacent[face] = should_cull
+        
         return adjacent
 
     def to_blender_blocks(self):
