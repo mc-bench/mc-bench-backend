@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 from nbt import nbt
 
-from .resources import PlacedMinecraftBlock, ResourceLoader
+from .resources import PlacedMinecraftBlock, ResourceLoader, MinecraftWorld
 
 from .biome_lookup import BiomeLookup
 
@@ -58,9 +58,9 @@ def parse_minecraft_schematic(width, height, length, palette, block_data, biome_
     return blocks
 
 
-def to_placed_blocks(
+def to_minecraft_world(
     blocks: list[Dict[str, Any]], resource_loader: ResourceLoader
-) -> list[PlacedMinecraftBlock]:
+) -> MinecraftWorld:
     placed_blocks = []
 
     for block in blocks:
@@ -73,7 +73,7 @@ def to_placed_blocks(
                 z=block["position"][2],
                 biome=block["biome"],
                 adjacent_biomes=block["adjacent_biomes"],
-            ).to_blender_block()
+            )
         )
 
-    return placed_blocks
+    return MinecraftWorld(placed_blocks)

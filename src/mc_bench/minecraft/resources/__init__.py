@@ -435,7 +435,8 @@ class ResourceLoader:
 
         name = canonical_name.split("[")[0]
         tint_lookup = self.biome_tints.get_block_tint_lookup(name)
-        return BlockData(canonical_name, models, tint_lookup)
+        block_data = self.get_block_data(name)
+        return BlockData(canonical_name, models, transparent=block_data['transparent'], tint_lookup=tint_lookup)
 
 
 class BiomeTints:
@@ -478,9 +479,10 @@ class BiomeTints:
 
 
 class BlockData:
-    def __init__(self, canonical_name, models, tint_lookup=None):
+    def __init__(self, canonical_name, models, transparent=False, tint_lookup=None):
         self.canonical_name = canonical_name
         self.models = list(models)
+        self.transparent = transparent
         self.tint_lookup = tint_lookup
 
     @classmethod
@@ -497,6 +499,7 @@ class BlockData:
             self.canonical_name,
             models,
             states=self.states,
+            transparent=self.transparent,
         )
 
     @property
@@ -604,10 +607,6 @@ class MinecraftModelFace:
         self.rotation = rotation  # 0, 90, 180, or 270 degrees
         self.tintindex = tintindex
         self.tint_lookup = tint_lookup
-
-    def to_blender_face(self):
-        # TODO: Implement conversion logic
-        pass
 
     def debug_info(self, indent=0):
         indent_str = "  " * indent
@@ -951,7 +950,7 @@ class MinecraftModel:
 
         return "\n".join(info)
 
-    def to_blender_model(self, biome=None, adjacent_biomes=None):
+    def to_blender_model(self, biome=None, adjacent_biomes=None, adjacent_blocks=None):
         """Convert Minecraft model to Blender format.
 
         Coordinate System Conversion:
@@ -1043,6 +1042,11 @@ class MinecraftModel:
 
             blender_faces = []
             for direction, face in element.faces.items():
+                if face.cullface and adjacent_blocks[face.cullface].adjacent:
+                    if 'grass_block' in adjacent_blocks[face.cullface].reference_block.block.canonical_name:
+                        print("Culling: ", self.name, face.cullface, adjacent_blocks[face.cullface])
+                    continue
+
                 # Get vertex indices and UVs for this face direction
                 vertex_indices = self._get_face_vertices(direction)
                 uvs = self._process_face_uvs(face, direction)
@@ -1324,19 +1328,20 @@ class MinecraftBlock:
     """Represents a Minecraft block with its models.
     A block can have multiple model variants based on its state."""
 
-    def __init__(self, canonical_name, models, states=None):
+    def __init__(self, canonical_name, models, states=None, transparent=False):
         self.canonical_name = canonical_name
         self.models = list(models)  
         self.states = states or {}
+        self.base_name = canonical_name.split('[')[0]
+        self.transparent = transparent
 
     def to_blender_block(self, adjacent_blocks=None, biome=None, adjacent_biomes=None):
         adjacent_blocks = adjacent_blocks or {}
-        # TODO: Use adjacent blocks as necessary
 
         # Convert block models
         blender_models = []
         for model in self.models:
-            blender_model = model.to_blender_model(biome=biome, adjacent_biomes=adjacent_biomes)
+            blender_model = model.to_blender_model(biome=biome, adjacent_biomes=adjacent_biomes, adjacent_blocks=adjacent_blocks)
             blender_models.append(blender_model)
 
         # Create the block
@@ -1392,6 +1397,18 @@ class PlacedMinecraftBlock:
         return "\n".join(info)
 
 
+class AdjecencyInfo:
+    def __init__(self, reference_block, block=None, adjacent=None):
+        self.reference_block = reference_block
+        self.block = block
+        self.adjacent = adjacent
+    
+    def __repr__(self):
+        if self.block:
+            return f"AdjecencyInfo(reference_block=<{self.reference_block.block.canonical_name}, coords={self.reference_block.x, self.reference_block.y, self.reference_block.z}>, block=<{self.block.block.canonical_name}, coords={self.block.x, self.block.y, self.block.z}>, adjacent={self.adjacent})"
+        else:
+            return f"AdjecencyInfo(reference_block=<{self.reference_block.block.canonical_name}, coords={self.reference_block.x, self.reference_block.y, self.reference_block.z}>, adjacent={self.adjacent})"
+
 class MinecraftWorld:
     def __init__(self, blocks: List[PlacedMinecraftBlock]):
         self.blocks = blocks
@@ -1399,7 +1416,7 @@ class MinecraftWorld:
         for block in self.blocks:
             self.location_index[block.x, block.y, block.z] = block
 
-    def get_adjacent_blocks(self, x, y, z):
+    def get_adjacent_blocks(self, block: PlacedMinecraftBlock):
         """Get blocks adjacent to the given block, including diagonals.
 
         Returns a dictionary mapping (x,y,z) coordinates to PlacedMinecraftBlock objects
@@ -1413,18 +1430,42 @@ class MinecraftWorld:
         Returns:
             Dict mapping (x,y,z) tuples to PlacedMinecraftBlock objects
         """
-        adjacent = {}
-        # Check all neighboring blocks in a 3x3x3 cube
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                for dz in [-1, 0, 1]:
-                    # Skip the center block itself
-                    if dx == dy == dz == 0:
-                        continue
+        adjacent = {
+            "down": AdjecencyInfo(reference_block=block, adjacent=False),
+            "up": AdjecencyInfo(reference_block=block, adjacent=False),
+            "north": AdjecencyInfo(reference_block=block, adjacent=False),
+            "south": AdjecencyInfo(reference_block=block, adjacent=False),
+            "west": AdjecencyInfo(reference_block=block, adjacent=False),
+            "east": AdjecencyInfo(reference_block=block, adjacent=False),
+        }
 
-                    coords = (x + dx, y + dy, z + dz)
-                    if coords in self.location_index:
-                        adjacent[coords] = self.location_index[coords]
+        # Minecraft coordinate system:
+        # +Y is up
+        # +X is east 
+        # +Z is south
+        directions = {
+            "down": (0, -1, 0),  # -Y
+            "up": (0, 1, 0),     # +Y
+            "north": (0, 0, -1), # -Z
+            "south": (0, 0, 1),  # +Z
+            "west": (-1, 0, 0),  # -X
+            "east": (1, 0, 0),   # +X
+        }
+
+        # if block.block.base_name == 'grass_block' and block.y > 0:
+            # print("\n\nGrass: ", block.block.canonical_name, block.x, block.y, block.z)
+
+        for direction, (dx, dy, dz) in directions.items():
+            # print("Direction: ", direction, "block_coords: ", (block.x, block.y, block.z), "other_coords: ", (block.x + dx, block.y + dy, block.z + dz))
+            coords = (block.x + dx, block.y + dy, block.z + dz)
+            if coords in self.location_index:
+                other_block = self.location_index[coords]
+                if 'glass' in block.block.canonical_name and block.block.canonical_name == other_block.block.canonical_name:
+                    adjacent[direction] = AdjecencyInfo(reference_block=block, block=other_block, adjacent=True)
+                elif not block.block.transparent and not other_block.block.transparent: # todo: check if cube
+                    adjacent[direction] = AdjecencyInfo(reference_block=block, block=other_block, adjacent=True)
+                else:
+                    pass
 
         return adjacent
 
@@ -1432,7 +1473,7 @@ class MinecraftWorld:
         blender_blocks = []
         for block in self.blocks:
             blender_block = block.to_blender_block(
-                adjacent_blocks=self.get_adjacent_blocks(block.x, block.y, block.z)
+                adjacent_blocks=self.get_adjacent_blocks(block)
             )
             blender_blocks.append(blender_block)
 
