@@ -42,8 +42,9 @@ The core classes are:
 import os
 import textwrap
 
-import bmesh
 import bpy
+import bmesh
+
 from mathutils import Vector
 
 
@@ -126,6 +127,13 @@ class Face:
         self.uvs = uvs
         self.source = source
         self.tint = tint
+
+    @property
+    def material_name(self):
+        name = os.path.splitext(os.path.basename(self.texture))[0]
+        # if self.tint:
+        #     name = f"{name}_tinted_{self.tint.lstrip('#')}"
+        return name
 
     def __repr__(self):
         attrs = [
@@ -284,7 +292,7 @@ class Renderer:
         # Create materials for each face
         for face in element.faces:
             if face.texture:
-                mat = self.create_material(face.texture)
+                mat = self.create_material(face.texture, name=face.material_name, tint=face.tint)
                 if mat.name not in mesh.materials:
                     mesh.materials.append(mat)
 
@@ -292,9 +300,8 @@ class Renderer:
         for i, face in enumerate(element.faces):
             if i < len(mesh.polygons):
                 # Assign material index
-                if face.texture:
-                    mat_name = os.path.splitext(os.path.basename(face.texture))[0]
-                    mat_idx = mesh.materials.find(mat_name)
+                if face.material_name:
+                    mat_idx = mesh.materials.find(face.material_name)
                     if mat_idx >= 0:
                         mesh.polygons[i].material_index = mat_idx
 
@@ -315,10 +322,8 @@ class Renderer:
 
         return obj
 
-    def create_material(self, texture_path, name=None) -> bpy.types.Material:
+    def create_material(self, texture_path, name, tint=None) -> bpy.types.Material:
         """Create a material with baked textures for Minecraft blocks."""
-        if name is None:
-            name = os.path.splitext(os.path.basename(texture_path))[0]
 
         # First check if material already exists
         mat = bpy.data.materials.get(name)
