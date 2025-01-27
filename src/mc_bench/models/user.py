@@ -134,6 +134,9 @@ class AuthProvider(Base):
             emails=self.get_emails(access_token),
         )
 
-
 class GithubAuthProvider(AuthProvider):
     __mapper_args__ = {"polymorphic_identity": "github"}
+
+class GoogleAuthProvider(AuthProvider):
+    __mapper_args__ = {"polymorphic_identity": "google"}
+
