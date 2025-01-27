@@ -131,8 +131,8 @@ class Face:
     @property
     def material_name(self):
         name = os.path.splitext(os.path.basename(self.texture))[0]
-        # if self.tint:
-        #     name = f"{name}_tinted_{self.tint.lstrip('#')}"
+        if self.tint:
+            name = f"{name}_tinted_{self.tint.lstrip('#')}"
         return name
 
     def __repr__(self):
