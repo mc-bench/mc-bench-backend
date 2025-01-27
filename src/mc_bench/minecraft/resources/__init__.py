@@ -643,11 +643,14 @@ class MinecraftModelFace:
             return None
 
         main_biome_color = self.tint_lookup[biome]
-        adjacent_biomes_colors: List[Tuple[str, int]] = [
-            self.tint_lookup[biome] for biome in adjacent_biomes
-        ]
 
-        return blend_colors(main_biome_color, adjacent_biomes_colors)
+        # adjacent_biomes_colors: List[Tuple[str, int]] = [
+        #     self.tint_lookup[biome] for biome in adjacent_biomes
+        # ]
+        adjacent_biomes_colors: List[str] = [self.tint_lookup[biome[0]] for biome in adjacent_biomes]
+
+        # return blend_colors(main_biome_color, adjacent_biomes_colors)
+        return blend_colors(main_biome_color, list(zip(adjacent_biomes_colors, [el[1] for el in adjacent_biomes])))
 
 
 def blend_colors(main_color: str, adjacent_colors: List[Tuple[str, int]]) -> str:
