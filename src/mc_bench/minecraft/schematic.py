@@ -2,9 +2,8 @@ from typing import Any, Dict
 
 from nbt import nbt
 
-from .resources import PlacedMinecraftBlock, ResourceLoader, MinecraftWorld
-
 from .biome_lookup import BiomeLookup
+from .resources import MinecraftWorld, PlacedMinecraftBlock, ResourceLoader
 
 
 def load_schematic(filename, biome_lookup: BiomeLookup):
@@ -24,10 +23,14 @@ def load_schematic(filename, biome_lookup: BiomeLookup):
     block_data = list(schematic["Blocks"]["Data"].value)
 
     # Parse into blocks array
-    return parse_minecraft_schematic(width, height, length, palette, block_data, biome_lookup)
+    return parse_minecraft_schematic(
+        width, height, length, palette, block_data, biome_lookup
+    )
 
 
-def parse_minecraft_schematic(width, height, length, palette, block_data, biome_lookup: BiomeLookup):
+def parse_minecraft_schematic(
+    width, height, length, palette, block_data, biome_lookup: BiomeLookup
+):
     blocks = []
 
     # Convert palette to a lookup dictionary

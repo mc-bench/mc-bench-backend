@@ -42,6 +42,7 @@ The core classes are:
 import os
 import textwrap
 
+import bmesh
 import bpy
 from mathutils import Vector
 
@@ -230,6 +231,10 @@ class Renderer:
 
         objects = []
         for i, element in enumerate(model.elements):
+            # Skip elements with no faces
+            if not element.faces:
+                continue
+
             obj = self.create_element_mesh(element, f"{index_str}_{element.name}")
             collection.objects.link(obj)
             objects.append(obj)
@@ -245,23 +250,34 @@ class Renderer:
         vertices = element.vertices
         faces = []
 
-        # Debug check for duplicate faces
-        seen_faces = set()
+        # Track which vertices are actually used by faces
+        used_vertices = set()
+        vertex_map = {}  # Maps old vertex indices to new ones
+        new_vertices = []
+
+        # First pass - collect used vertices and build face list
         for face in element.faces:
-            face_tuple = tuple(face.vertex_indices)
-            if face_tuple in seen_faces:
-                print(f"Warning: Duplicate face found in {name}: {face_tuple}")
-            seen_faces.add(face_tuple)
+            for idx in face.vertex_indices:
+                used_vertices.add(idx)
             faces.append(face.vertex_indices)
 
-        # Create the mesh
-        mesh.from_pydata(vertices, [], faces)
+        # Second pass - create new vertex list and mapping
+        for i, vertex in enumerate(vertices):
+            if i in used_vertices:
+                vertex_map[i] = len(new_vertices)
+                new_vertices.append(vertex)
+
+        # Third pass - remap face indices to new vertex indices
+        new_faces = []
+        for face_indices in faces:
+            new_face = [vertex_map[idx] for idx in face_indices]
+            new_faces.append(new_face)
+
+        # Create the mesh with only used vertices
+        mesh.from_pydata(new_vertices, [], new_faces)
         mesh.update()
 
-        # Validate mesh normals
-        mesh.validate(verbose=True)
-
-        # Create UV layers and assign materials
+        # Create UV layer
         if not mesh.uv_layers:
             mesh.uv_layers.new()
 
@@ -272,7 +288,7 @@ class Renderer:
                 if mat.name not in mesh.materials:
                     mesh.materials.append(mat)
 
-        # Assign UVs and materials
+        # Assign UVs and materials before triangulation
         for i, face in enumerate(element.faces):
             if i < len(mesh.polygons):
                 # Assign material index
@@ -286,6 +302,16 @@ class Renderer:
                 if face.uvs:
                     for j, loop_idx in enumerate(mesh.polygons[i].loop_indices):
                         mesh.uv_layers.active.data[loop_idx].uv = face.uvs[j]
+
+        # Validate mesh
+        mesh.validate(verbose=True)
+
+        # Triangulate the mesh after UV assignment
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.to_mesh(mesh)
+        bm.free()
 
         return obj
 

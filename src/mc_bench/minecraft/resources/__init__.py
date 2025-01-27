@@ -88,15 +88,15 @@ import re
 import textwrap
 from functools import lru_cache
 from math import cos, radians, sin
-from typing import List, Tuple, Dict
+from typing import Dict, List, Tuple
 
 import minecraft_assets
 import minecraft_data
 import numpy as np
 import PIL.Image
-from ..biome_lookup import DEFAULT_BIOME
 
 from .. import rendering
+from ..biome_lookup import DEFAULT_BIOME
 
 WATERLOGGABLE_BLOCKS = [
     "sea_pickle",
@@ -436,46 +436,54 @@ class ResourceLoader:
         name = canonical_name.split("[")[0]
         tint_lookup = self.biome_tints.get_block_tint_lookup(name)
         block_data = self.get_block_data(name)
-        return BlockData(canonical_name, models, transparent=block_data['transparent'], tint_lookup=tint_lookup)
+        return BlockData(
+            canonical_name,
+            models,
+            transparent=block_data["transparent"],
+            tint_lookup=tint_lookup,
+        )
 
 
 class BiomeTints:
     def __init__(self, biomes, biome_lookup_data):
         biome_defaults = {}
         for biome in biomes:
-            biome_defaults[biome['name']] = biome['color']
+            biome_defaults[biome["name"]] = biome["color"]
 
         self.tint_lookup = {}
         for key, tint_data in biome_lookup_data.items():
-            if key == 'constant':
-                for block_constants in tint_data['data']:
-                    for key in block_constants['keys']:
+            if key == "constant":
+                for block_constants in tint_data["data"]:
+                    for key in block_constants["keys"]:
                         self.tint_lookup[key] = {}
                         for biome_key in biome_defaults:
-                            self.tint_lookup[key][biome_key] = int_to_rgb_hex(block_constants['color'])
+                            self.tint_lookup[key][biome_key] = int_to_rgb_hex(
+                                block_constants["color"]
+                            )
                 continue
 
             self.tint_lookup[key] = {}
             for biome_key, value in biome_defaults.items():
                 self.tint_lookup[key][biome_key] = int_to_rgb_hex(value)
-            for biome_keys in tint_data['data']:
-                if biome_keys['color'] == 0:
+            for biome_keys in tint_data["data"]:
+                if biome_keys["color"] == 0:
                     continue
-                for biome_key in biome_keys['keys']:
-                    self.tint_lookup[key][biome_key] = int_to_rgb_hex(biome_keys['color'])
-
+                for biome_key in biome_keys["keys"]:
+                    self.tint_lookup[key][biome_key] = int_to_rgb_hex(
+                        biome_keys["color"]
+                    )
 
     def get_block_tint_lookup(self, block_name):
         if block_name in self.tint_lookup:
             return self.tint_lookup[block_name]
-        elif block_name.startswith('grass'):
-            return self.tint_lookup['grass']
-        elif block_name.startswith('redstone'):
-            return self.tint_lookup['redstone']
-        elif 'cauldron' in block_name:
+        elif block_name.startswith("grass"):
+            return self.tint_lookup["grass"]
+        elif block_name.startswith("redstone"):
+            return self.tint_lookup["redstone"]
+        elif "cauldron" in block_name:
             return collections.defaultdict(lambda: "#FFFFFF")
         else:
-            return self.tint_lookup['foliage']
+            return self.tint_lookup["foliage"]
 
 
 class BlockData:
@@ -493,7 +501,11 @@ class BlockData:
     def to_minecraft_block(self):
         models = []
         for idx, model in enumerate(self.models):
-            models.append(model.to_minecraft_model(name=f"model_{idx}", tint_lookup=self.tint_lookup))
+            models.append(
+                model.to_minecraft_model(
+                    name=f"model_{idx}", tint_lookup=self.tint_lookup
+                )
+            )
 
         return MinecraftBlock(
             self.canonical_name,
@@ -531,10 +543,10 @@ class ModelData:
 
     Processing Order:
     1. Face UV coordinates from model JSON
-    2. Face rotation (0°, 90°, 180°, 270°)
-    3. Element rotation (-45° to +45°)
-    4. Model rotation (0°, 90°, 180°, 270°)
-    5. UV lock compensation (if enabled)
+    2. Face rotation is applied (0°, 90°, 180°, 270°)
+    3. Element rotation is applied (-45° to +45°)
+    4. Model rotation is applied (0°, 90°, 180°, 270°)
+    5. UV lock is applied (if enabled)
 
     Example:
         A fence post connecting diagonally might use:
@@ -625,65 +637,67 @@ class MinecraftModelFace:
             f"{indent_str}  Tint Index: {self.tintindex}",
         ]
         return "\n".join(info)
-    
+
     def tint_from_biomes(self, biome, adjacent_biomes):
         if self.tintindex == -1:
             return None
 
         main_biome_color = self.tint_lookup[biome]
-        adjacent_biomes_colors: List[Tuple[str, int]] = [self.tint_lookup[biome] for biome in adjacent_biomes]
+        adjacent_biomes_colors: List[Tuple[str, int]] = [
+            self.tint_lookup[biome] for biome in adjacent_biomes
+        ]
 
         return blend_colors(main_biome_color, adjacent_biomes_colors)
 
 
 def blend_colors(main_color: str, adjacent_colors: List[Tuple[str, int]]) -> str:
     """Given a hex color and a list of hex colors and their integer distances between 1-10, blend the colors together.
-    
+
     Uses a simple linear gradient where closer colors have more influence on the blend.
     Returns the original color if no adjacent colors are provided.
-    
+
     Args:
         main_color: Hex color string in format '#RRGGBB'
         adjacent_colors: List of tuples containing (hex_color, distance) where distance is 1-10
-    
+
     Returns:
         Blended hex color string in format '#RRGGBB'
     """
     # Return original if no adjacent colors
     if not adjacent_colors:
         return main_color
-    
+
     # Convert main color hex to RGB values
     main_r = int(main_color[1:3], 16)
     main_g = int(main_color[3:5], 16)
     main_b = int(main_color[5:7], 16)
-    
+
     # Initialize weighted sums
     total_weight = 1.0  # Main color has weight of 1
     weighted_r = main_r
-    weighted_g = main_g 
+    weighted_g = main_g
     weighted_b = main_b
-    
+
     # Add weighted contributions from adjacent colors
     for adj_color, distance in adjacent_colors:
         # Convert distance 1-10 to weight 1.0-0.1
         weight = (11 - distance) / 10.0
-        
+
         # Add weighted RGB values
         adj_r = int(adj_color[1:3], 16)
         adj_g = int(adj_color[3:5], 16)
         adj_b = int(adj_color[5:7], 16)
-        
+
         weighted_r += adj_r * weight
         weighted_g += adj_g * weight
         weighted_b += adj_b * weight
         total_weight += weight
-    
+
     # Calculate final RGB values
     final_r = min(255, max(0, int(weighted_r / total_weight)))
     final_g = min(255, max(0, int(weighted_g / total_weight)))
     final_b = min(255, max(0, int(weighted_b / total_weight)))
-    
+
     # Convert back to hex
     return f"#{final_r:02X}{final_g:02X}{final_b:02X}"
 
@@ -787,6 +801,12 @@ class MinecraftModelElement:
 
 class MinecraftModel:
     """Represents a complete Minecraft model with all its elements and transformations.
+
+    Coordinate System Conversion:
+    Minecraft (left-handed)    ->    Blender (right-handed)
+    +X = East (right)          ->    +X = Right (same)
+    +Y = Up                    ->    +Z = Up (Y becomes Z)
+    +Z = South (away)          ->    -Y = Forward (Z becomes -Y)
 
     Rotation and UV Lock Processing Order:
     1. Face-level:
@@ -955,22 +975,20 @@ class MinecraftModel:
 
         Coordinate System Conversion:
         Minecraft (left-handed):          Blender (right-handed):
-        +X = East (right)                 +X = Right
-        +Y = Up                          +Y = Forward (into screen)
-        +Z = South (away)                +Z = Up
-
-        So Minecraft (X,Y,Z) maps to Blender (X,-Z,Y)
+        +X = East (right)                 +X = Right (same)
+        +Y = Up                           +Z = Up (Y becomes Z)
+        +Z = South (away)                 -Y = Forward (Z becomes -Y)
 
         Rotation Order:
         Minecraft applies model rotations in this order:
         1. X rotation first (around X axis)
-        2. Z rotation second (around Z axis)
-        3. Y rotation last (around Y axis)
+        2. Y rotation second (around Y axis)
+        3. Z rotation last (around Z axis)
 
         When converting to Blender:
-        - Minecraft X rotation -> Blender X rotation (negated due to coordinate flip)
-        - Minecraft Y rotation -> Blender Z rotation (negated for right-hand rule)
-        - Minecraft Z rotation -> Blender Y rotation (positive, maps to negative Y)
+        - Minecraft X rotation -> Blender X rotation (same axis)
+        - Minecraft Y rotation -> Blender Z rotation (Y becomes Z)
+        - Minecraft Z rotation -> Blender -Y rotation (Z becomes -Y)
 
         Matrix multiplication must happen in reverse order of the rotations:
         model_rotation = z_matrix @ y_matrix @ x_matrix
@@ -1076,9 +1094,9 @@ class MinecraftModel:
         """Convert coordinates from Minecraft to Blender space.
 
         Minecraft (left-handed):    Blender (right-handed):
-        +X = East (right)          +X = Right
-        +Y = Up                    +Y = Forward (-Z in Minecraft)
-        +Z = South (forward)       +Z = Up (Y in Minecraft)
+        +X = East (right)          +X = Right (same)
+        +Y = Up                    +Z = Up (Y becomes Z)
+        +Z = South (forward)       -Y = Forward (Z becomes -Y)
 
         The transformation matrix is:
         | 1  0  0 |   |x|   | x/16     |
@@ -1254,9 +1272,9 @@ class MinecraftModel:
         """Apply element-level rotation transformation with proper rescaling.
 
         Minecraft's rotation system must be transformed to Blender's coordinate space:
-        - Minecraft X rotation -> Blender X rotation
-        - Minecraft Y rotation -> Blender Z rotation
-        - Minecraft Z rotation -> Blender Y rotation (negated)
+        - Minecraft X rotation -> Blender X rotation (same axis)
+        - Minecraft Y rotation -> Blender Z rotation (Y becomes Z)
+        - Minecraft Z rotation -> Blender -Y rotation (Z becomes -Y)
 
         This follows from the coordinate system transformation:
         - When we map Minecraft +Y to Blender +Z, Y-axis rotation becomes Z-axis rotation
@@ -1275,7 +1293,7 @@ class MinecraftModel:
         # Transform rotation based on coordinate system mapping:
         # - X axis stays as X axis
         # - Y axis becomes Z axis
-        # - Z axis becomes Y axis (negated angle due to coordinate flip)
+        # - Z axis becomes -Y axis (negated angle due to coordinate flip)
         if minecraft_axis == "x":
             blender_axis = "x"
         elif minecraft_axis == "y":
@@ -1330,9 +1348,9 @@ class MinecraftBlock:
 
     def __init__(self, canonical_name, models, states=None, transparent=False):
         self.canonical_name = canonical_name
-        self.models = list(models)  
+        self.models = list(models)
         self.states = states or {}
-        self.base_name = canonical_name.split('[')[0]
+        self.base_name = canonical_name.split("[")[0]
         self.transparent = transparent
 
     def to_blender_block(self, adjacent_blocks=None, biome=None, adjacent_biomes=None):
@@ -1341,7 +1359,11 @@ class MinecraftBlock:
         # Convert block models
         blender_models = []
         for model in self.models:
-            blender_model = model.to_blender_model(biome=biome, adjacent_biomes=adjacent_biomes, adjacent_blocks=adjacent_blocks)
+            blender_model = model.to_blender_model(
+                biome=biome,
+                adjacent_biomes=adjacent_biomes,
+                adjacent_blocks=adjacent_blocks,
+            )
             blender_models.append(blender_model)
 
         # Create the block
@@ -1382,7 +1404,11 @@ class PlacedMinecraftBlock:
         blender_y = -self.z  # Minecraft Z -> Blender -Y
         blender_z = self.y  # Minecraft Y -> Blender Z
 
-        block = self.block.to_blender_block(adjacent_blocks=adjacent_blocks, biome=self.biome, adjacent_biomes=self.adjacent_biomes)
+        block = self.block.to_blender_block(
+            adjacent_blocks=adjacent_blocks,
+            biome=self.biome,
+            adjacent_biomes=self.adjacent_biomes,
+        )
 
         # Create and return the placed block
         return rendering.PlacedBlock(block=block, x=blender_x, y=blender_y, z=blender_z)
@@ -1402,12 +1428,13 @@ class AdjecencyInfo:
         self.reference_block = reference_block
         self.block = block
         self.adjacent = adjacent
-    
+
     def __repr__(self):
         if self.block:
             return f"AdjecencyInfo(reference_block=<{self.reference_block.block.canonical_name}, coords={self.reference_block.x, self.reference_block.y, self.reference_block.z}>, block=<{self.block.block.canonical_name}, coords={self.block.x, self.block.y, self.block.z}>, adjacent={self.adjacent})"
         else:
             return f"AdjecencyInfo(reference_block=<{self.reference_block.block.canonical_name}, coords={self.reference_block.x, self.reference_block.y, self.reference_block.z}>, adjacent={self.adjacent})"
+
 
 class MinecraftWorld:
     def __init__(self, blocks: List[PlacedMinecraftBlock]):
@@ -1418,35 +1445,35 @@ class MinecraftWorld:
 
     def get_adjacent_blocks(self, block: PlacedMinecraftBlock):
         """Get blocks adjacent to the given block for face culling.
-        
+
         Args:
             block: The block to check adjacency for
-            
+
         Returns:
             Dict mapping face directions to boolean values indicating if that face should be culled
         """
         # Define direction vectors for each face
         directions = {
             "north": (0, 0, -1),  # -Z in Minecraft
-            "south": (0, 0, 1),   # +Z in Minecraft
-            "east": (1, 0, 0),    # +X in Minecraft
-            "west": (-1, 0, 0),   # -X in Minecraft
-            "up": (0, 1, 0),      # +Y in Minecraft
-            "down": (0, -1, 0),   # -Y in Minecraft
+            "south": (0, 0, 1),  # +Z in Minecraft
+            "east": (1, 0, 0),  # +X in Minecraft
+            "west": (-1, 0, 0),  # -X in Minecraft
+            "up": (0, 1, 0),  # +Y in Minecraft
+            "down": (0, -1, 0),  # -Y in Minecraft
         }
-        
+
         adjacent = {}
-        
+
         # Check each direction
         for face, direction in directions.items():
             # Calculate adjacent position
             adj_x = block.x + direction[0]
             adj_y = block.y + direction[1]
             adj_z = block.z + direction[2]
-            
+
             # Get block at adjacent position
             adjacent_block = self.location_index.get((adj_x, adj_y, adj_z))
-            
+
             # Determine if face should be culled
             should_cull = False
             if adjacent_block:
@@ -1456,17 +1483,24 @@ class MinecraftWorld:
                 # 3. Special case: If both blocks are glass-type, cull faces between them
                 if adj_y >= 0:
                     is_glass = "glass" in block.block.canonical_name.lower()
-                    adj_is_glass = "glass" in adjacent_block.block.canonical_name.lower()
-                    
-                    if is_glass and adj_is_glass and block.block.canonical_name == adjacent_block.block.canonical_name:
+                    adj_is_glass = (
+                        "glass" in adjacent_block.block.canonical_name.lower()
+                    )
+
+                    if (
+                        is_glass
+                        and adj_is_glass
+                        and block.block.canonical_name
+                        == adjacent_block.block.canonical_name
+                    ):
                         # Cull faces between identical glass blocks
                         should_cull = True
                     elif not adjacent_block.block.transparent:
                         # Cull faces against opaque blocks
                         should_cull = True
-            
+
             adjacent[face] = should_cull
-        
+
         return adjacent
 
     def to_blender_blocks(self):
@@ -1478,6 +1512,159 @@ class MinecraftWorld:
             blender_blocks.append(blender_block)
 
         return blender_blocks
+
+    def add_debug_blocks(
+        self, resource_loader, cardinal_directions=True, interesting_blocks=True
+    ):
+        """Add blocks outside the bounding box of existing blocks to mark cardinal directions.
+
+        Args:
+            resource_loader: ResourceLoader instance to create blocks
+            cardinal_directions: If True, adds colored wool blocks to indicate directions:
+                - Up (center above): black wool
+                - Down (center below): white wool
+                - North face center: blue wool
+                - South face center: red wool
+                - East face center: green wool
+                - West face center: orange wool
+            interesting_blocks: If True, adds a diagonal line of test blocks:
+                - Lectern (with different rotations)
+                - Acacia fence (connected on all sides)
+                - Fletching table
+        """
+        if not self.blocks:
+            return
+
+        # 1. Find bounding box
+        min_x = min(block.x for block in self.blocks)
+        max_x = max(block.x for block in self.blocks)
+        min_y = min(block.y for block in self.blocks)
+        max_y = max(block.y for block in self.blocks)
+        min_z = min(block.z for block in self.blocks)
+        max_z = max(block.z for block in self.blocks)
+
+        # 2. Calculate center points on each face
+        center_x = (min_x + max_x) // 2
+        center_y = (min_y + max_y) // 2
+        center_z = (min_z + max_z) // 2
+
+        debug_blocks = []
+
+        if cardinal_directions:
+            # 3. Create and add the cardinal direction blocks
+            debug_blocks.extend(
+                [
+                    # Up (black wool)
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block("black_wool").to_minecraft_block(),
+                        x=center_x,
+                        y=max_y + 2,
+                        z=center_z,
+                    ),
+                    # Down (white wool)
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block("white_wool").to_minecraft_block(),
+                        x=center_x,
+                        y=min_y - 2,
+                        z=center_z,
+                    ),
+                    # North (blue wool)
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block("blue_wool").to_minecraft_block(),
+                        x=center_x,
+                        y=center_y,
+                        z=min_z - 2,
+                    ),
+                    # South (red wool)
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block("red_wool").to_minecraft_block(),
+                        x=center_x,
+                        y=center_y,
+                        z=max_z + 2,
+                    ),
+                    # East (green wool)
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block("green_wool").to_minecraft_block(),
+                        x=max_x + 2,
+                        y=center_y,
+                        z=center_z,
+                    ),
+                    # West (orange wool)
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block("orange_wool").to_minecraft_block(),
+                        x=min_x - 2,
+                        y=center_y,
+                        z=center_z,
+                    ),
+                ]
+            )
+
+        if interesting_blocks:
+            # Start position for interesting blocks (above and SE of bounding box)
+            start_x = max_x + 4
+            start_y = max_y + 4
+            start_z = max_z + 4
+
+            # Add lecterns with different facing directions
+            debug_blocks.extend(
+                [
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "lectern[facing=east]"
+                        ).to_minecraft_block(),
+                        x=start_x,
+                        y=start_y,
+                        z=start_z,
+                    ),
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "lectern[facing=south]"
+                        ).to_minecraft_block(),
+                        x=start_x + 2,
+                        y=start_y,
+                        z=start_z + 2,
+                    ),
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "lectern[facing=west]"
+                        ).to_minecraft_block(),
+                        x=start_x + 4,
+                        y=start_y,
+                        z=start_z + 4,
+                    ),
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "lectern[facing=north]"
+                        ).to_minecraft_block(),
+                        x=start_x + 6,
+                        y=start_y,
+                        z=start_z + 6,
+                    ),
+                    # Connected acacia fence
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "acacia_fence[north=true,south=true,east=true,west=true]"
+                        ).to_minecraft_block(),
+                        x=start_x + 8,
+                        y=start_y,
+                        z=start_z + 8,
+                    ),
+                    # Fletching table
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "fletching_table"
+                        ).to_minecraft_block(),
+                        x=start_x + 10,
+                        y=start_y,
+                        z=start_z + 10,
+                    ),
+                ]
+            )
+
+        # Add blocks to world and update location index
+        for block in debug_blocks:
+            self.blocks.append(block)
+            self.location_index[block.x, block.y, block.z] = block
 
 
 def create_rotation_matrix(axis, angle_degrees):
