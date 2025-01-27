@@ -97,12 +97,21 @@ class BiomeLookup:
         """Get all biomes within the specified proximity of a point, with their distances."""
         point = Point3D(x, y, z)
         nearby_biomes: List[Tuple[str, float]] = []
+        distances = {}
         
         # Check each region
         for region in self.regions:
+            if region.contains_point(point):
+                continue
+
             distance = region.min_distance_to_point(point)
             if distance <= proximity:
-                nearby_biomes.append((region.biome, distance))
-        
-        # Sort by distance
-        return sorted(nearby_biomes, key=lambda x: x[1])
+                if region.biome not in distances:
+                    distances[region.biome] = distance
+                else:
+                    distances[region.biome] = min(distances[region.biome], distance)
+
+        return sorted(
+            [(biome, distance) for biome, distance in distances.items()],
+            key=lambda x: x[1],
+        )

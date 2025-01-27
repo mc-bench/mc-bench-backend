@@ -371,6 +371,15 @@ class Renderer:
         mapping = nodes.new("ShaderNodeMapping")
         tex_coord = nodes.new("ShaderNodeTexCoord")
 
+        if tint is not None:
+            tint_node = nodes.new("ShaderNodeRGB")
+            tint_rgb = hex_to_rgb(tint)
+            tint_node.outputs[0].default_value = (*tint_rgb, 1)  # RGBA
+
+            multiply_node = nodes.new("ShaderNodeMixRGB")
+            multiply_node.blend_type = "MULTIPLY"
+            multiply_node.inputs[0].default_value = 1.0
+
         # Setup texture
         tex_image.image = baked_img if "baked_img" in locals() else img
         tex_image.interpolation = "Closest"
@@ -383,10 +392,18 @@ class Renderer:
         principled_bsdf.location = (200, 0)
         output.location = (400, 0)
 
+        if tint is None:
+            links.new(tex_image.outputs["Color"], principled_bsdf.inputs["Base Color"])
+        else:
+            links.new(tex_image.outputs["Color"], multiply_node.inputs[1])
+            links.new(tint_node.outputs["Color"], multiply_node.inputs[2])
+            links.new(
+                multiply_node.outputs["Color"], principled_bsdf.inputs["Base Color"]
+            )
+
         # Connect nodes
         links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
         links.new(mapping.outputs["Vector"], tex_image.inputs["Vector"])
-        links.new(tex_image.outputs["Color"], principled_bsdf.inputs["Base Color"])
 
         # Only connect alpha if transparency is detected
         if has_transparency:
