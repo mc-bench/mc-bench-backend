@@ -42,9 +42,8 @@ The core classes are:
 import os
 import textwrap
 
-import bpy
 import bmesh
-
+import bpy
 from mathutils import Vector
 
 
@@ -292,7 +291,9 @@ class Renderer:
         # Create materials for each face
         for face in element.faces:
             if face.texture:
-                mat = self.create_material(face.texture, name=face.material_name, tint=face.tint)
+                mat = self.create_material(
+                    face.texture, name=face.material_name, tint=face.tint
+                )
                 if mat.name not in mesh.materials:
                     mesh.materials.append(mat)
 
@@ -472,6 +473,21 @@ class Renderer:
             export_unused_textures=True,
             export_vertex_color="MATERIAL",
         )
+
+    def render_blocks(self, placed_blocks: list[PlacedBlock], name: str, types=None):
+        """Render a list of PlacedBlock instances."""
+
+        types = types or ["blend", "glb"]
+
+        for placed_block in placed_blocks:
+            self.place_block(placed_block)
+
+        # Export based on file extension
+        if "blend" in types:
+            self.export_to_blend(f"{name}.blend")
+
+        if "glb" in types:
+            self.export_to_gltf(f"{name}.glb")
 
     def convert_blocks_to_file(
         self, placed_blocks: list[PlacedBlock], output_filepath: str
