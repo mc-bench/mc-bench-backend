@@ -41,6 +41,7 @@ The core classes are:
 
 import os
 import textwrap
+import math
 
 import bpy
 import bmesh  # isort: skip
@@ -171,6 +172,10 @@ class Renderer:
     def __init__(self):
         self.setup_blender_env()
         self._next_index = 0
+        self.texture_paths = set()  # Track unique textures
+        self.atlas = None  # Will store the atlas image
+        self.atlas_mapping = {}  # Will store UV mapping info for each texture
+        self.materials = {}  # Track materials by texture path
 
     def get_next_index(self):
         index = self._next_index
@@ -183,13 +188,14 @@ class Renderer:
         self.place_block(placed_block)
 
     def setup_blender_env(self):
+        """Set up Blender environment with optimized render settings."""
         bpy.ops.wm.read_factory_settings(use_empty=True)
 
         # Remove default objects
         for obj in bpy.data.objects:
             bpy.data.objects.remove(obj, do_unlink=True)
 
-        # Set up basic scene
+        # Set up basic scene with optimized settings
         scene = bpy.context.scene
         scene.render.engine = "CYCLES"
 
@@ -199,6 +205,18 @@ class Renderer:
             scene.world = world
 
         scene.world.use_nodes = True
+
+        # Add optimized sun light
+        sun_data = bpy.data.lights.new(name="Sun", type='SUN')
+        sun_data.energy = 7.0  # Increased energy to compensate for softer shadows
+        sun_data.angle = 0.1  # Controls shadow softness (in radians)
+        sun_obj = bpy.data.objects.new(name="Sun", object_data=sun_data)
+        scene.collection.objects.link(sun_obj)
+        
+        # Position sun high in southern sky, offset to east for diagonal shadows
+        # Rotate to point slightly downward and northward
+        sun_obj.rotation_euler = (1.0, 0.2, 0.0)  # Angled downward and slightly westward
+        sun_obj.location = (15.0, -30.0, 30.0)  # Moved further away for more even lighting
 
     def create_block(self, block: Block) -> dict[str, list[bpy.types.Object]]:
         """Create all models for a block"""
@@ -290,10 +308,13 @@ class Renderer:
             mesh.uv_layers.new()
 
         # Create materials for each face
-        for face in element.faces:
+        face_lookup = {}
+        for idx, face in enumerate(element.faces):
             if face.texture:
+                material_name = f"{name}_{element.name}_{face.material_name}_{idx}"
+                face_lookup[id(face)] = material_name
                 mat = self.create_material(
-                    face.texture, name=face.material_name, tint=face.tint
+                    face.texture, name=material_name, tint=face.tint
                 )
                 if mat.name not in mesh.materials:
                     mesh.materials.append(mat)
@@ -303,7 +324,7 @@ class Renderer:
             if i < len(mesh.polygons):
                 # Assign material index
                 if face.material_name:
-                    mat_idx = mesh.materials.find(face.material_name)
+                    mat_idx = mesh.materials.find(face_lookup[id(face)])
                     if mat_idx >= 0:
                         mesh.polygons[i].material_index = mat_idx
 
@@ -326,6 +347,13 @@ class Renderer:
 
     def create_material(self, texture_path, name, tint=None) -> bpy.types.Material:
         """Create a material with baked textures for Minecraft blocks."""
+        # Track texture for atlas generation
+        self.texture_paths.add(texture_path)
+        
+        # Store material reference for later UV remapping
+        if texture_path not in self.materials:
+            self.materials[texture_path] = []
+        self.materials[texture_path].append(name)
 
         # First check if material already exists
         mat = bpy.data.materials.get(name)
@@ -483,12 +511,20 @@ class Renderer:
         for placed_block in placed_blocks:
             self.place_block(placed_block)
 
+        # Prepare materials before export
+        self.prepare_materials_for_render()
+
         # Export based on file extension
         if "blend" in types:
             self.export_to_blend(f"{name}.blend")
 
         if "glb" in types:
             self.export_to_gltf(f"{name}.glb")
+
+    def prepare_materials_for_render(self):
+        """Prepare materials by creating texture atlas and remapping UVs."""
+        self.generate_texture_atlas(margin=1)  # Generate atlas with margins
+        self.remap_uvs_to_atlas()
 
     def convert_blocks_to_file(
         self, placed_blocks: list[PlacedBlock], output_filepath: str
@@ -500,6 +536,9 @@ class Renderer:
         # Import each placed block
         for placed_block in placed_blocks:
             self.place_block(placed_block)
+
+        # Prepare materials before export
+        self.prepare_materials_for_render()
 
         # Export based on file extension
         if output_filepath.endswith(".glb"):
@@ -525,6 +564,169 @@ class Renderer:
             compress=True,  # Compress the file
             relative_remap=True,  # Make paths relative
         )
+
+    def calculate_atlas_size(self, materials, margin=1):
+        """Calculate optimal power-of-2 size for atlas based on material textures."""
+        # Find the largest texture dimension
+        max_size = 0
+        for material_name in materials:
+            material = bpy.data.materials.get(material_name)
+            if not material or not material.use_nodes:
+                continue
+            
+            nodes = material.node_tree.nodes
+            tex_node = next((n for n in nodes if n.type == 'TEX_IMAGE'), None)
+            if tex_node and tex_node.image:
+                max_size = max(max_size, max(tex_node.image.size))
+        
+        if not max_size:
+            return 1024, 16  # Default fallback
+            
+        # Round cell size up to nearest power of 2 and add margins
+        cell_size = 1 << (max_size - 1).bit_length()
+        cell_size_with_margin = cell_size + (2 * margin)
+        
+        # Calculate minimum atlas size needed
+        total_materials = len(materials)
+        min_dimension = math.ceil(math.sqrt(total_materials)) * cell_size_with_margin
+        
+        # Round atlas size up to nearest power of 2
+        atlas_size = 1 << (min_dimension - 1).bit_length()
+        
+        return atlas_size, cell_size, cell_size_with_margin
+
+    def generate_texture_atlas(self, margin=1):
+        """Generate a texture atlas from all material textures."""
+        all_materials = []
+        for material_names in self.materials.values():
+            all_materials.extend(material_names)
+            
+        if not all_materials:
+            return
+
+        # Calculate optimal atlas and cell sizes
+        atlas_size, cell_size, cell_size_with_margin = self.calculate_atlas_size(all_materials, margin)
+        
+        # Create new image for atlas
+        atlas_name = "TextureAtlas"
+        existing_atlas = bpy.data.images.get(atlas_name)
+        if existing_atlas:
+            bpy.data.images.remove(existing_atlas)
+            
+        self.atlas = bpy.data.images.new(atlas_name, width=atlas_size, height=atlas_size, alpha=True)
+        self.atlas.use_fake_user = True
+        self.atlas.file_format = 'PNG'
+        
+        # Clear atlas pixels
+        pixels = [0.0] * (atlas_size * atlas_size * 4)
+        self.atlas.pixels = pixels[:]
+        
+        # Calculate grid size based on cell size with margins
+        grid_size = atlas_size // cell_size_with_margin
+        
+        for idx, material_name in enumerate(all_materials):
+            material = bpy.data.materials.get(material_name)
+            if not material or not material.use_nodes:
+                continue
+                
+            nodes = material.node_tree.nodes
+            tex_node = next((n for n in nodes if n.type == 'TEX_IMAGE'), None)
+            if not tex_node or not tex_node.image:
+                continue
+                
+            # Calculate grid position with margins
+            grid_x = idx % grid_size
+            grid_y = idx // grid_size
+            
+            # Calculate UV mapping for this material (excluding margins)
+            x_start = (grid_x * cell_size_with_margin + margin) / atlas_size
+            y_start = (grid_y * cell_size_with_margin + margin) / atlas_size
+            x_end = (grid_x * cell_size_with_margin + margin + cell_size) / atlas_size
+            y_end = (grid_y * cell_size_with_margin + margin + cell_size) / atlas_size
+            
+            self.atlas_mapping[material_name] = {
+                'u_start': x_start,
+                'v_start': y_start,
+                'u_end': x_end,
+                'v_end': y_end
+            }
+            
+            # Copy texture pixels to atlas (with margin offset)
+            self.copy_texture_to_atlas(
+                tex_node.image,
+                grid_x * cell_size_with_margin + margin,
+                grid_y * cell_size_with_margin + margin,
+                cell_size
+            )
+        
+        self.atlas.pack()
+        self.atlas.update()
+        self.atlas.pixels = self.atlas.pixels[:]
+
+    def copy_texture_to_atlas(self, src_img, x_offset, y_offset, cell_size):
+        """Copy source texture pixels to the atlas at specified position."""
+        # Resize source image pixels to cell size
+        temp_img = src_img.copy()
+        temp_img.scale(cell_size, cell_size)
+        
+        src_pixels = list(temp_img.pixels[:])
+        atlas_pixels = list(self.atlas.pixels[:])
+        
+        # Copy pixels
+        for y in range(cell_size):
+            for x in range(cell_size):
+                src_idx = (y * cell_size + x) * 4
+                atlas_idx = ((y + y_offset) * self.atlas.size[0] + (x + x_offset)) * 4
+                
+                # Direct pixel copy
+                for i in range(4):  # RGBA
+                    atlas_pixels[atlas_idx + i] = src_pixels[src_idx + i]
+        
+        self.atlas.pixels = atlas_pixels[:]  # Use slice to ensure proper update
+        bpy.data.images.remove(temp_img)  # Clean up temporary image
+
+    def remap_uvs_to_atlas(self):
+        """Remap all material UVs to use the texture atlas."""
+        if not self.atlas or not self.atlas_mapping:
+            return
+
+        # Update all materials to use atlas
+        for material_name in self.atlas_mapping:
+            material = bpy.data.materials.get(material_name)
+            if not material or not material.use_nodes:
+                continue
+            
+            uv_map = self.atlas_mapping[material_name]
+            
+            # Find texture node
+            nodes = material.node_tree.nodes
+            tex_node = next((n for n in nodes if n.type == 'TEX_IMAGE'), None)
+            if not tex_node:
+                continue
+            
+            # Store old image for cleanup
+            old_image = tex_node.image
+            
+            # Update texture node to use atlas
+            tex_node.image = self.atlas
+            
+            # Add UV scale/offset nodes
+            mapping = nodes.get("Mapping")
+            if not mapping:
+                continue
+            
+            # Update mapping node to remap UVs to atlas position
+            mapping.inputs['Location'].default_value[0] = uv_map['u_start']
+            mapping.inputs['Location'].default_value[1] = uv_map['v_start']
+            mapping.inputs['Scale'].default_value[0] = uv_map['u_end'] - uv_map['u_start']
+            mapping.inputs['Scale'].default_value[1] = uv_map['v_end'] - uv_map['v_start']
+            
+            # Force material update
+            material.update_tag()
+            
+            # Clean up old image if it's not used anymore
+            if old_image and not old_image.users:
+                bpy.data.images.remove(old_image)
 
 
 def hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
