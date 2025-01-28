@@ -17,5 +17,9 @@ class Settings:
     EXTERNAL_OBJECT_BUCKET = os.environ.get("EXTERNAL_OBJECT_BUCKET")
     INTERNAL_OBJECT_BUCKET = os.environ.get("INTERNAL_OBJECT_BUCKET")
 
+    # New settings for Google OAuth
+    GOOGLE_CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
+    GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
+    GOOGLE_REDIRECT_URI = os.environ["GOOGLE_REDIRECT_URI"]
 
 settings = Settings()

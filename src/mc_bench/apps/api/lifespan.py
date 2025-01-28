@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from mc_bench.auth.clients import GithubOauthClient
+from mc_bench.auth.clients import GithubOauthClient, GoogleOauthClient
 from mc_bench.models.user import AuthProvider
 from mc_bench.util.postgres import get_session
 from mc_bench.util.redis import RedisDatabase, get_redis_pool
@@ -13,6 +13,11 @@ github_oauth_client = GithubOauthClient(
     salt=settings.GITHUB_EMAIL_SALT,
 )
 
+google_oauth_client = GoogleOauthClient(
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    redirect_uri=settings.GOOGLE_REDIRECT_URI
+)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -20,6 +25,7 @@ async def lifespan(app):
     engine = session.bind
     redis_pool = get_redis_pool(RedisDatabase.COMPARISON)
     AuthProvider.register_client_factory("github", lambda: github_oauth_client)
+    AuthProvider.register_client_factory("google", lambda: google_oauth_client)
 
     yield
 

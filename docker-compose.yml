@@ -28,6 +28,9 @@ services:
       AUTO_GRANT_ADMIN_ROLE: ${AUTO_GRANT_ADMIN_ROLE:-false}
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       INTERNAL_OBJECT_BUCKET: "mcbench-backend-object-local"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-default_value}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-default_value}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-default_value}
 
   admin-api:
     build:
