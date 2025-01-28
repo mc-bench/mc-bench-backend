@@ -42,8 +42,9 @@ The core classes are:
 import os
 import textwrap
 
-import bmesh
 import bpy
+import bmesh  # isort: skip
+
 from mathutils import Vector
 
 
