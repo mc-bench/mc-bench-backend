@@ -688,20 +688,26 @@ class Renderer:
     def remap_uvs_to_atlas(self):
         """Remap all material UVs to use the texture atlas."""
         if not self.atlas or not self.atlas_mapping:
-            return
+            raise ValueError("Atlas or mapping not found")
 
         # Update all materials to use atlas
         for material_name in self.atlas_mapping:
+            print(f"Remapping UVs for material {material_name}")
             material = bpy.data.materials.get(material_name)
             if not material or not material.use_nodes:
+                print(f"Material {material_name} not found or not using nodes")
                 continue
             
             uv_map = self.atlas_mapping[material_name]
             
-            # Find texture node
+            # Get material nodes and links
             nodes = material.node_tree.nodes
+            links = material.node_tree.links
+            
+            # Find and update texture node
             tex_node = next((n for n in nodes if n.type == 'TEX_IMAGE'), None)
             if not tex_node:
+                print(f"Texture node for material {material_name} not found")
                 continue
             
             # Store old image for cleanup
@@ -709,11 +715,24 @@ class Renderer:
             
             # Update texture node to use atlas
             tex_node.image = self.atlas
-            
-            # Add UV scale/offset nodes
+            tex_node.update()  # Force the texture node to update
+
+            # Find or create mapping node
             mapping = nodes.get("Mapping")
             if not mapping:
-                continue
+                mapping = nodes.new("ShaderNodeMapping")
+                # Position it between TexCoord and Image Texture nodes
+                mapping.location = (-400, 0)
+                
+                # Find or create texture coordinate node
+                tex_coord = nodes.get("Texture Coordinate")
+                if not tex_coord:
+                    tex_coord = nodes.new("ShaderNodeTexCoord")
+                    tex_coord.location = (-600, 0)
+                
+                # Connect TexCoord -> Mapping -> Image Texture
+                links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
+                links.new(mapping.outputs["Vector"], tex_node.inputs["Vector"])
             
             # Update mapping node to remap UVs to atlas position
             mapping.inputs['Location'].default_value[0] = uv_map['u_start']
@@ -727,6 +746,9 @@ class Renderer:
             # Clean up old image if it's not used anymore
             if old_image and not old_image.users:
                 bpy.data.images.remove(old_image)
+
+        # Force scene update to refresh materials
+        bpy.context.view_layer.update()
 
 
 def hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
