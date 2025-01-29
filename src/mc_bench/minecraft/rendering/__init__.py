@@ -39,20 +39,25 @@ The core classes are:
 - Face: A single face of an element with UV mapping and texture information
 """
 
+import math
 import os
 import textwrap
-import math
+from typing import Optional, Tuple
 
 import bpy
+
 import bmesh  # isort: skip
+import time
 
 from mathutils import Vector
 
 
 class Block:
-    def __init__(self, name, models):
+    def __init__(self, name, models, light_emission=None, ambient_occlusion=False):
         self.name = name
         self.models = models
+        self.light_emission = light_emission
+        self.ambient_occlusion = ambient_occlusion
 
     def __repr__(self):
         formatted_models = textwrap.indent(
@@ -121,19 +126,35 @@ class Element:
 
 
 class Face:
-    def __init__(self, name, vertex_indices, texture, uvs, source=None, tint=None):
+    def __init__(
+        self,
+        name,
+        vertex_indices,
+        texture,
+        uvs,
+        source=None,
+        tint=None,
+        ambient_occlusion=True,
+    ):
         self.name = name
         self.vertex_indices = vertex_indices
         self.texture = texture
         self.uvs = uvs
         self.source = source
         self.tint = tint
+        self.ambient_occlusion = ambient_occlusion
+
+    @property
+    def tint_rgb(self):
+        if self.tint:
+            return hex_to_rgb(self.tint)
 
     @property
     def material_name(self):
-        name = os.path.splitext(os.path.basename(self.texture))[0]
+        name = self.name
         if self.tint:
-            name = f"{name}_tinted_{self.tint.lstrip('#')}"
+            name = f"{self.name}_tinted_{self.tint.lstrip('#')}"
+
         return name
 
     def __repr__(self):
@@ -207,16 +228,24 @@ class Renderer:
         scene.world.use_nodes = True
 
         # Add optimized sun light
-        sun_data = bpy.data.lights.new(name="Sun", type='SUN')
+        sun_data = bpy.data.lights.new(name="Sun", type="SUN")
         sun_data.energy = 7.0  # Increased energy to compensate for softer shadows
         sun_data.angle = 0.1  # Controls shadow softness (in radians)
         sun_obj = bpy.data.objects.new(name="Sun", object_data=sun_data)
         scene.collection.objects.link(sun_obj)
-        
+
         # Position sun high in southern sky, offset to east for diagonal shadows
         # Rotate to point slightly downward and northward
-        sun_obj.rotation_euler = (1.0, 0.2, 0.0)  # Angled downward and slightly westward
-        sun_obj.location = (15.0, -30.0, 30.0)  # Moved further away for more even lighting
+        sun_obj.rotation_euler = (
+            1.0,
+            0.2,
+            0.0,
+        )  # Angled downward and slightly westward
+        sun_obj.location = (
+            15.0,
+            -30.0,
+            30.0,
+        )  # Moved further away for more even lighting
 
     def create_block(self, block: Block) -> dict[str, list[bpy.types.Object]]:
         """Create all models for a block"""
@@ -226,17 +255,77 @@ class Renderer:
         block_empty = bpy.data.objects.new(f"{object_index_str}_{block.name}", None)
         bpy.context.scene.collection.objects.link(block_empty)
 
+        # Add point light for emissive blocks
+        if block.light_emission is not None:
+            light_data = bpy.data.lights.new(
+                name=f"{object_index_str}_light", type="POINT"
+            )
+            # Base energy level (relatively bright but not extreme)
+            light_data.energy = 20.0 * block.light_emission
+            light_data.use_custom_distance = True
+            light_data.cutoff_distance = 10.0  # Total light reach
+
+            # Setup nodes for custom falloff
+            light_data.use_nodes = True
+            nodes = light_data.node_tree.nodes
+            links = light_data.node_tree.links
+
+            # Clear default nodes
+            nodes.clear()
+
+            # Create nodes for custom falloff
+            emission = nodes.new("ShaderNodeEmission")
+            output = nodes.new("ShaderNodeOutputLight")
+            falloff = nodes.new("ShaderNodeLightFalloff")
+
+            # Position nodes
+            emission.location = (200, 0)
+            falloff.location = (0, 0)
+            output.location = (400, 0)
+
+            # Set falloff parameters
+            falloff.inputs["Strength"].default_value = 6.0  # Adjusted strength
+            falloff.inputs["Smooth"].default_value = 0.5
+
+            # Set warm light color directly on emission
+            emission.inputs["Color"].default_value = (
+                1.0,
+                0.898,
+                0.718,
+                1.0,
+            )  # #FFE5B7FF
+
+            # Connect nodes
+            links.new(
+                falloff.outputs["Linear"], emission.inputs["Strength"]
+            )  # Changed to Linear
+            links.new(emission.outputs["Emission"], output.inputs["Surface"])
+
+            # Performance optimizations
+            light_data.shadow_soft_size = 0.3
+            light_data.use_shadow = False
+            light_data.cycles.max_bounces = 1
+            light_data.cycles.use_multiple_importance_sampling = False
+
+            light_obj = bpy.data.objects.new(
+                name=f"{object_index_str}_light", object_data=light_data
+            )
+            bpy.context.scene.collection.objects.link(light_obj)
+            light_obj.parent = block_empty
+            light_obj.location = (0.5, -0.5, 0.5)
+
         models_objects = {}
         for i, model in enumerate(block.models):
             # Create an empty object for the model to act as parent
             model_empty = bpy.data.objects.new(f"{object_index_str}_{model.name}", None)
             bpy.context.scene.collection.objects.link(model_empty)
-            # No need to link model_empty to collection
             model_empty.parent = block_empty
 
-            # Create the actual model objects
+            # Create the actual model objects, passing down emission info
             objects = self.create_model(
-                model, f"{object_index_str}_{model.name}", object_index_str
+                model,
+                object_index_str,
+                light_emission=block.light_emission,
             )
 
             # Parent all model objects to the model empty
@@ -248,7 +337,11 @@ class Renderer:
         return {"parent": block_empty, "models": models_objects}
 
     def create_model(
-        self, model: Model, name: str, index_str: str, collection=None
+        self,
+        model: Model,
+        index_str: str,
+        collection=None,
+        light_emission=None,
     ) -> list[bpy.types.Object]:
         """Create all elements for a model"""
 
@@ -256,18 +349,23 @@ class Renderer:
             collection = bpy.context.scene.collection
 
         objects = []
-        for i, element in enumerate(model.elements):
+        for element in model.elements:
             # Skip elements with no faces
             if not element.faces:
                 continue
 
-            obj = self.create_element_mesh(element, f"{index_str}_{element.name}")
+            obj = self.create_element_mesh(
+                element,
+                f"{index_str}_{element.name}",
+                index_str,
+                light_emission=light_emission,
+            )
             collection.objects.link(obj)
             objects.append(obj)
 
         return objects
 
-    def create_element_mesh(self, element, name):
+    def create_element_mesh(self, element, name, index_str, light_emission=None):
         """Create a mesh object for an element."""
         mesh = bpy.data.meshes.new(name)
         obj = bpy.data.objects.new(name, mesh)
@@ -303,6 +401,22 @@ class Renderer:
         mesh.from_pydata(new_vertices, [], new_faces)
         mesh.update()
 
+        # Clean up mesh geometry
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+
+        # Remove duplicate vertices
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+
+        # Ensure consistent face normals
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+        # Remove any internal faces
+        bmesh.ops.dissolve_degenerate(bm, dist=0.0001, edges=bm.edges)
+
+        bm.to_mesh(mesh)
+        bm.free()
+
         # Create UV layer
         if not mesh.uv_layers:
             mesh.uv_layers.new()
@@ -311,10 +425,14 @@ class Renderer:
         face_lookup = {}
         for idx, face in enumerate(element.faces):
             if face.texture:
-                material_name = f"{name}_{element.name}_{face.material_name}_{idx}"
+                material_name = f"{index_str}_{face.material_name}"
                 face_lookup[id(face)] = material_name
                 mat = self.create_material(
-                    face.texture, name=material_name, tint=face.tint
+                    face.texture,
+                    name=material_name,
+                    tint=face.tint_rgb,
+                    light_emission=light_emission,
+                    ambient_occlusion=face.ambient_occlusion,
                 )
                 if mat.name not in mesh.materials:
                     mesh.materials.append(mat)
@@ -345,11 +463,28 @@ class Renderer:
 
         return obj
 
-    def create_material(self, texture_path, name, tint=None) -> bpy.types.Material:
-        """Create a material with baked textures for Minecraft blocks."""
+    def create_material(
+        self,
+        texture_path: str,
+        name: str,
+        tint: Optional[Tuple[int, int, int]] = None,
+        light_emission: Optional[float] = None,
+        ambient_occlusion: bool = True,
+    ) -> bpy.types.Material:
+        """Create a material with baked textures for Minecraft blocks.
+
+        Args:
+            texture_path (str): The path to the texture file.
+            name (str): The name of the material.
+            tint (tuple, optional): The tint color for the material.
+            light_emission (float, optional): The light emission level for the material.
+            ambient_occlusion (bool, optional): Whether to include ambient occlusion.
+        Returns:
+            bpy.types.Material: The created material.
+        """
         # Track texture for atlas generation
         self.texture_paths.add(texture_path)
-        
+
         # Store material reference for later UV remapping
         if texture_path not in self.materials:
             self.materials[texture_path] = []
@@ -358,25 +493,29 @@ class Renderer:
         # First check if material already exists
         mat = bpy.data.materials.get(name)
         if mat is not None:
-            return mat
+            raise RuntimeError(
+                f"All materials must be unique due to baking. {name} not unique"
+            )
 
         # Load and bake the texture
         img = bpy.data.images.get(os.path.basename(texture_path))
+        img_copy = None
+
         if img is None:
             img = bpy.data.images.load(texture_path)
             img.use_fake_user = True
 
             # Create a new image for the baked result
-            baked_name = f"{name}_baked"
-            baked_img = bpy.data.images.new(
-                name=baked_name, width=img.size[0], height=img.size[1], alpha=True
+            img_copy = f"{name}_copy"
+            img_copy = bpy.data.images.new(
+                name=img_copy, width=img.size[0], height=img.size[1], alpha=True
             )
 
             # Copy pixel data and ensure alpha is properly set
             if img.has_data:
                 pixels = list(img.pixels[:])
-                baked_img.pixels = pixels
-                baked_img.pack()  # Pack image data into .blend file
+                img_copy.pixels = pixels
+                img_copy.pack()  # Pack image data into .blend file
 
         # Check for transparency in the image
         has_transparency = False
@@ -387,6 +526,8 @@ class Renderer:
             has_partial_transparency = any(a < 1.0 for a in alpha_values)
             has_transparency = has_partial_transparency
 
+        img = img_copy if img_copy is not None else img
+
         # Create new material
         mat = bpy.data.materials.new(name=name)
         mat.use_nodes = True
@@ -394,42 +535,113 @@ class Renderer:
         links = mat.node_tree.links
         nodes.clear()
 
-        # Create nodes
-        output = nodes.new("ShaderNodeOutputMaterial")
-        principled_bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-        tex_image = nodes.new("ShaderNodeTexImage")
-        mapping = nodes.new("ShaderNodeMapping")
+        # Base Nodes
         tex_coord = nodes.new("ShaderNodeTexCoord")
+        tex_coord.location = (-600, 0)
+        mapping = nodes.new("ShaderNodeMapping")
+        mapping.location = (-400, 0)
+        tex_image = nodes.new("ShaderNodeTexImage")
+        tex_image.location = (-200, 0)
 
-        if tint is not None:
-            tint_node = nodes.new("ShaderNodeRGB")
-            tint_rgb = hex_to_rgb(tint)
-            tint_node.outputs[0].default_value = (*tint_rgb, 1)  # RGBA
+        # Tinting Nodes
+        tint_node = nodes.new("ShaderNodeRGB")
+        tint_node.location = (-200, 200)
+        tint_multiply_node = nodes.new("ShaderNodeMixRGB")
+        tint_multiply_node.location = (100, 250)
+        tint_multiply_node.blend_type = "MULTIPLY"
+        tint_multiply_node.inputs[0].default_value = 1.0
 
-            multiply_node = nodes.new("ShaderNodeMixRGB")
-            multiply_node.blend_type = "MULTIPLY"
-            multiply_node.inputs[0].default_value = 1.0
+        # Ambient Occlusion Nodes
+        ao_node = nodes.new("ShaderNodeAmbientOcclusion")
+        ao_node.location = (-200, -300)
+        ao_mix_node = nodes.new("ShaderNodeMixRGB")
+        ao_mix_node.location = (300, 0)
+        ao_mix_node.blend_type = "MULTIPLY"
+        ao_mix_node.inputs[0].default_value = 1.0
 
-        # Setup texture
-        tex_image.image = baked_img if "baked_img" in locals() else img
+        # Emission Nodes
+
+        principled_bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+        principled_bsdf.location = (500, 0)
+
+        emission_node = nodes.new("ShaderNodeEmission")
+        emission_node.location = (300, 200)
+        emission_mix_node = nodes.new("ShaderNodeMixShader")
+        emission_mix_node.location = (800, 200)
+        emission_transparent_bsdf = nodes.new("ShaderNodeBsdfTransparent")
+        emission_transparent_bsdf.location = (1000, 200)
+        emission_alpha_mix_node = nodes.new("ShaderNodeMixShader")
+        emission_alpha_mix_node.location = (1200, 200)
+
+        output_node = nodes.new("ShaderNodeOutputMaterial")
+        output_node.location = (1000, 0)
+
+        color = tex_image.outputs["Color"]
+        raw_color = tex_image.outputs["Color"]
+
+        # Optimize Principled BSDF settings for Minecraft textures
+        principled_bsdf.inputs["Specular IOR Level"].default_value = 0
+        principled_bsdf.inputs["Roughness"].default_value = 1
+        principled_bsdf.inputs["Metallic"].default_value = 0
+        principled_bsdf.inputs["Alpha"].default_value = 1
+
+        tex_image.image = img
         tex_image.interpolation = "Closest"
         tex_image.extension = "REPEAT"
 
-        # Position nodes
-        tex_coord.location = (-600, 0)
-        mapping.location = (-400, 0)
-        tex_image.location = (-200, 0)
-        principled_bsdf.location = (200, 0)
-        output.location = (400, 0)
+        has_tint = tint is not None
+        has_emission = light_emission is not None
+        has_ambient_occlusion = ambient_occlusion
 
-        if tint is None:
-            links.new(tex_image.outputs["Color"], principled_bsdf.inputs["Base Color"])
+        # with the color input from the image to create a tinted image
+        if has_tint:
+            _rgba_tint = (tint[0], tint[1], tint[2], 1)
+            tint_node.outputs[0].default_value = _rgba_tint
+            links.new(tint_node.outputs[0], tint_multiply_node.inputs[1])
+            links.new(color, tint_multiply_node.inputs[2])
+            color = tint_multiply_node.outputs[0]
+            raw_color = tint_multiply_node.outputs[0]
         else:
-            links.new(tex_image.outputs["Color"], multiply_node.inputs[1])
-            links.new(tint_node.outputs["Color"], multiply_node.inputs[2])
-            links.new(
-                multiply_node.outputs["Color"], principled_bsdf.inputs["Base Color"]
-            )
+            nodes.remove(tint_node)
+            nodes.remove(tint_multiply_node)
+
+        if has_ambient_occlusion:
+            links.new(color, ao_mix_node.inputs[1])
+            links.new(ao_node.outputs["Color"], ao_mix_node.inputs[2])
+            color = ao_mix_node.outputs[0]
+            links.new(color, principled_bsdf.inputs["Base Color"])
+        else:
+            links.new(color, principled_bsdf.inputs["Base Color"])
+            nodes.remove(ao_node)
+            nodes.remove(ao_mix_node)
+
+        if has_emission:
+            links.new(raw_color, emission_node.inputs[0])
+            links.new(emission_node.outputs[0], emission_mix_node.inputs[1])
+            links.new(principled_bsdf.outputs[0], emission_mix_node.inputs[2])
+            links.new(emission_mix_node.outputs[0], output_node.inputs["Surface"])
+
+            if has_transparency:
+                links.new(
+                    emission_transparent_bsdf.outputs[0],
+                    emission_alpha_mix_node.inputs[1],
+                )
+                links.new(
+                    emission_mix_node.outputs[0], emission_alpha_mix_node.inputs[2]
+                )
+                links.new(tex_image.outputs["Alpha"], emission_alpha_mix_node.inputs[0])
+                links.new(
+                    emission_alpha_mix_node.outputs[0], output_node.inputs["Surface"]
+                )
+            else:
+                links.new(emission_mix_node.outputs[0], output_node.inputs["Surface"])
+                nodes.remove(emission_transparent_bsdf)
+                nodes.remove(emission_alpha_mix_node)
+
+        else:
+            links.new(principled_bsdf.outputs[0], output_node.inputs["Surface"])
+            nodes.remove(emission_node)
+            nodes.remove(emission_mix_node)
 
         # Connect nodes
         links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
@@ -442,8 +654,6 @@ class Renderer:
             # Set alpha to 1.0 for opaque materials
             principled_bsdf.inputs["Alpha"].default_value = 1.0
 
-        links.new(principled_bsdf.outputs["BSDF"], output.inputs["Surface"])
-
         # Material settings based on transparency
         if has_transparency:
             mat.blend_method = "BLEND"
@@ -452,11 +662,14 @@ class Renderer:
             mat.blend_method = "OPAQUE"
             mat.use_backface_culling = True
 
-        # Optimize Principled BSDF settings for Minecraft textures
-        principled_bsdf.inputs["Specular IOR Level"].default_value = 0
-        principled_bsdf.inputs["Roughness"].default_value = 1
-        principled_bsdf.inputs["Metallic"].default_value = 0
-        principled_bsdf.inputs["Alpha"].default_value = 1
+        shadow_light_path = nodes.new("ShaderNodeLightPath")
+        shadow_light_path.location = (1400, 200)
+        shadow_math = nodes.new("ShaderNodeMath")
+        shadow_math.location = (1600, 200)
+        shadow_transparent = nodes.new("ShaderNodeBsdfTransparent")
+        shadow_transparent.location = (1800, 200)
+
+        shadow_math.operation = "MULTIPLY"
 
         return mat
 
@@ -557,6 +770,10 @@ class Renderer:
         if not filepath.endswith(".blend"):
             filepath += ".blend"
 
+        if os.path.exists(filepath):
+            name, ext = os.path.splitext(filepath)
+            filepath = f"{name}-{str(time.time()).split('.')[0]}.{ext}"
+
         # Save current file
         bpy.ops.wm.save_as_mainfile(
             filepath=filepath,
@@ -573,26 +790,26 @@ class Renderer:
             material = bpy.data.materials.get(material_name)
             if not material or not material.use_nodes:
                 continue
-            
+
             nodes = material.node_tree.nodes
-            tex_node = next((n for n in nodes if n.type == 'TEX_IMAGE'), None)
+            tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
             if tex_node and tex_node.image:
                 max_size = max(max_size, max(tex_node.image.size))
-        
+
         if not max_size:
             return 1024, 16  # Default fallback
-            
+
         # Round cell size up to nearest power of 2 and add margins
         cell_size = 1 << (max_size - 1).bit_length()
         cell_size_with_margin = cell_size + (2 * margin)
-        
+
         # Calculate minimum atlas size needed
         total_materials = len(materials)
         min_dimension = math.ceil(math.sqrt(total_materials)) * cell_size_with_margin
-        
+
         # Round atlas size up to nearest power of 2
         atlas_size = 1 << (min_dimension - 1).bit_length()
-        
+
         return atlas_size, cell_size, cell_size_with_margin
 
     def generate_texture_atlas(self, margin=1):
@@ -600,65 +817,69 @@ class Renderer:
         all_materials = []
         for material_names in self.materials.values():
             all_materials.extend(material_names)
-            
+
         if not all_materials:
             return
 
         # Calculate optimal atlas and cell sizes
-        atlas_size, cell_size, cell_size_with_margin = self.calculate_atlas_size(all_materials, margin)
-        
+        atlas_size, cell_size, cell_size_with_margin = self.calculate_atlas_size(
+            all_materials, margin
+        )
+
         # Create new image for atlas
         atlas_name = "TextureAtlas"
         existing_atlas = bpy.data.images.get(atlas_name)
         if existing_atlas:
             bpy.data.images.remove(existing_atlas)
-            
-        self.atlas = bpy.data.images.new(atlas_name, width=atlas_size, height=atlas_size, alpha=True)
+
+        self.atlas = bpy.data.images.new(
+            atlas_name, width=atlas_size, height=atlas_size, alpha=True
+        )
         self.atlas.use_fake_user = True
-        self.atlas.file_format = 'PNG'
-        
+        self.atlas.file_format = "PNG"
+
         # Clear atlas pixels
         pixels = [0.0] * (atlas_size * atlas_size * 4)
         self.atlas.pixels = pixels[:]
-        
+
         # Calculate grid size based on cell size with margins
         grid_size = atlas_size // cell_size_with_margin
-        
+
         for idx, material_name in enumerate(all_materials):
             material = bpy.data.materials.get(material_name)
             if not material or not material.use_nodes:
                 continue
-                
+
             nodes = material.node_tree.nodes
-            tex_node = next((n for n in nodes if n.type == 'TEX_IMAGE'), None)
+            tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
             if not tex_node or not tex_node.image:
                 continue
-                
+
             # Calculate grid position with margins
             grid_x = idx % grid_size
             grid_y = idx // grid_size
-            
+
             # Calculate UV mapping for this material (excluding margins)
             x_start = (grid_x * cell_size_with_margin + margin) / atlas_size
             y_start = (grid_y * cell_size_with_margin + margin) / atlas_size
             x_end = (grid_x * cell_size_with_margin + margin + cell_size) / atlas_size
             y_end = (grid_y * cell_size_with_margin + margin + cell_size) / atlas_size
-            
+
             self.atlas_mapping[material_name] = {
-                'u_start': x_start,
-                'v_start': y_start,
-                'u_end': x_end,
-                'v_end': y_end
+                "u_start": x_start,
+                "v_start": y_start,
+                "u_end": x_end,
+                "v_end": y_end,
             }
-            
+
             # Copy texture pixels to atlas (with margin offset)
             self.copy_texture_to_atlas(
                 tex_node.image,
                 grid_x * cell_size_with_margin + margin,
                 grid_y * cell_size_with_margin + margin,
-                cell_size
+                cell_size,
             )
-        
+
         self.atlas.pack()
         self.atlas.update()
         self.atlas.pixels = self.atlas.pixels[:]
@@ -668,20 +889,20 @@ class Renderer:
         # Resize source image pixels to cell size
         temp_img = src_img.copy()
         temp_img.scale(cell_size, cell_size)
-        
+
         src_pixels = list(temp_img.pixels[:])
         atlas_pixels = list(self.atlas.pixels[:])
-        
+
         # Copy pixels
         for y in range(cell_size):
             for x in range(cell_size):
                 src_idx = (y * cell_size + x) * 4
                 atlas_idx = ((y + y_offset) * self.atlas.size[0] + (x + x_offset)) * 4
-                
+
                 # Direct pixel copy
                 for i in range(4):  # RGBA
                     atlas_pixels[atlas_idx + i] = src_pixels[src_idx + i]
-        
+
         self.atlas.pixels = atlas_pixels[:]  # Use slice to ensure proper update
         bpy.data.images.remove(temp_img)  # Clean up temporary image
 
@@ -697,22 +918,22 @@ class Renderer:
             if not material or not material.use_nodes:
                 print(f"Material {material_name} not found or not using nodes")
                 continue
-            
+
             uv_map = self.atlas_mapping[material_name]
-            
+
             # Get material nodes and links
             nodes = material.node_tree.nodes
             links = material.node_tree.links
-            
+
             # Find and update texture node
-            tex_node = next((n for n in nodes if n.type == 'TEX_IMAGE'), None)
+            tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
             if not tex_node:
                 print(f"Texture node for material {material_name} not found")
                 continue
-            
+
             # Store old image for cleanup
             old_image = tex_node.image
-            
+
             # Update texture node to use atlas
             tex_node.image = self.atlas
             tex_node.update()  # Force the texture node to update
@@ -723,26 +944,30 @@ class Renderer:
                 mapping = nodes.new("ShaderNodeMapping")
                 # Position it between TexCoord and Image Texture nodes
                 mapping.location = (-400, 0)
-                
+
                 # Find or create texture coordinate node
                 tex_coord = nodes.get("Texture Coordinate")
                 if not tex_coord:
                     tex_coord = nodes.new("ShaderNodeTexCoord")
                     tex_coord.location = (-600, 0)
-                
+
                 # Connect TexCoord -> Mapping -> Image Texture
                 links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
                 links.new(mapping.outputs["Vector"], tex_node.inputs["Vector"])
-            
+
             # Update mapping node to remap UVs to atlas position
-            mapping.inputs['Location'].default_value[0] = uv_map['u_start']
-            mapping.inputs['Location'].default_value[1] = uv_map['v_start']
-            mapping.inputs['Scale'].default_value[0] = uv_map['u_end'] - uv_map['u_start']
-            mapping.inputs['Scale'].default_value[1] = uv_map['v_end'] - uv_map['v_start']
-            
+            mapping.inputs["Location"].default_value[0] = uv_map["u_start"]
+            mapping.inputs["Location"].default_value[1] = uv_map["v_start"]
+            mapping.inputs["Scale"].default_value[0] = (
+                uv_map["u_end"] - uv_map["u_start"]
+            )
+            mapping.inputs["Scale"].default_value[1] = (
+                uv_map["v_end"] - uv_map["v_start"]
+            )
+
             # Force material update
             material.update_tag()
-            
+
             # Clean up old image if it's not used anymore
             if old_image and not old_image.users:
                 bpy.data.images.remove(old_image)

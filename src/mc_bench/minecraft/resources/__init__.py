@@ -441,6 +441,9 @@ class ResourceLoader:
             models,
             transparent=block_data["transparent"],
             tint_lookup=tint_lookup,
+            light_emission=None
+            if block_data["emitLight"] == 0
+            else block_data["emitLight"],
         )
 
 
@@ -487,11 +490,19 @@ class BiomeTints:
 
 
 class BlockData:
-    def __init__(self, canonical_name, models, transparent=False, tint_lookup=None):
+    def __init__(
+        self,
+        canonical_name,
+        models,
+        transparent=False,
+        tint_lookup=None,
+        light_emission=None,
+    ):
         self.canonical_name = canonical_name
         self.models = list(models)
         self.transparent = transparent
         self.tint_lookup = tint_lookup
+        self.light_emission = light_emission
 
     @classmethod
     def from_resource_loader(cls, rl, canonical_name):
@@ -512,6 +523,7 @@ class BlockData:
             models,
             states=self.states,
             transparent=self.transparent,
+            light_emission=self.light_emission,
         )
 
     @property
@@ -867,7 +879,7 @@ class MinecraftModel:
         *,
         elements=None,
         parent=None,
-        ambientocclusion=True,
+        ambient_occlusion=True,
         textures=None,
         display=None,
         gui_light="side",
@@ -880,7 +892,7 @@ class MinecraftModel:
     ):
         self.name = name
         self.parent = parent
-        self.ambientocclusion = ambientocclusion
+        self.ambient_occlusion = ambient_occlusion
         self.textures = textures or {}
         self.elements = elements or []
         self.display = display or {}
@@ -908,11 +920,11 @@ class MinecraftModel:
         """Create a MinecraftModel from a model specification dictionary."""
         elements = []
         for idx, element_spec in enumerate(specification.get("elements", [])):
-            element_name = f"element_{idx}"
+            element_name = f"{name}_element_{idx}"
             faces = {}
 
             for direction, face_data in element_spec.get("faces", {}).items():
-                face_name = f"element_{idx}_face_{direction}"
+                face_name = f"{element_name}_face_{direction}"
                 faces[direction] = MinecraftModelFace(
                     name=face_name,
                     direction=direction,
@@ -939,7 +951,7 @@ class MinecraftModel:
             name=name,
             elements=elements,
             parent=specification.get("parent"),
-            ambientocclusion=specification.get("ambientocclusion", True),
+            ambient_occlusion=specification.get("ambientocclusion", True),
             textures=specification.get("textures", {}),
             display=specification.get("display", {}),
             gui_light=specification.get("gui_light", "side"),
@@ -963,7 +975,7 @@ class MinecraftModel:
         info = [
             f"{indent_str}Model: {self.name}",
             f"{indent_str}  Parent: {self.parent}",
-            f"{indent_str}  Ambient Occlusion: {self.ambientocclusion}",
+            f"{indent_str}  Ambient Occlusion: {self.ambient_occlusion}",
             f"{indent_str}  GUI Light: {self.gui_light}",
             f"{indent_str}  Textures: {textwrap.indent(json.dumps(textures_debug, indent=2), indent_str)}",
             f"{indent_str}  UV Lock: {self.uv_lock}",
@@ -1085,6 +1097,7 @@ class MinecraftModel:
                     uvs=uvs,
                     source=face,
                     tint=face.tint_from_biomes(biome, adjacent_biomes),
+                    ambient_occlusion=self.ambient_occlusion,
                 )
                 blender_faces.append(blender_face)
 
@@ -1354,12 +1367,20 @@ class MinecraftBlock:
     """Represents a Minecraft block with its models.
     A block can have multiple model variants based on its state."""
 
-    def __init__(self, canonical_name, models, states=None, transparent=False):
+    def __init__(
+        self,
+        canonical_name,
+        models,
+        states=None,
+        transparent=False,
+        light_emission=None,
+    ):
         self.canonical_name = canonical_name
         self.models = list(models)
         self.states = states or {}
         self.base_name = canonical_name.split("[")[0]
         self.transparent = transparent
+        self.light_emission = light_emission
 
     def to_blender_block(self, adjacent_blocks=None, biome=None, adjacent_biomes=None):
         adjacent_blocks = adjacent_blocks or {}
@@ -1375,7 +1396,13 @@ class MinecraftBlock:
             blender_models.append(blender_model)
 
         # Create the block
-        return rendering.Block(name=self.canonical_name, models=blender_models)
+        return rendering.Block(
+            name=self.canonical_name,
+            models=blender_models,
+            light_emission=self.light_emission / 15
+            if self.light_emission is not None
+            else None,
+        )
 
     def debug_info(self, indent=0):
         indent_str = "  " * indent
