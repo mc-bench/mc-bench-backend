@@ -22,34 +22,34 @@ def test_scene(resource_loader) -> List[PlacedMinecraftBlock]:
     blocks = []
 
     # Create 10x10 grass floor
-    for x in range(10):
-        for z in range(10):
+    for x in range(4):
+        for z in range(4):
             blocks.append(get_placed_block(resource_loader, "grass_block", x, 0, z))
 
-    # Create 2x2 glass structure at (2,1,2)
-    for x in range(2):
-        for z in range(2):
-            blocks.append(get_placed_block(resource_loader, "glass", x + 2, 1, z + 2))
+    # # Create 2x2 glass structure at (2,1,2)
+    # for x in range(2):
+    #     for z in range(2):
+    #         blocks.append(get_placed_block(resource_loader, "glass", x + 2, 1, z + 2))
 
-    # Create tree at (5,1,5)
-    # Tree trunk (3 blocks high)
-    for y in range(1, 4):
-        blocks.append(get_placed_block(resource_loader, "oak_log[axis=y]", 5, y, 5))
+    # # Create tree at (5,1,5)
+    # # Tree trunk (3 blocks high)
+    # for y in range(1, 4):
+    #     blocks.append(get_placed_block(resource_loader, "oak_log[axis=y]", 5, y, 5))
 
-    # Tree leaves (3x3x3 cube, excluding corners and center)
-    for x in range(4, 7):
-        for y in range(3, 6):
-            for z in range(4, 7):
-                # Skip corners and center trunk
-                if (x == 5 and z == 5) or (x in (4, 6) and z in (4, 6)):
-                    continue
-                blocks.append(get_placed_block(resource_loader, "oak_leaves", x, y, z))
+    # # Tree leaves (3x3x3 cube, excluding corners and center)
+    # for x in range(4, 7):
+    #     for y in range(3, 6):
+    #         for z in range(4, 7):
+    #             # Skip corners and center trunk
+    #             if (x == 5 and z == 5) or (x in (4, 6) and z in (4, 6)):
+    #                 continue
+    #             blocks.append(get_placed_block(resource_loader, "oak_leaves", x, y, z))
 
-    # Add torch at (7,1,7)
-    blocks.append(get_placed_block(resource_loader, "torch", 7, 1, 7))
+    # # Add torch at (7,1,7)
+    # blocks.append(get_placed_block(resource_loader, "torch", 7, 1, 7))
 
-    # Add glowstone block at (7,1,3)
-    blocks.append(get_placed_block(resource_loader, "glowstone", 7, 1, 3))
+    # # Add glowstone block at (7,1,3)
+    # blocks.append(get_placed_block(resource_loader, "glowstone", 7, 1, 3))
 
     return blocks
 

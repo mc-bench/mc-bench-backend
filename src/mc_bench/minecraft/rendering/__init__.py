@@ -42,14 +42,22 @@ The core classes are:
 import math
 import os
 import textwrap
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import bpy
 
 import bmesh  # isort: skip
+import enum
 import time
 
 from mathutils import Vector
+
+
+class TimeOfDay(enum.Enum):
+    DAWN = "dawn"
+    NOON = "noon"
+    DUSK = "dusk"
+    MIDNIGHT = "midnight"
 
 
 class Block:
@@ -220,32 +228,61 @@ class Renderer:
         scene = bpy.context.scene
         scene.render.engine = "CYCLES"
 
+        # Configure render settings for baking
+        scene.render.bake.use_pass_direct = True
+        scene.render.bake.use_pass_indirect = True
+        scene.render.bake.use_pass_diffuse = True
+        scene.render.bake.use_pass_emit = True
+        scene.render.bake.margin = 0  # No margin to prevent pixel bleeding
+
+        # Disable anti-aliasing and set minimum samples
+        scene.cycles.samples = 1  # Reduced samples since we want hard shadows
+        scene.cycles.preview_samples = 32
+        scene.cycles.pixel_filter_type = "BOX"  # Sharpest pixel filter
+        scene.cycles.filter_width = 0.01  # Minimum filter width
+
         # Create new world if it doesn't exist
         if scene.world is None:
             world = bpy.data.worlds.new("World")
             scene.world = world
 
         scene.world.use_nodes = True
+        world_nodes = scene.world.node_tree.nodes
+        world_links = scene.world.node_tree.links
+
+        # Clear existing nodes
+        world_nodes.clear()
+
+        # Add sky texture for ambient lighting
+        sky_texture = world_nodes.new("ShaderNodeTexSky")
+        sky_texture.sky_type = "HOSEK_WILKIE"
+        sky_texture.sun_elevation = 1.0  # 45 degrees
+        sky_texture.sun_rotation = 0.0
+        sky_texture.altitude = 0
+
+        # Add background node
+        background = world_nodes.new("ShaderNodeBackground")
+        background.inputs["Strength"].default_value = 1.0
+
+        # Add output node
+        world_output = world_nodes.new("ShaderNodeOutputWorld")
+
+        # Link nodes
+        world_links.new(sky_texture.outputs["Color"], background.inputs["Color"])
+        world_links.new(
+            background.outputs["Background"], world_output.inputs["Surface"]
+        )
 
         # Add optimized sun light
         sun_data = bpy.data.lights.new(name="Sun", type="SUN")
-        sun_data.energy = 7.0  # Increased energy to compensate for softer shadows
-        sun_data.angle = 0.1  # Controls shadow softness (in radians)
+        sun_data.energy = 5.0  # Adjusted for baking
+        sun_data.angle = 0.1  # Controls shadow softness
         sun_obj = bpy.data.objects.new(name="Sun", object_data=sun_data)
         scene.collection.objects.link(sun_obj)
 
-        # Position sun high in southern sky, offset to east for diagonal shadows
-        # Rotate to point slightly downward and northward
-        sun_obj.rotation_euler = (
-            1.0,
-            0.2,
-            0.0,
-        )  # Angled downward and slightly westward
-        sun_obj.location = (
-            15.0,
-            -30.0,
-            30.0,
-        )  # Moved further away for more even lighting
+        # Position sun for good shadows
+        sun_obj.rotation_euler = (0.785, 0.0, 0.0)  # 45 degrees
+        sun_obj.location = (0.0, 0.0, 10.0)
 
     def create_block(self, block: Block) -> dict[str, list[bpy.types.Object]]:
         """Create all models for a block"""
@@ -590,8 +627,8 @@ class Renderer:
         tex_image.extension = "REPEAT"
 
         has_tint = tint is not None
-        has_emission = light_emission is not None
-        has_ambient_occlusion = ambient_occlusion
+        has_emission = False # light_emission is not None
+        has_ambient_occlusion = False # ambient_occlusion
 
         # with the color input from the image to create a tinted image
         if has_tint:
@@ -662,14 +699,14 @@ class Renderer:
             mat.blend_method = "OPAQUE"
             mat.use_backface_culling = True
 
-        shadow_light_path = nodes.new("ShaderNodeLightPath")
-        shadow_light_path.location = (1400, 200)
-        shadow_math = nodes.new("ShaderNodeMath")
-        shadow_math.location = (1600, 200)
-        shadow_transparent = nodes.new("ShaderNodeBsdfTransparent")
-        shadow_transparent.location = (1800, 200)
+        # shadow_light_path = nodes.new("ShaderNodeLightPath")
+        # shadow_light_path.location = (1400, 200)
+        # shadow_math = nodes.new("ShaderNodeMath")
+        # shadow_math.location = (1600, 200)
+        # shadow_transparent = nodes.new("ShaderNodeBsdfTransparent")
+        # shadow_transparent.location = (1800, 200)
 
-        shadow_math.operation = "MULTIPLY"
+        # shadow_math.operation = "MULTIPLY"
 
         return mat
 
@@ -716,16 +753,152 @@ class Renderer:
             export_vertex_color="MATERIAL",
         )
 
-    def render_blocks(self, placed_blocks: list[PlacedBlock], name: str, types=None):
-        """Render a list of PlacedBlock instances."""
+    def bake_material(self, material: bpy.types.Material, time_of_day: TimeOfDay):
+        """Bake a single material into a new baked version."""
+        # Skip if material doesn't use nodes
+        if not material.use_nodes:
+            return None
 
+        # Find original texture node and image
+        nodes = material.node_tree.nodes
+        orig_tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
+        if not orig_tex_node or not orig_tex_node.image:
+            return None
+
+        orig_image = orig_tex_node.image
+
+        # Create a new image with same dimensions as original
+        bake_image = bpy.data.images.new(
+            name=f"{material.name}_baked",
+            width=orig_image.size[0],
+            height=orig_image.size[1],
+            alpha=True,
+            float_buffer=False,  # Use integer pixels for sharper results
+        )
+
+        # Set image filtering to closest for sharp pixels
+        bake_image.use_generated_float = False
+
+        # Store reference for atlas generation
+        if not hasattr(self, "baked_images"):
+            self.baked_images = {}
+        self.baked_images[material.name] = bake_image
+
+        # Create temporary bake node while preserving original nodes
+        bake_node = nodes.new("ShaderNodeTexImage")
+        bake_node.name = "Bake_Target"
+        bake_node.image = bake_image
+        bake_node.interpolation = "Closest"
+        bake_node.extension = "REPEAT"  # Prevent texture wrapping artifacts
+        bake_node.select = True
+        nodes.active = bake_node
+
+        # Store current selection and active object
+        old_selection = bpy.context.selected_objects[:]
+        old_active = bpy.context.active_object
+
+        try:
+            # Select objects using this material
+            bpy.ops.object.select_all(action="DESELECT")
+            objects_with_material = []
+            for obj in bpy.data.objects:
+                if obj.type == "MESH":
+                    for slot in obj.material_slots:
+                        if slot.material == material:
+                            obj.select_set(True)
+                            objects_with_material.append(obj)
+
+            if not objects_with_material:
+                return None
+
+            # Set active object
+            bpy.context.view_layer.objects.active = objects_with_material[0]
+
+            # Bake the material with pixel-perfect settings
+            bpy.ops.object.bake(
+                type="COMBINED",
+                pass_filter={"COLOR", "DIFFUSE", "EMIT", "DIRECT", "INDIRECT"},
+                use_selected_to_active=False,
+                margin=0,  # No margin to prevent pixel bleeding
+                use_clear=True,  # Clear image before baking
+            )
+
+        finally:
+            # Restore original selection
+            bpy.ops.object.select_all(action="DESELECT")
+            for obj in old_selection:
+                obj.select_set(True)
+            if old_active:
+                bpy.context.view_layer.objects.active = old_active
+
+            # Remove temporary bake node
+            nodes.remove(bake_node)
+
+        # Pack the image
+        bake_image.pack()
+
+        return bake_image
+
+    def apply_baked_materials(self):
+        """Apply all baked images to their respective materials."""
+        if not hasattr(self, "baked_images"):
+            return
+
+        for material_name, baked_image in self.baked_images.items():
+            material = bpy.data.materials.get(material_name)
+            if not material or not material.use_nodes:
+                continue
+
+            # Find original texture node
+            nodes = material.node_tree.nodes
+            tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
+            if not tex_node:
+                continue
+
+            # Replace original image with baked version
+            tex_node.image = baked_image
+            tex_node.interpolation = "Closest"  # Ensure pixelated look is maintained
+
+            # Force updates
+            material.update_tag()
+            for obj in bpy.data.objects:
+                for slot in obj.material_slots:
+                    if slot.material == material:
+                        obj.data.update()
+
+        # Final update to refresh everything
+        bpy.context.view_layer.update()
+
+    def render_blocks(
+        self,
+        placed_blocks: list[PlacedBlock],
+        name: str,
+        types=None,
+        times_of_day: List[TimeOfDay] = None,
+    ):
+        """Render a list of PlacedBlock instances."""
         types = types or ["blend", "glb"]
 
         for placed_block in placed_blocks:
             self.place_block(placed_block)
 
-        # Prepare materials before export
-        self.prepare_materials_for_render()
+        # Export based on file extension
+        if "blend" in types:
+            self.export_to_blend(f"pre-{name}.blend")
+
+        if "glb" in types:
+            self.export_to_gltf(f"pre-{name}.glb")
+
+        # Stage 1: Bake all materials
+        for material in bpy.data.materials:
+            self.bake_material(material, TimeOfDay.NOON)
+
+        # Stage 2: Apply all baked materials
+        self.apply_baked_materials()
+
+        # Generate atlas after baking
+        self.generate_texture_atlas(margin=1)
+        self.remap_uvs_to_atlas()
 
         # Export based on file extension
         if "blend" in types:
@@ -739,31 +912,6 @@ class Renderer:
         self.generate_texture_atlas(margin=1)  # Generate atlas with margins
         self.remap_uvs_to_atlas()
 
-    def convert_blocks_to_file(
-        self, placed_blocks: list[PlacedBlock], output_filepath: str
-    ):
-        """Convert a list of PlacedBlock instances to a 3D file format."""
-        # Setup clean environment
-        self.setup_blender_env()
-
-        # Import each placed block
-        for placed_block in placed_blocks:
-            self.place_block(placed_block)
-
-        # Prepare materials before export
-        self.prepare_materials_for_render()
-
-        # Export based on file extension
-        if output_filepath.endswith(".glb"):
-            self.export_to_gltf(output_filepath)
-        elif output_filepath.endswith(".blend"):
-            self.export_to_blend(output_filepath)
-        else:
-            raise ValueError("Unsupported file format. Use .glb or .blend")
-
-        # Clear data for next run
-        bpy.ops.wm.read_factory_settings(use_empty=True)
-
     def export_to_blend(self, filepath):
         """Export the scene to Blender's native format."""
         # Ensure we have a valid file extension
@@ -772,7 +920,7 @@ class Renderer:
 
         if os.path.exists(filepath):
             name, ext = os.path.splitext(filepath)
-            filepath = f"{name}-{str(time.time()).split('.')[0]}.{ext}"
+            filepath = f"{name}-{str(time.time()).split('.')[0]}{ext}"
 
         # Save current file
         bpy.ops.wm.save_as_mainfile(
