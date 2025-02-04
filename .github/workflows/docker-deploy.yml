@@ -164,7 +164,7 @@ jobs:
           DROPLET_HOST: ${{ matrix.ip }}
           DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
           REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_NAME: ${{ env.RENDER_WORKER_IMAGE_NAME }}
           GITHUB_SHA: ${{ github.sha }}
           CONTAINER_PREFIX: ${{ env.RENDER_WORKER_CONTAINER_PREFIX }}
         run: |
