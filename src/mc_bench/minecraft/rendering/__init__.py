@@ -165,9 +165,10 @@ class Face:
 
     @property
     def material_name(self):
-        name = self.name
+        _, filename = os.path.split(self.texture)
+        name, _ = os.path.splitext(filename)
         if self.tint:
-            name = f"{self.name}_tinted_{self.tint.lstrip('#')}"
+            name = f"{name}_tinted_{self.tint.lstrip('#')}"
 
         return name
 
@@ -441,7 +442,7 @@ class Renderer:
         face_lookup = {}
         for idx, face in enumerate(element.faces):
             if face.texture:
-                material_name = f"{index_str}_{face.material_name}"
+                material_name = face.material_name
                 face_lookup[id(face)] = material_name
                 mat = self.create_material(
                     face.texture,
@@ -509,9 +510,11 @@ class Renderer:
         # First check if material already exists
         mat = bpy.data.materials.get(name)
         if mat is not None:
-            raise RuntimeError(
-                f"All materials must be unique due to baking. {name} not unique"
-            )
+            return mat
+            # TODO: if we want to bake lighting, we need to make sure all materials are unique
+            # raise RuntimeError(
+            #     f"All materials must be unique due to baking. {name} not unique"
+            # )
 
         alpha_baked_image_name = f"{name}_copy"
 
