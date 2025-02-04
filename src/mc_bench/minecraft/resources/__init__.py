@@ -1044,13 +1044,6 @@ class MinecraftModel:
         )  # Note: positive Z becomes negative Y
         z_matrix = create_rotation_matrix("z", -self.y_rotation)  # Y becomes Z
 
-        print(
-            "self.x_rotation, self.y_rotation, self.z_rotation: ",
-            self.x_rotation,
-            self.y_rotation,
-            self.z_rotation,
-        )
-
         # Combine rotations in Minecraft's order: X, then Z, then Y
         model_rotation = (
             z_matrix @ y_matrix @ x_matrix
@@ -1083,18 +1076,15 @@ class MinecraftModel:
 
             # Apply element rotation if specified
             vertices = self._apply_element_rotation(vertices, element)
-            print("VERTICES: ", vertices)
 
             # Apply model rotation if any
             if model_rotation is not None:
-                print("MODEL ROTATION: ", model_rotation)
                 vertices = [
                     rotate_point(vertex, block_center, model_rotation)
                     for vertex in vertices
                 ]
 
             blender_faces = []
-            print("ORDER OF FACES: ", [key for key, value in element.faces.items()])
             for direction, face in element.faces.items():
                 # Transform cullface direction based on model rotation
                 if face.cullface:

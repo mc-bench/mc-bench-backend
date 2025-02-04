@@ -51,62 +51,6 @@ def test_scene(resource_loader) -> List[PlacedMinecraftBlock]:
     # Add glowstone block at (7,1,3)
     blocks.append(get_placed_block(resource_loader, "glowstone", 7, 1, 3))
 
-    # # Add 2x2 glowstone square in the center (coordinates 4,4 to 5,5)
-    # blocks.append(get_placed_block(resource_loader, "glowstone", 4, 1, 4))
-
-    # # Add fence posts at corners (0,0), (0,8), (8,0), and (8,8)
-    # # Each post connects outward from the corners
-    # blocks.append(
-    #     get_placed_block(
-    #         resource_loader,
-    #         "acacia_fence[east=false,north=true,south=false,west=true]",
-    #         0,
-    #         1,
-    #         0,
-    #     )
-    # )  # Southwest corner
-    # blocks.append(
-    #     get_placed_block(
-    #         resource_loader,
-    #         "acacia_fence[east=false,north=false,south=true,west=true]",
-    #         0,
-    #         1,
-    #         8,
-    #     )
-    # )  # Northwest corner
-    # blocks.append(
-    #     get_placed_block(
-    #         resource_loader,
-    #         "acacia_fence[east=true,north=true,south=false,west=false]",
-    #         8,
-    #         1,
-    #         0,
-    #     )
-    # )  # Southeast corner
-    # blocks.append(
-    #     get_placed_block(
-    #         resource_loader,
-    #         "acacia_fence[east=true,north=false,south=true,west=false]",
-    #         8,
-    #         1,
-    #         8,
-    #     )
-    # )  # Northeast corner
-
-    # # Add colored wool blocks around the edges
-    # blocks.append(
-    #     get_placed_block(resource_loader, "blue_wool", 4, 1, 0)
-    # )  # South center
-    # blocks.append(
-    #     get_placed_block(resource_loader, "red_wool", 4, 1, 8)
-    # )  # North center
-    # blocks.append(
-    #     get_placed_block(resource_loader, "yellow_wool", 8, 1, 4)
-    # )  # East center
-    # blocks.append(
-    #     get_placed_block(resource_loader, "green_wool", 0, 1, 4)
-    # )  # West center
-
     return blocks
 
 

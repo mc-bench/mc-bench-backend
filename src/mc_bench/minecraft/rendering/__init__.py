@@ -262,77 +262,6 @@ class Renderer:
             scene.world = world
 
         scene.world.use_nodes = True
-        world_nodes = scene.world.node_tree.nodes
-        world_links = scene.world.node_tree.links
-
-        # Clear existing nodes
-        world_nodes.clear()
-
-        # Add sky texture for ambient lighting with warmer tones
-        sky_texture = world_nodes.new("ShaderNodeTexSky")
-        sky_texture.sky_type = "HOSEK_WILKIE"
-        sky_texture.sun_elevation = 1.2  # Higher sun for more direct lighting
-        sky_texture.sun_rotation = 0.2
-        sky_texture.altitude = 0
-        sky_texture.air_density = 1.0  # Reduced for clearer lighting
-        sky_texture.dust_density = 1.0  # Reduced for less scattering
-        sky_texture.ground_albedo = 0.1  # Reduced for less indirect bounce
-
-        # Add color mix node to warm up the sky color
-        color_mix = world_nodes.new("ShaderNodeMixRGB")
-        color_mix.blend_type = "MULTIPLY"
-        color_mix.inputs[0].default_value = 0.2  # Reduced mix factor
-        color_mix.inputs[2].default_value = (
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-        )  # Pure white for cleaner light
-
-        # Add background node with adjusted strength
-        background = world_nodes.new("ShaderNodeBackground")
-        background.inputs[
-            "Strength"
-        ].default_value = 2.0  # Increased for brighter ambient light
-
-        # Add output node
-        world_output = world_nodes.new("ShaderNodeOutputWorld")
-
-        # Link nodes with new color mixing
-        world_links.new(sky_texture.outputs["Color"], color_mix.inputs[1])
-        world_links.new(color_mix.outputs["Color"], background.inputs["Color"])
-        world_links.new(
-            background.outputs["Background"], world_output.inputs["Surface"]
-        )
-
-        # Modify sun light settings for stronger direct lighting
-        sun_data = bpy.data.lights.new(name="Sun", type="SUN")
-        sun_data.energy = 5.0  # Increased for stronger direct light
-        sun_data.angle = 0.3  # Sharper shadows
-        sun_data.use_shadow = False  # Enable shadows
-        sun_data.cycles.cast_shadow = False
-        sun_data.color = (1.0, 1.0, 1.0)  # Pure white for clean lighting
-        sun_obj = bpy.data.objects.new(name="Sun", object_data=sun_data)
-        scene.collection.objects.link(sun_obj)
-
-        # Position sun for better side lighting (more from the side)
-        azimuth = math.radians(45)  # 45° clockwise from north
-        elevation = math.radians(60)  # 60° up from horizon
-
-        # Calculate rotation angles
-        x_rot = math.pi / 2 - elevation  # Pitch
-        z_rot = azimuth  # Yaw
-
-        sun_obj.rotation_euler = (x_rot, 0.0, z_rot)
-        sun_obj.location = (0.0, 0.0, 10.0)
-
-        # Adjust render settings for better indirect lighting
-        # scene.cycles.diffuse_bounces = 2  # Increase bounced light
-        # scene.cycles.caustics_reflective = False  # Disable caustics for performance
-        # scene.cycles.caustics_refractive = False
-        # scene.cycles.use_adaptive_sampling = True  # Enable adaptive sampling
-        # scene.cycles.adaptive_threshold = 0.01
-        # scene.cycles.adaptive_min_samples = 16
 
     def create_block(self, block: Block) -> dict[str, list[bpy.types.Object]]:
         """Create all models for a block"""
@@ -694,7 +623,8 @@ class Renderer:
         raw_color = tex_image.outputs["Color"]
 
         has_tint = tint is not None
-        has_emission = light_emission is not None
+        # TODO: Add emission if we get a better rendering pipeline built
+        has_emission = False  # light_emission is not None
         # TODO: Add ambient occlusion that doesn't black out most side blocks
         has_ambient_occlusion = False  # ambient_occlusion
 
@@ -811,7 +741,7 @@ class Renderer:
             # Transform settings
             export_yup=True,  # Y-up for standard glTF convention
             # Include all materials and textures
-            export_unused_textures=True,
+            export_unused_textures=False,
             export_vertex_color="MATERIAL",
         )
 
@@ -874,14 +804,13 @@ class Renderer:
             # Set active object
             bpy.context.view_layer.objects.active = objects_with_material[0]
 
-            # Bake the material with pixel-perfect settings
+            # Bake the material with color-only settings
             bpy.ops.object.bake(
-                type="COMBINED",
-                pass_filter={"COLOR", "DIFFUSE", "EMIT", "DIRECT", "INDIRECT"},
-                # pass_filter={"COLOR"},
+                type="DIFFUSE",  # Changed from COMBINED to DIFFUSE
+                pass_filter={"COLOR"},  # Only bake color information
                 use_selected_to_active=False,
-                margin=2,  # No margin to prevent pixel bleeding
-                use_clear=True,  # Clear image before baking
+                margin=2,
+                use_clear=True,
             )
 
         finally:
@@ -920,50 +849,6 @@ class Renderer:
             tex_node.image = baked_image
             tex_node.interpolation = "Closest"  # Ensure pixelated look is maintained
 
-            # # Delete all nodes except texture coordinates, mapping, texture and output
-            # nodes_to_keep = []
-            # for node in nodes:
-            #     if node.type in [
-            #         "TEX_COORD",
-            #         "MAPPING",
-            #         "TEX_IMAGE",
-            #         "OUTPUT_MATERIAL",
-            #     ]:
-            #         nodes_to_keep.append(node)
-            #     else:
-            #         nodes.remove(node)
-
-            # # Get the nodes we need
-            # tex_node = next(n for n in nodes_to_keep if n.type == "TEX_IMAGE")
-            # output = next(n for n in nodes_to_keep if n.type == "OUTPUT_MATERIAL")
-            # tex_coord = next((n for n in nodes_to_keep if n.type == "TEX_COORD"), None)
-            # mapping_node = next((n for n in nodes_to_keep if n.type == "MAPPING"), None)
-
-            # # Connect nodes preserving texture coordinate chain
-            # if mapping_node and tex_coord:
-            #     # Full chain: tex coords -> mapping -> texture
-            #     material.node_tree.links.new(
-            #         tex_coord.outputs["UV"], mapping_node.inputs[0]
-            #     )
-            #     material.node_tree.links.new(
-            #         mapping_node.outputs[0], tex_node.inputs[0]
-            #     )
-            # elif mapping_node:
-            #     # Just mapping -> texture
-            #     material.node_tree.links.new(
-            #         mapping_node.outputs[0], tex_node.inputs[0]
-            #     )
-            # elif tex_coord:
-            #     # Just tex coords -> texture
-            #     material.node_tree.links.new(
-            #         tex_coord.outputs["UV"], tex_node.inputs[0]
-            #     )
-
-            # # Connect texture to output
-            # material.node_tree.links.new(
-            #     tex_node.outputs["Color"], output.inputs["Surface"]
-            # )
-
             # Force updates
             material.update_tag()
             for obj in bpy.data.objects:
@@ -973,44 +858,6 @@ class Renderer:
 
         # Final update to refresh everything
         bpy.context.view_layer.update()
-
-    def set_time_of_day(self, time_of_day: TimeOfDay):
-        # Calculate bounding box and center
-        bounds_min = Vector((float("inf"), float("inf"), float("inf")))
-        bounds_max = Vector((float("-inf"), float("-inf"), float("-inf")))
-
-        for obj in bpy.data.objects:
-            if obj.type == "EMPTY" and not obj.parent:  # Top-level block empties
-                bounds_min.x = min(bounds_min.x, obj.location.x)
-                bounds_min.y = min(bounds_min.y, obj.location.y)
-                bounds_min.z = min(bounds_min.z, obj.location.z)
-                bounds_max.x = max(bounds_max.x, obj.location.x + 1)
-                bounds_max.y = max(bounds_max.y, obj.location.y + 1)
-                bounds_max.z = max(bounds_max.z, obj.location.z + 1)
-
-        # Calculate center and scene size
-        center = (bounds_min + bounds_max) / 2
-        scene_size = (bounds_max - bounds_min).length
-
-        # Find both sun lights
-        main_sun = None
-        for obj in bpy.data.objects:
-            if obj.type == "LIGHT" and obj.data.type == "SUN":
-                if obj.name == "Sun":
-                    main_sun = obj
-
-        if main_sun:
-            # Position main sun high above and to the southeast
-            sun_height = scene_size * 2
-            sun_offset = scene_size
-
-            main_sun_pos = center + Vector((sun_offset, -sun_offset, sun_height))
-            main_sun.location = main_sun_pos
-
-            # Point main sun at scene center
-            main_direction = center - main_sun_pos
-            main_rot_quat = main_direction.to_track_quat("-Z", "Y")
-            main_sun.rotation_euler = main_rot_quat.to_euler()
 
     def delete_unnecessary_nodes(self):
         """Delete sunlights, unncessary world nodes, shaders, etc.
@@ -1064,8 +911,6 @@ class Renderer:
         for placed_block in placed_blocks:
             self.place_block(placed_block)
 
-        self.set_time_of_day(time_of_day)
-
         if pre_export:
             # Continue with existing render code...
             if "blend" in types:
@@ -1101,11 +946,6 @@ class Renderer:
 
         if "glb" in types:
             self.export_glb(f"{name}.glb")
-
-    # def prepare_materials_for_render(self):
-    #     """Prepare materials by creating texture atlas and remapping UVs."""
-    #     self.generate_texture_atlas(margin=4)  # Generate atlas with margins
-    #     self.remap_uvs_to_atlas()
 
     def export_blend(self, filepath):
         """Export the scene to Blender's native format."""
