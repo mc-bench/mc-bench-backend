@@ -124,6 +124,37 @@ class Element:
         self.vertices = vertices
         self.faces = faces
 
+    @property
+    def key(self):
+        """Generate a unique key for this element based on its geometry and materials.
+
+        Returns:
+            str: A unique identifier string for this element's geometry and materials.
+        """
+        # Convert vertices to tuples for hashing
+        vertex_tuples = tuple(tuple(v) for v in self.vertices)
+
+        # Generate face keys that capture material and UV info
+        face_keys = []
+        for face in self.faces:
+            face_key = (
+                tuple(face.vertex_indices),
+                face.material_name,
+                tuple(tuple(uv) for uv in face.uvs) if face.uvs else None,
+                face.tint,
+                face.ambient_occlusion,
+                face.cull,
+            )
+            face_keys.append(face_key)
+
+        # Create final key from element properties
+        key_parts = (
+            self.name,
+            vertex_tuples,
+            tuple(sorted(face_keys)),  # Sort for consistent ordering
+        )
+        return str(hash(key_parts))
+
     def __repr__(self):
         formatted_faces = textwrap.indent(
             ",\n".join(repr(face) for face in self.faces), "    "
@@ -213,6 +244,7 @@ class Renderer:
         self.atlas_mapping = {}  # Will store UV mapping info for each texture
         self.materials = {}  # Track materials by texture path
         self.baked_images = {}
+        self.element_cache = {}  # Cache for instanced elements
 
     def get_next_index(self):
         index = self._next_index
@@ -383,7 +415,16 @@ class Renderer:
         return objects
 
     def create_element_mesh(self, element, name, index_str, light_emission=None):
-        """Create a mesh object for an element."""
+        """Create a mesh object for an element, using instancing when possible."""
+        # Check if we already have this element cached
+        element_key = element.key
+        if element_key in self.element_cache:
+            # Create a linked duplicate (instance) of the cached mesh
+            cached_obj = self.element_cache[element_key]
+            obj = bpy.data.objects.new(name, cached_obj.data)
+            return obj
+
+        # Create new mesh if not cached
         mesh = bpy.data.meshes.new(name)
         obj = bpy.data.objects.new(name, mesh)
 
@@ -393,7 +434,7 @@ class Renderer:
 
         # Track which vertices are actually used by faces
         used_vertices = set()
-        vertex_map = {}  # Maps old vertex indices to new ones
+        vertex_map = {}
         new_vertices = []
 
         # First pass - collect used vertices and build face list
@@ -477,6 +518,9 @@ class Renderer:
         bmesh.ops.triangulate(bm, faces=bm.faces)
         bm.to_mesh(mesh)
         bm.free()
+
+        # Cache the object for future instancing
+        self.element_cache[element_key] = obj
 
         return obj
 
@@ -910,9 +954,13 @@ class Renderer:
 
         name, _ = os.path.splitext(name)
 
+        print("Placing blocks", flush=True)
+
         # Place all blocks first
         for placed_block in placed_blocks:
             self.place_block(placed_block)
+
+        print("Done placing blocks", flush=True)
 
         if pre_export:
             # Continue with existing render code...
@@ -931,24 +979,40 @@ class Renderer:
 
             return
 
+        print("Baking materials", flush=True)
         # Stage 1: Bake all materials
         for material in bpy.data.materials:
             self.bake_material(material, time_of_day)
 
+        print("Done baking materials", flush=True)
+
+        print("Applying baked materials", flush=True)
         # Stage 2: Apply all baked materials
         self.apply_baked_materials()
-        self.delete_unnecessary_nodes()
+        print("Done applying baked materials", flush=True)
 
+        print("Deleting unnecessary nodes", flush=True)
+        self.delete_unnecessary_nodes()
+        print("Done deleting unnecessary nodes", flush=True)
+
+        print("Generating texture atlas", flush=True)
         # Generate atlas after baking
         self.generate_texture_atlas(margin=4)
-        self.remap_uvs_to_atlas()
+        print("Done generating texture atlas", flush=True)
 
+        print("Remapping UVs to atlas", flush=True)
+        self.remap_uvs_to_atlas()
+        print("Done remapping UVs to atlas", flush=True)
+
+        print("Exporting", flush=True)
         # Export based on file extension
         if "blend" in types:
             self.export_blend(f"{name}.blend")
 
         if "glb" in types:
             self.export_glb(f"{name}.glb")
+
+        print("Done", flush=True)
 
     def export_blend(self, filepath):
         """Export the scene to Blender's native format."""
