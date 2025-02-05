@@ -1644,7 +1644,7 @@ class MinecraftWorld:
                     ):
                         # Cull faces between identical glass blocks
                         should_cull = True
-                    elif not adjacent_block.block.transparent and block.block.is_cube:
+                    elif not adjacent_block.block.transparent and adjacent_block.block.is_cube:
                         # Cull faces against opaque, cube blocks
                         should_cull = True
 
