@@ -48,6 +48,7 @@ import bpy
 
 import bmesh  # isort: skip
 import enum
+import hashlib
 import time
 
 from mathutils import Vector
@@ -179,6 +180,7 @@ class Face:
         tint=None,
         ambient_occlusion=True,
         cull=False,
+        block_name=None,
     ):
         self.name = name
         self.vertex_indices = vertex_indices
@@ -188,18 +190,28 @@ class Face:
         self.tint = tint
         self.ambient_occlusion = ambient_occlusion
         self.cull = cull
+        self.block_name = block_name
 
     @property
-    def tint_rgb(self):
+    def tint_srgb(self):
         if self.tint:
-            return hex_to_rgb(self.tint)
+            return hex_to_srgb(self.tint)
 
     @property
     def material_name(self):
         _, filename = os.path.split(self.texture)
-        name, _ = os.path.splitext(filename)
+        texture_name, _ = os.path.splitext(filename)
+
+        unique_hash = hashlib.sha256(
+            f"{self.block_name}_{self.name}".encode()
+        ).hexdigest()[:8]
+
+        name = f"{unique_hash}_{texture_name}"
+
         if self.tint:
             name = f"{name}_tinted_{self.tint.lstrip('#')}"
+
+        print(f"Material name: {name}")
 
         return name
 
@@ -488,7 +500,7 @@ class Renderer:
                 mat = self.create_material(
                     face.texture,
                     name=material_name,
-                    tint=face.tint_rgb,
+                    tint=face.tint_srgb,
                     light_emission=light_emission,
                     ambient_occlusion=face.ambient_occlusion,
                 )
@@ -763,6 +775,10 @@ class Renderer:
         if not filepath.endswith(".glb"):
             filepath += ".glb"
 
+        if os.path.exists(filepath):
+            name, ext = os.path.splitext(filepath)
+            filepath = f"{name}-{str(time.time()).split('.')[0]}{ext}"
+
         bpy.ops.export_scene.gltf(
             # Basic export settings
             filepath=filepath,
@@ -783,6 +799,7 @@ class Renderer:
             # Material and mesh settings
             export_tangents=True,
             export_normals=True,
+            export_lights=False,
             # Disable compression to preserve quality
             export_draco_mesh_compression_enable=False,
             # Transform settings
@@ -796,6 +813,9 @@ class Renderer:
         """Bake a single material into a new baked version."""
         # Skip if material doesn't use nodes
         if not material.use_nodes:
+            return None
+
+        if material.name in self.baked_images:
             return None
 
         # Find original texture node and image
@@ -888,13 +908,22 @@ class Renderer:
 
             # Find original texture node
             nodes = material.node_tree.nodes
+            links = material.node_tree.links
             tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
+            principled_bsdf = next(
+                (n for n in nodes if n.type == "BSDF_PRINCIPLED"), None
+            )
+            output_node = next((n for n in nodes if n.type == "OUTPUT_MATERIAL"), None)
+
             if not tex_node:
                 continue
 
             # Replace original image with baked version
             tex_node.image = baked_image
             tex_node.interpolation = "Closest"  # Ensure pixelated look is maintained
+
+            links.new(tex_node.outputs["Color"], principled_bsdf.inputs["Base Color"])
+            links.new(principled_bsdf.outputs[0], output_node.inputs["Surface"])
 
             # Force updates
             material.update_tag()
@@ -990,19 +1019,6 @@ class Renderer:
         # Stage 2: Apply all baked materials
         self.apply_baked_materials()
         print("Done applying baked materials", flush=True)
-
-        print("Deleting unnecessary nodes", flush=True)
-        self.delete_unnecessary_nodes()
-        print("Done deleting unnecessary nodes", flush=True)
-
-        print("Generating texture atlas", flush=True)
-        # Generate atlas after baking
-        self.generate_texture_atlas(margin=4)
-        print("Done generating texture atlas", flush=True)
-
-        print("Remapping UVs to atlas", flush=True)
-        self.remap_uvs_to_atlas()
-        print("Done remapping UVs to atlas", flush=True)
 
         print("Exporting", flush=True)
         # Export based on file extension
@@ -1253,7 +1269,7 @@ class Renderer:
         bpy.context.view_layer.update()
 
 
-def hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
+def hex_to_srgb(hex_color: str) -> tuple[float, float, float]:
     """Convert a hex color string to RGB tuple with values between 0 and 1.
 
     Args:
@@ -1275,4 +1291,6 @@ def hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
     b = int(hex_color[4:6], 16)
 
     # Normalize to 0-1 range
-    return (r / 255.0, g / 255.0, b / 255.0)
+    color = (r / 255.0, g / 255.0, b / 255.0)
+    srgb = tuple(pow(c, 2.2) for c in color)
+    return srgb

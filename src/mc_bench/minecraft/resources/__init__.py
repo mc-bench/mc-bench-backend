@@ -518,7 +518,9 @@ class BlockData:
         for idx, model in enumerate(self.models):
             models.append(
                 model.to_minecraft_model(
-                    name=f"model_{idx}", tint_lookup=self.tint_lookup
+                    name=f"model_{idx}",
+                    tint_lookup=self.tint_lookup,
+                    block_name=self.canonical_name,
                 )
             )
 
@@ -578,7 +580,7 @@ class ModelData:
         self.y_rotation = y
         self.z_rotation = z
 
-    def to_minecraft_model(self, name=None, tint_lookup=None):
+    def to_minecraft_model(self, name=None, tint_lookup=None, block_name=None):
         return MinecraftModel.from_specification(
             name or "model",
             self._specification,
@@ -587,6 +589,7 @@ class ModelData:
             y_rotation=self.y_rotation,
             z_rotation=self.z_rotation,
             tint_lookup=tint_lookup,
+            block_name=block_name,
         )
 
 
@@ -657,6 +660,8 @@ class MinecraftModelFace:
     def tint_from_biomes(self, biome, adjacent_biomes):
         if self.tintindex == -1:
             return None
+
+        adjacent_biomes = adjacent_biomes or []
 
         main_biome_color = self.tint_lookup[biome]
 
@@ -893,6 +898,7 @@ class MinecraftModel:
         z_rotation=0,
         biome=None,
         adjacent_biomes=None,
+        block_name=None,
     ):
         self.name = name
         self.parent = parent
@@ -908,6 +914,7 @@ class MinecraftModel:
         self.z_rotation = z_rotation
         self.biome = biome or DEFAULT_BIOME
         self.adjacent_biomes = adjacent_biomes or []
+        self.block_name = block_name
 
     @classmethod
     def from_specification(
@@ -920,6 +927,7 @@ class MinecraftModel:
         y_rotation=0,
         z_rotation=0,
         tint_lookup=None,
+        block_name=None,
     ):
         """Create a MinecraftModel from a model specification dictionary."""
         elements = []
@@ -963,6 +971,7 @@ class MinecraftModel:
             x_rotation=x_rotation,
             y_rotation=y_rotation,
             z_rotation=z_rotation,
+            block_name=block_name,
         )
 
     def debug_info(self, indent=0):
@@ -1108,6 +1117,7 @@ class MinecraftModel:
                     tint=face.tint_from_biomes(biome, adjacent_biomes),
                     ambient_occlusion=self.ambient_occlusion,
                     cull=face.cullface and adjacent_blocks[face.cullface],
+                    block_name=self.block_name,
                 )
                 blender_faces.append(blender_face)
 
@@ -1799,6 +1809,39 @@ class MinecraftWorld:
                         x=start_x + 10,
                         y=start_y,
                         z=start_z + 10,
+                    ),
+                    # Oak stairs
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "oak_stairs[facing=east,half=bottom,shape=straight]"
+                        ).to_minecraft_block(),
+                        x=start_x + 12,
+                        y=start_y,
+                        z=start_z + 12,
+                    ),
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "oak_stairs[facing=south,half=bottom,shape=straight]"
+                        ).to_minecraft_block(),
+                        x=start_x + 14,
+                        y=start_y,
+                        z=start_z + 14,
+                    ),
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "oak_stairs[facing=west,half=bottom,shape=straight]"
+                        ).to_minecraft_block(),
+                        x=start_x + 16,
+                        y=start_y,
+                        z=start_z + 16,
+                    ),
+                    PlacedMinecraftBlock(
+                        resource_loader.get_block(
+                            "oak_stairs[facing=north,half=bottom,shape=straight]"
+                        ).to_minecraft_block(),
+                        x=start_x + 18,
+                        y=start_y,
+                        z=start_z + 18,
                     ),
                 ]
             )
