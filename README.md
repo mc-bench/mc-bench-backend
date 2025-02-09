@@ -58,9 +58,10 @@ GITHUB_CLIENT_SECRET
 
 See [frontend setup docs](https://github.com/mc-bench/mc-bench-frontend/blob/main/docs/setup_oauth_prereqs.md) 
 Auth call back URL should be on ```http://localhost:5173/login```
+
 # Login and give yourself a role
 
-Running the frontend and the backend, login and create a username.
+Running the frontend and the backend, signup and create a username.
 
 Then use:
 
@@ -80,6 +81,17 @@ To see the roles use:
 
 ./bin/grant-user-role list-roles
 ```
+
+# Start the ephemeral game server
+Build your own ephemeral game server locally. See [build documentation](https://github.com/mc-bench/mc-bench-backend/blob/main/docs/build_local_gameservers.md) for more details.
+
+Run
+```bash
+cd ../gameservers
+git checkout minecraft-1.21.1
+docker build -t registry.digitalocean.com/mcbench/gameservers:minecraft-1.21.1-latest .
+```
+
 
 # Services run via docker
 
