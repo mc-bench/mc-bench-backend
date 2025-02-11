@@ -1,5 +1,6 @@
-import requests
 from typing import List
+
+import requests
 
 from ._base import AuthenticationClient
 

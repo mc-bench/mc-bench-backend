@@ -22,4 +22,5 @@ class Settings:
     GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
     GOOGLE_REDIRECT_URI = os.environ["GOOGLE_REDIRECT_URI"]
 
+
 settings = Settings()
