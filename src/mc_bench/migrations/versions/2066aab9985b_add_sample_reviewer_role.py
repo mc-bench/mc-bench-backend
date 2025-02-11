@@ -1,7 +1,7 @@
 """Add sample-reviewer role
 
 Revision ID: 2066aab9985b
-Revises: 8b6615c73a4f
+Revises: ab2c29f9cc0c
 Create Date: 2025-01-26 02:46:17.737274
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "2066aab9985b"
-down_revision: Union[str, None] = "8b6615c73a4f"
+down_revision: Union[str, None] = "ab2c29f9cc0c"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
