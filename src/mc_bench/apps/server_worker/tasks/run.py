@@ -49,7 +49,7 @@ def _get_builder_image() -> str:
     stage=Building,
     max_retries=0,
     retry_on_failure=False,
-    restart_run_on_failure=False,
+    restart_run_on_failure=True,
 )
 def build_structure(stage_context: StageContext):
     sample = stage_context.sample
