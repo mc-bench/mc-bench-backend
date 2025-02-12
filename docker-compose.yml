@@ -67,7 +67,15 @@ services:
     image: "mcbench/worker"
     environment:
       CELERY_BROKER_URL: "redis://redis:6379/0"
+      REDIS_USE_AUTH: "false"
+      REDIS_HOST: "redis"
       REDIS_USE_SSL: "false"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "mc-bench"
+      POSTGRES_USER: "mc-bench-admin"
+      POSTGRES_PASSWORD: "mc-bench"
+      POSTGRES_SSLMODE: "disable"
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
 
   admin-worker:
@@ -121,7 +129,7 @@ services:
       OBJECT_STORE_SECURE: "False"
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       ADMIN_API_URL: "http://admin-api:8000"
-      FAST_RENDER: "false"
+      FAST_RENDER: ${FAST_RENDER:-true}
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
 
   server-worker:

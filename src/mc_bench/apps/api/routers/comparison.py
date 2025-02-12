@@ -17,6 +17,7 @@ from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_database
 
+from ..celery import send_task
 from ..transport_types.requests import NewComparisonBatchRequest, UserComparisonRequest
 from ..transport_types.responses import ComparisonBatchResponse, MetricResponse
 
@@ -277,6 +278,12 @@ def post_comparison(
     sample_2_run = db.scalar(
         select(Sample).where(Sample.comparison_sample_id == sample_2_id)
     ).run
+
+    if redis.set("elo_calculation_in_progress", "1", ex=300, nx=True):
+        logger.info("Enqueuing elo calculation task")
+        send_task("elo_calculation")
+    else:
+        logger.debug("Elo calculation already in progress")
 
     return {
         "sample_1_model": sample_1_run.model.slug,

@@ -103,6 +103,7 @@ def parse_prompt(
             parsed.get("description"),
         ]
     ):
+        logger.error("Prompting didn't go well", run_id=stage_context.run.id)
         raise RuntimeError("Prompting didn't go well")
 
     run_id = stage_context.run_id
@@ -130,6 +131,7 @@ def code_validation(stage_context: StageContext):
             full_code = f"{mock_script}\n\n{code}"
             f.write(full_code)
 
+        logger.info("Validating code", run_id=stage_context.run.id)
         result = subprocess.run(
             ["eslint", "--config", ESLINT_CONFIG, "code.js"],
             cwd=temp_dir,
@@ -138,6 +140,7 @@ def code_validation(stage_context: StageContext):
         )
 
         if result.returncode != 0:
+            logger.error("Code validation failed", run_id=stage_context.run.id)
             raise RuntimeError("Code validation failed.")
 
     run_id = stage_context.run_id
@@ -170,6 +173,7 @@ def prepare_sample(stage_context: StageContext):
     artifact = stage_context.sample.get_render_artifact()
 
     if not artifact:
+        logger.error("No render artifact found", run_id=stage_context.run.id)
         raise RuntimeError("No render artifact found")
 
     object_client = get_client()

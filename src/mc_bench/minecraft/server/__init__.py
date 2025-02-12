@@ -19,12 +19,14 @@ def create_network(suffix, exists_ok=False) -> str:
     client = docker.from_env()
     network_name = f"mctest-net-{suffix}"
     try:
+        logger.info("Checking if network exists", network_name=network_name)
         client.networks.get(network_name)
         if not exists_ok:
             raise ValueError(f"Network {network_name} already exists")
     except docker.errors.NotFound:
+        logger.info("Network does not exist, creating it", network_name=network_name)
         client.networks.create(network_name, driver="bridge", check_duplicate=True)
-
+        logger.info("Network created", network_name=network_name)
     return network_name
 
 
@@ -42,8 +44,10 @@ def start_server(image, network_name: str, suffix, ports=None, replace=False) ->
     container_name = f"mc-server-{suffix}"
 
     try:
+        logger.info("Getting existing container", container_name=container_name)
         current_container = client.containers.get(container_name)
     except docker.errors.NotFound:
+        logger.info("Container not found", container_name=container_name)
         current_container = None
 
     if current_container is not None:
@@ -56,6 +60,7 @@ def start_server(image, network_name: str, suffix, ports=None, replace=False) ->
         else:
             raise ValueError(f"Container {container_name} already exists")
 
+    logger.info("Creating new container", container_name=container_name)
     container = client.containers.run(
         image,
         detach=True,
@@ -64,6 +69,8 @@ def start_server(image, network_name: str, suffix, ports=None, replace=False) ->
         name=container_name,
         **kwargs,
     )
+
+    logger.info("Container created", container_name=container_name)
     return container
 
 
@@ -80,6 +87,7 @@ def wait_for_server(container_id: str, timeout: int = 300) -> bool:
         bool: True if server is ready, False if timeout reached
     """
     client = docker.from_env()
+    logger.info("Getting container", container_id=container_id)
     container = client.containers.get(container_id)
     start_time = time.time()
 
@@ -90,6 +98,7 @@ def wait_for_server(container_id: str, timeout: int = 300) -> bool:
     while time.time() - start_time < timeout:
         logs = container.logs().decode("utf-8")
         if ready_pattern.search(logs):
+            logger.info("Server is ready", container_id=container_id)
             return True
         time.sleep(2)
 
@@ -112,8 +121,12 @@ def run_builder(
     server_container = client.containers.get(server_container_id)
 
     if not os.environ.get("NO_IMAGE_PULL"):
+        logger.info("Pulling image", image=image)
         client.images.pull(image)
 
+    logger.info(
+        "Running builder", image=image, network_name=network_name, suffix=suffix
+    )
     builder = client.containers.run(
         image,
         environment={
@@ -131,7 +144,7 @@ def run_builder(
         name=f"mc-builder-{suffix}",
         **kwargs,
     )
-
+    logger.info("Builder running", builder=builder)
     return builder
 
 
@@ -151,11 +164,17 @@ def cleanup(
             server_container_id is not None
             and not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == "true"
         ):
+            logger.info(
+                "Stopping server container", server_container_id=server_container_id
+            )
             container = client.containers.get(server_container_id)
             container.stop()
             container.remove()
 
     except docker.errors.NotFound:
+        logger.info(
+            "Server container not found", server_container_id=server_container_id
+        )
         pass
 
     try:
@@ -163,11 +182,17 @@ def cleanup(
             build_container_id is not None
             and not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == "true"
         ):
+            logger.info(
+                "Stopping builder container", build_container_id=build_container_id
+            )
             container = client.containers.get(build_container_id)
             container.stop()
             container.remove()
 
     except docker.errors.NotFound:
+        logger.info(
+            "Builder container not found", build_container_id=build_container_id
+        )
         pass
 
     try:
@@ -175,15 +200,19 @@ def cleanup(
             not os.environ.get("NO_CLEANUP_SERVER_CONTAINER") == "true"
             and not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == "true"
         ):
+            logger.info("Removing network", network_name=network_name)
             network = client.networks.get(network_name)
             network.remove()
     except docker.errors.NotFound:
+        logger.info("Network not found", network_name=network_name)
         pass
 
     try:
         if not os.environ.get("NO_CLEANUP_BUILDER_CONTAINER") == "true":
+            logger.info("Removing volume", volume=volume)
             volume.remove(force=True)
     except Exception:
+        logger.info("Volume not found", volume=volume)
         pass
 
 
@@ -198,8 +227,15 @@ def copy_from_container(container_name, container_path, host_path):
     """
     # Initialize Docker client
     client = docker.from_env()
+    logger.info(
+        "Copying from container",
+        container_name=container_name,
+        container_path=container_path,
+        host_path=host_path,
+    )
 
     try:
+        logger.info("Getting container", container_name=container_name)
         # Get container object
         container = client.containers.get(container_name)
 
@@ -252,6 +288,7 @@ def create_volume(
 
     # Create volume
     volume = client.volumes.create()
+    logger.info("Volume created", volume=volume.name)
 
     # Prepare data for tar
     if isinstance(data, str):
@@ -270,6 +307,7 @@ def create_volume(
     if not os.environ.get("NO_IMAGE_PULL"):
         client.images.pull("alpine")
     # Create temporary container to populate volume
+    logger.info("Creating temporary container", volume=volume.name, path=path)
     container = client.containers.run(
         "alpine",
         command="tail -f /dev/null",
@@ -280,7 +318,9 @@ def create_volume(
     try:
         container.put_archive(path, tar_buffer.getvalue())
     finally:
+        logger.info("Stopping temporary container", container_name=container.name)
         container.stop()
+        logger.info("Removing temporary container", container_name=container.name)
         container.remove()
 
     return volume
@@ -313,7 +353,9 @@ def get_file_from_container(
     """
     # Initialize Docker client
     client = docker.from_env()
-
+    logger.info(
+        "Getting file from container", container_id=container_id, file_path=file_path
+    )
     try:
         # Get container object
         container = client.containers.get(container_id)
@@ -349,8 +391,11 @@ def get_file_from_container(
 
     except docker.errors.NotFound:
         if not missing_ok:
+            logger.error("Container not found", container_id=container_id)
             raise ValueError(f"Container {container_id} not found")
         else:
+            logger.info("Container not found", container_id=container_id)
             return None
     except Exception as e:
+        logger.error("Error extracting file", error=e)
         raise Exception(f"Error extracting file: {str(e)}")

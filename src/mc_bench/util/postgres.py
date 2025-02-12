@@ -1,14 +1,20 @@
 import contextlib
 import os
+import traceback
 
 import sqlalchemy
 import sqlalchemy.engine.url
 import sqlalchemy.orm.session
 
+from mc_bench.util.logging import get_logger
+
+logger = get_logger(__name__)
+
 _SESSIONMAKER = None
 
 
 def get_engine(prefix="POSTGRES_", **kwargs):
+    logger.info("Getting engine", prefix=prefix)
     url = sqlalchemy.engine.url.URL(
         host=os.environ[f"{prefix}HOST"],
         port=int(os.environ[f"{prefix}PORT"]),
@@ -25,7 +31,6 @@ def get_engine(prefix="POSTGRES_", **kwargs):
     kwargs["connect_args"]["sslmode"] = kwargs["connect_args"].pop(
         "sslmode", os.environ.get(f"{prefix}SSLMODE", "require")
     )
-
     return sqlalchemy.create_engine(url, **kwargs)
 
 
@@ -64,14 +69,22 @@ def managed_session():
     session = get_session()
     try:
         yield session
+        logger.info("Committing session")
         session.commit()
+        logger.info("Session committed")
     except Exception:
+        logger.error("Rolling back session", error=traceback.format_exc())
         session.rollback()
+        logger.info("Session rolled back")
         raise
     finally:
+        logger.info("Closing session")
         session.close()
 
 
 def get_managed_session():
+    logger.info("Getting managed session")
     with managed_session() as db:
+        logger.info("Yielding managed session")
         yield db
+    logger.info("Exited managed session")

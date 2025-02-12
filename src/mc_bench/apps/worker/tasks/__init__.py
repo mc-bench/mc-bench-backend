@@ -1,5 +1,5 @@
-from . import example_task
+from .elo_calculation import elo_calculation
 
 __all__ = [
-    "example_task",
+    "elo_calculation",
 ]

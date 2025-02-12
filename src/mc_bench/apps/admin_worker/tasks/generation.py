@@ -9,9 +9,12 @@ from mc_bench.models.run import (
     Run,
     run_state_id_for,
 )
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import managed_session
 
 from ..app import app
+
+logger = get_logger(__name__)
 
 
 @app.task(bind=True, name="generation.create_runs")
@@ -23,6 +26,7 @@ def create_runs(
     model_ids=None,
     num_samples=1,
 ):
+    logger.info(f"Creating runs for generation {generation_id}")
     with managed_session() as db:
         generation = db.scalar(select(Generation).where(Generation.id == generation_id))
 
@@ -40,7 +44,20 @@ def create_runs(
                         )
                         db.add(run)
                         db.flush()
+                        logger.info(
+                            "Run created",
+                            template_id=template_id,
+                            prompt_id=prompt_id,
+                            model_id=model_id,
+                        )
                         stages = run.make_stages(db)
+                        logger.info(
+                            "Stages created",
+                            template_id=template_id,
+                            prompt_id=prompt_id,
+                            model_id=model_id,
+                            run_id=run.id,
+                        )
                         db.add_all(stages)
         db.commit()
 
@@ -99,6 +116,7 @@ def create_runs(
 
 @app.task(name="generation.finalize_generation")
 def finalize_generation(generation_id):
+    logger.info("Finalizing generation", generation_id=generation_id)
     with managed_session() as db:
         run_states = db.scalars(
             select(Run.state_id).where(Run.generation_id == generation_id)
@@ -108,23 +126,28 @@ def finalize_generation(generation_id):
             run_state == run_state_id_for(db, RUN_STATE.COMPLETED)
             for run_state in run_states
         ):
+            logger.info("Generation completed", generation_id=generation_id)
             generation_state = GENERATION_STATE.COMPLETED
         elif any(
             run_state == run_state_id_for(db, RUN_STATE.IN_RETRY)
             for run_state in run_states
         ):
+            logger.info("Generation in retry", generation_id=generation_id)
             generation_state = GENERATION_STATE.IN_RETRY
         elif all(
             run_state == run_state_id_for(db, RUN_STATE.FAILED)
             for run_state in run_states
         ):
+            logger.info("Generation failed", generation_id=generation_id)
             generation_state = GENERATION_STATE.FAILED
         elif any(
             run_state == run_state_id_for(db, RUN_STATE.FAILED)
             for run_state in run_states
         ):
+            logger.info("Generation partial failed", generation_id=generation_id)
             generation_state = GENERATION_STATE.PARTIAL_FAILED
         else:
+            logger.info("Generation in progress", generation_id=generation_id)
             generation_state = GENERATION_STATE.IN_PROGRESS
 
         emit_event(

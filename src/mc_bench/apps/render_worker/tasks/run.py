@@ -7,11 +7,14 @@ from mc_bench.minecraft.rendering import Renderer, TimeOfDay
 from mc_bench.minecraft.resources import ResourceLoader
 from mc_bench.minecraft.schematic import load_schematic, to_minecraft_world
 from mc_bench.models.run import Artifact, RenderingSample
+from mc_bench.util.logging import get_logger
 from mc_bench.util.object_store import get_client as get_object_store_client
 from mc_bench.worker.run_stage import StageContext, run_stage_task
 
 from ..app import app
 from ..config import settings
+
+logger = get_logger(__name__)
 
 
 @run_stage_task(
@@ -44,8 +47,18 @@ def render_sample(stage_context: StageContext):
         rendered_model_glb_filepath = os.path.join(temp_dir, "build-rendered-model.glb")
 
         with open(schematic_filepath, "wb") as f:
+            logger.info(
+                "Writing schematic to file",
+                run_id=stage_context.run.id,
+                sample_id=stage_context.sample.id,
+            )
             f.write(schematic_artifact.download_artifact().getvalue())
 
+        logger.info(
+            "Parsing command list",
+            run_id=stage_context.run.id,
+            sample_id=stage_context.sample.id,
+        )
         biome_fills = []
         for command in command_list:
             if command["kind"] == "fill" and command["command"].startswith(
@@ -57,8 +70,23 @@ def render_sample(stage_context: StageContext):
             biome_data=biome_fills, bounding_box=summary["boundingBox"]
         )
 
+        logger.info(
+            "Loading schematic",
+            run_id=stage_context.run.id,
+            sample_id=stage_context.sample.id,
+        )
         loaded_schematic = load_schematic(schematic_filepath, biome_lookup)
+        logger.info(
+            "Converting schematic to minecraft world",
+            run_id=stage_context.run.id,
+            sample_id=stage_context.sample.id,
+        )
         minecraft_world = to_minecraft_world(loaded_schematic, resource_loader)
+        logger.info(
+            "Converting minecraft world to blocks",
+            run_id=stage_context.run.id,
+            sample_id=stage_context.sample.id,
+        )
         placed_blocks = minecraft_world.to_blender_blocks()
 
         renderer = Renderer(
@@ -67,6 +95,12 @@ def render_sample(stage_context: StageContext):
                 progress=progress,
                 note=msg,
             )
+        )
+        logger.info(
+            "Rendering blocks",
+            run_id=stage_context.run.id,
+            sample_id=stage_context.sample.id,
+            fast_render=settings.FAST_RENDER,
         )
         renderer.render_blocks(
             placed_blocks=placed_blocks,

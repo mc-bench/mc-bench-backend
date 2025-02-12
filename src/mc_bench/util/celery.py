@@ -1,6 +1,6 @@
 import os
 
-from celery import Celery
+from celery import Celery, signals
 
 DEFAULT_WORKER_CONF = dict(
     # For now let's limit tasks to 24 hours
@@ -23,9 +23,15 @@ DEFAULT_WORKER_CONF = dict(
     worker_max_tasks_per_child=16,
     # We want to make sure to retry connection to the broker on startup
     broker_connection_retry_on_startup=True,
+    worker_hijack_root_logger=False,
 )
 
 DEFAULT_CLIENT_CONF = dict()
+
+
+@signals.setup_logging.connect
+def on_setup_logging(**kwargs):
+    pass
 
 
 def make_worker_celery_app(conf=None):
