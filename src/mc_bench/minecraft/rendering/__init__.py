@@ -42,9 +42,11 @@ The core classes are:
 import math
 import os
 import textwrap
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import bpy
+
+from .cache import AbstractTextureCache
 
 import bmesh  # isort: skip
 import enum
@@ -52,6 +54,10 @@ import hashlib
 import time
 
 from mathutils import Vector
+
+from mc_bench.util.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class TimeOfDay(enum.Enum):
@@ -211,7 +217,7 @@ class Face:
         if self.tint:
             name = f"{name}_tinted_{self.tint.lstrip('#')}"
 
-        print(f"Material name: {name}")
+        logger.info(f"Material name: {name}")
 
         return name
 
@@ -248,7 +254,11 @@ class PlacedBlock:
 
 
 class Renderer:
-    def __init__(self):
+    def __init__(
+        self,
+        texture_cache: AbstractTextureCache = None,
+        progress_callback: Callable[[str], None] = None,
+    ):
         self.setup_blender_env()
         self._next_index = 0
         self.texture_paths = set()  # Track unique textures
@@ -257,6 +267,8 @@ class Renderer:
         self.materials = {}  # Track materials by texture path
         self.baked_images = {}
         self.element_cache = {}  # Cache for instanced elements
+        self.texture_cache = texture_cache
+        self.progress_callback = progress_callback or (lambda *args, **kwargs: None)
 
     def get_next_index(self):
         index = self._next_index
@@ -270,6 +282,7 @@ class Renderer:
 
     def setup_blender_env(self):
         """Set up Blender environment with optimized render settings."""
+
         bpy.ops.wm.read_factory_settings(use_empty=True)
 
         # Remove default objects
@@ -572,28 +585,27 @@ class Renderer:
             #     f"All materials must be unique due to baking. {name} not unique"
             # )
 
-        alpha_baked_image_name = f"{name}_copy"
-
         # Load and bake the texture
-        img = bpy.data.images.get(alpha_baked_image_name)
+        img = bpy.data.images.load(texture_path)
+        img.use_fake_user = True
 
-        if img is None:
-            img = bpy.data.images.load(texture_path)
-            img.use_fake_user = True
+        # NOTE: The following code creates an image copy and packs it
+        # I do not know why this is needed, but when I remove it all my
+        # transparent textures are black. C'est la vie.
 
-            # Create a new image for the baked result
-            img_copy = bpy.data.images.new(
-                name=alpha_baked_image_name,
-                width=img.size[0],
-                height=img.size[1],
-                alpha=True,
-            )
+        # Create a new image for the baked result
+        img_copy = bpy.data.images.new(
+            name=f"{name}_copy",
+            width=img.size[0],
+            height=img.size[1],
+            alpha=True,
+        )
 
-            # Copy pixel data and ensure alpha is properly set
-            if img.has_data:
-                pixels = list(img.pixels[:])
-                img_copy.pixels = pixels
-                img_copy.pack()  # Pack image data into .blend file
+        # Copy pixel data and ensure alpha is properly set
+        if img.has_data:
+            pixels = list(img.pixels[:])
+            img_copy.pixels = pixels
+            img_copy.pack()  # Pack image data into .blend file
 
         # Check for transparency in the image
         has_transparency = False
@@ -983,13 +995,24 @@ class Renderer:
 
         name, _ = os.path.splitext(name)
 
-        print("Placing blocks", flush=True)
+        logger.info("Placing blocks", flush=True)
+
+        self.progress_callback("Placing blocks in the rendered scene", progress=0.0)
 
         # Place all blocks first
-        for placed_block in placed_blocks:
+        for i, placed_block in enumerate(placed_blocks):
             self.place_block(placed_block)
+            if i % 100 == 0:
+                msg = f"{i+1} / {len(placed_blocks)} blocks placed in the scene"
+                logger.info(msg)
+                self.progress_callback(
+                    msg,
+                    progress=0.1 * (i + 1) / len(placed_blocks),
+                )
 
-        print("Done placing blocks", flush=True)
+        self.progress_callback("All blocks placed in the scene", progress=0.1)
+
+        logger.info("Done placing blocks")
 
         if pre_export:
             # Continue with existing render code...
@@ -1008,19 +1031,28 @@ class Renderer:
 
             return
 
-        print("Baking materials", flush=True)
+        logger.info("Baking materials")
         # Stage 1: Bake all materials
-        for material in bpy.data.materials:
+        for i, material in enumerate(bpy.data.materials):
             self.bake_material(material, time_of_day)
+            if i % 10 == 0:
+                self.progress_callback(
+                    f"{i+1} / {len(bpy.data.materials)} materials baked",
+                    progress=0.1 + (0.7 * (i + 1) / len(bpy.data.materials)),
+                )
 
-        print("Done baking materials", flush=True)
+        self.progress_callback("All materials baked", progress=0.8)
 
-        print("Applying baked materials", flush=True)
+        logger.info("Done baking materials")
+
+        logger.info("Applying baked materials")
         # Stage 2: Apply all baked materials
+        self.progress_callback("Applying baked materials", progress=0.81)
         self.apply_baked_materials()
-        print("Done applying baked materials", flush=True)
+        self.progress_callback("Done applying baked materials", progress=0.82)
+        logger.info("Done applying baked materials")
 
-        print("Exporting", flush=True)
+        logger.info("Exporting")
         # Export based on file extension
         if "blend" in types:
             self.export_blend(f"{name}.blend")
@@ -1028,7 +1060,7 @@ class Renderer:
         if "glb" in types:
             self.export_glb(f"{name}.glb")
 
-        print("Done", flush=True)
+        logger.info("Done")
 
     def export_blend(self, filepath):
         """Export the scene to Blender's native format."""
@@ -1206,10 +1238,10 @@ class Renderer:
 
         # Update all materials to use atlas
         for material_name in self.atlas_mapping:
-            print(f"Remapping UVs for material {material_name}")
+            logger.info(f"Remapping UVs for material {material_name}")
             material = bpy.data.materials.get(material_name)
             if not material or not material.use_nodes:
-                print(f"Material {material_name} not found or not using nodes")
+                logger.info(f"Material {material_name} not found or not using nodes")
                 continue
 
             uv_map = self.atlas_mapping[material_name]
@@ -1221,7 +1253,7 @@ class Renderer:
             # Find and update texture node
             tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
             if not tex_node:
-                print(f"Texture node for material {material_name} not found")
+                logger.info(f"Texture node for material {material_name} not found")
                 continue
 
             # Store old image for cleanup

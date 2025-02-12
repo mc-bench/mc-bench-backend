@@ -6,8 +6,12 @@ from scalar_fastapi import get_scalar_api_reference
 
 from mc_bench.apps.api.routers.comparison import comparison_router
 from mc_bench.apps.api.routers.user import user_router
+from mc_bench.util.logging import configure_logging
 
+from .config import settings
 from .lifespan import lifespan
+
+configure_logging(humanize=settings.HUMANIZE_LOGS)
 
 allow_origins = os.environ.get("CORS_ALLOWED_ORIGIN", "").split(",")
 

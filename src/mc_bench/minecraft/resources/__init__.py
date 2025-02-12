@@ -94,8 +94,12 @@ import minecraft_data
 import numpy as np
 import PIL.Image
 
+from mc_bench.util.logging import get_logger
+
 from .. import rendering
 from ..biome_lookup import DEFAULT_BIOME
+
+logger = get_logger(__name__)
 
 WATERLOGGABLE_BLOCKS = [
     "sea_pickle",
@@ -1028,7 +1032,7 @@ class MinecraftModel:
 
         This ensures rotations are applied in the correct order: X, then Z, then Y
         """
-        print(f"Building blender model for {self.name}")
+        logger.info(f"Building blender model for {self.name}")
 
         blender_elements = []
 
@@ -1101,6 +1105,9 @@ class MinecraftModel:
                         face.cullface, self.x_rotation, self.y_rotation, self.z_rotation
                     )
                     if adjacent_blocks[transformed_cullface]:
+                        logger.info(
+                            f"Cullface {face.cullface} transformed to {transformed_cullface} and adjacent block found."
+                        )
                         continue
 
                 # Get vertex indices and UVs for this face direction
@@ -1496,7 +1503,7 @@ class MinecraftBlock:
         return False
 
     def to_blender_block(self, adjacent_blocks=None, biome=None, adjacent_biomes=None):
-        print(f"converting block {self.canonical_name} to blender block")
+        logger.info(f"converting block {self.canonical_name} to blender block")
         adjacent_blocks = adjacent_blocks or collections.defaultdict(lambda: None)
 
         # Convert block models
@@ -1644,18 +1651,23 @@ class MinecraftWorld:
                     ):
                         # Cull faces between identical glass blocks
                         should_cull = True
-                    elif not adjacent_block.block.transparent and adjacent_block.block.is_cube:
+                    elif (
+                        not adjacent_block.block.transparent
+                        and adjacent_block.block.is_cube
+                    ):
                         # Cull faces against opaque, cube blocks
                         should_cull = True
 
             adjacent[face] = should_cull
+
+        logger.info(f"Block: {block.block.canonical_name} adjacent: {adjacent}")
 
         return adjacent
 
     def to_blender_blocks(self):
         blender_blocks = []
         for block in self.blocks:
-            print(
+            logger.info(
                 f"converting block {block.block.canonical_name} at {block.x}, {block.y}, {block.z} to blender block"
             )
             blender_block = block.to_blender_block(

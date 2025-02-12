@@ -275,6 +275,10 @@ sqlalchemy==2.0.36
     #   -c worker-requirements.txt
     #   -r render-worker-requirements.in
     #   alembic
+structlog==25.1.0
+    # via
+    #   -c requirements.txt
+    #   -r render-worker-requirements.in
 tornado==6.4.2
     # via
     #   -c worker-requirements.txt

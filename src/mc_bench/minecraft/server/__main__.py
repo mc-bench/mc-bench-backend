@@ -3,6 +3,9 @@ import os
 
 import mc_bench.minecraft.server
 from mc_bench.minecraft.server import wait_for_server
+from mc_bench.util.logging import get_logger
+
+logger = get_logger(__name__)
 
 SERVER_IMAGE = os.environ.get(
     "MINECRAFT_SERVER_IMAGE",
@@ -31,11 +34,11 @@ def main(options):
         },
         replace=options.replace,
     )
-    print("Waiting for server to start...")
+    logger.info("Waiting for server to start...")
     wait_for_server(result.id)
-    print("Server started...")
+    logger.info("Server started...")
 
-    print(result)
+    logger.info("Server started", result=result)
 
 
 if __name__ == "__main__":

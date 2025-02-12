@@ -7,3 +7,4 @@ openai
 jinja2
 minio
 mc-data-files==3.83.1rc0
+structlog

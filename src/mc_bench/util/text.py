@@ -1,5 +1,9 @@
 import re
 
+from mc_bench.util.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def parse_known_parts(text):
     tags = ["code", "inspiration", "description"]
@@ -61,7 +65,7 @@ def try_parse_code_from_hash_tick_block(text):
                 break
 
             if end_index == -1:
-                print("No end of code block found")
+                logger.error("No end of code block found")
                 raise ValueError("No end of code block found")
 
         return text[start_index:end_index].strip()

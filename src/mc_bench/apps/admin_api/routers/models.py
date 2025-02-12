@@ -23,7 +23,10 @@ from mc_bench.models.model import Model, ProviderClass
 from mc_bench.models.provider import Provider
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
+
+logger = get_logger(__name__)
 
 model_router = APIRouter()
 
@@ -151,10 +154,12 @@ def update_model(
             provider.external_id: provider for provider in model.providers
         }
 
-        print("Existing providers: ", existing_providers.keys())
+        logger.info(
+            "Existing providers", existing_provider_keys=existing_providers.keys()
+        )
 
         for provider in update_data["providers"]:
-            print("current update provider: ", provider)
+            logger.info("current update provider", provider=provider)
             if not provider.get("id"):
                 model.providers.append(Provider(created_by=editor.id, **provider))
             else:
@@ -229,6 +234,6 @@ def get_model(
     )
 
     for provider in model.providers:
-        print("Provider Type: ", type(provider))
+        logger.info("Provider Type", provider_type=type(provider))
 
     return model.to_dict(include_runs=True)

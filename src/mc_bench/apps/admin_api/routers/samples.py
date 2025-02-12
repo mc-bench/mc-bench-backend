@@ -14,6 +14,7 @@ from mc_bench.models.run import Run, Sample, SampleApprovalState
 from mc_bench.models.template import Template
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
 
 from ..config import settings
@@ -24,6 +25,8 @@ from ..transport_types.responses import (
     SampleDetailResponse,
     SampleResponse,
 )
+
+logger = get_logger(__name__)
 
 sample_router = APIRouter()
 
@@ -77,7 +80,7 @@ def list_samples(
         query = query.filter(Sample.run_id.in_(run_id))
 
     if approval_state:
-        print(f"approval_state: {approval_state}")
+        logger.info("approval_state", approval_state=approval_state)
         valid_approval_filters = [
             state.value
             for state in approval_state
@@ -123,7 +126,9 @@ def list_samples(
 
     # Always sort by created descending
     query = query.order_by(Sample.created.desc())
-    print(f"query: {query.compile(compile_kwargs={'literal_binds': True})}")
+    logger.info(
+        "query", query=str(query.compile(compile_kwargs={"literal_binds": True}))
+    )
 
     # Execute query and handle pagination
     total = db.scalar(select(func.count()).select_from(query.subquery()))

@@ -12,6 +12,7 @@ from mc_bench.apps.api.config import settings
 from mc_bench.auth.emails import hash_email
 from mc_bench.models.user import AuthProvider, AuthProviderEmailHash, Role, User
 from mc_bench.server.auth import AuthManager
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
 
 from ..transport_types.requests import CreateUserRequest, LoginRequest, SignupRequest
@@ -20,6 +21,8 @@ from ..transport_types.responses import (
     SignupResponse,
     ValidateUsernameResponse,
 )
+
+logger = get_logger(__name__)
 
 user_router = APIRouter()
 
@@ -31,7 +34,7 @@ am = AuthManager(
 
 # TODO: Implement some of this on the frontend
 def _validate_username(db: Session, username: str):
-    print("Validating username:", username)
+    logger.info("Validating username", username=username)
 
     errors = []
 
@@ -50,13 +53,13 @@ def _validate_username(db: Session, username: str):
     split_username = " ".join(regex.split(r"[^a-zA-Z0-9]+", username))
 
     if result := valx.detect_profanity([split_username], language="All"):
-        print("Profanity result:", result)
+        logger.info("Profanity result", result=result)
         errors.append("Username contains inappropriate words.")
 
     if result := valx.detect_hate_speech(split_username) != [
         "No Hate and Offensive Speech"
     ]:
-        print("Hate speech result:", result)
+        logger.info("Hate speech result", result=result)
         errors.append("Username contains inappropriate content.")
 
     user_stmt = select(sqlalchemy.func.count(User.id)).where(
@@ -177,7 +180,7 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
     except Exception:
         import traceback
 
-        print(traceback.format_exc())
+        logger.error("Failed to login with Github", error=traceback.format_exc())
         raise HTTPException(status_code=400, detail="Failed to login with Github")
 
     hashed_emails = _hash_emails(settings.EMAIL_SALT, authentication_payload.emails)
@@ -191,7 +194,7 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
     registered_emails = list(db.scalars(user_stmt))
 
     if not registered_emails:
-        print("Creating new user")
+        logger.info("Creating new user")
         user = User(
             auth_provider_email_hashes=[
                 AuthProviderEmailHash(
@@ -204,7 +207,7 @@ def github_oauth(code: str, db: Session = Depends(get_managed_session)):
         )
         db.add(user)
     else:
-        print("Updating existing user")
+        logger.info("Updating existing user")
         user = db.scalar(select(User).where(User.id == registered_emails[0].user_id))
         provided_emails = [
             auth_provider_email_hash
@@ -271,7 +274,7 @@ def login(request: LoginRequest, db: Session = Depends(get_managed_session)):
     except Exception:
         import traceback
 
-        print(traceback.format_exc())
+        logger.error("Failed to login with Github", error=traceback.format_exc())
         raise HTTPException(
             status_code=400,
             detail=f"Failed to login with {request.login_auth_provider}",

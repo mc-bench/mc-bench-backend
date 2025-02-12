@@ -11,12 +11,15 @@ from mc_bench.models.run import (
     ResponseParsing,
     Sample,
 )
+from mc_bench.util.logging import get_logger
 from mc_bench.util.object_store import get_client
 from mc_bench.util.text import parse_known_parts
 from mc_bench.worker.run_stage import StageContext, run_stage_task
 
 from ..app import app
 from ..config import settings
+
+logger = get_logger(__name__)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ADMIN_WORKER_DIR = os.path.dirname(HERE)
@@ -80,7 +83,7 @@ def parse_prompt(
                 if "```" in line:
                     continue
                 code_lines.append(line)
-            print("num code lines: ", len(code_lines))
+            logger.info("num code lines", num_code_lines=len(code_lines))
             parsed["code"] = "\n".join(code_lines)
 
         stage_context.sample.result_code_text = parsed["code"].strip()

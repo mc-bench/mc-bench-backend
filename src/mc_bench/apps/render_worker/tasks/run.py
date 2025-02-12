@@ -61,7 +61,13 @@ def render_sample(stage_context: StageContext):
         minecraft_world = to_minecraft_world(loaded_schematic, resource_loader)
         placed_blocks = minecraft_world.to_blender_blocks()
 
-        renderer = Renderer()
+        renderer = Renderer(
+            progress_callback=lambda msg=None,
+            progress=None: stage_context.update_stage_progress(
+                progress=progress,
+                note=msg,
+            )
+        )
         renderer.render_blocks(
             placed_blocks=placed_blocks,
             types=["glb"],
@@ -76,6 +82,11 @@ def render_sample(stage_context: StageContext):
         render_artifact_spec = stage_context.sample.render_artifact_spec(
             stage_context.db
         )
+        stage_context.update_stage_progress(
+            progress=0.83,
+            note="Uploading rendered model",
+        )
+
         for key in ["rendered_model_glb"]:
             object_client.fput_object(
                 bucket_name=settings.INTERNAL_OBJECT_BUCKET,
@@ -97,7 +108,10 @@ def render_sample(stage_context: StageContext):
             )
             stage_context.db.add(artifact)
         stage_context.db.commit()
-
+        stage_context.update_stage_progress(
+            progress=0.99,
+            note="Done uploading rendered model and saving state.",
+        )
     run_id = stage_context.run_id
     sample_id = stage_context.sample.id
 

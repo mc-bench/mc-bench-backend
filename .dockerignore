@@ -4,6 +4,7 @@ docker-compose.yml
 .gitignore
 .git
 **/node_modules
+data/
 
 ### venv template
 # Virtualenv

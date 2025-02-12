@@ -9,7 +9,10 @@ from mc_bench.constants import RUN_STAGE_STATE, RUN_STATE
 from mc_bench.events import emit_event
 from mc_bench.events.types import RunStageStateChanged, RunStateChanged
 from mc_bench.models.run import RunStage, Sample
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import managed_session
+
+logger = get_logger(__name__)
 
 
 class ValueNotSet:
@@ -26,8 +29,11 @@ def run_stage_task(
     max_reruns: int = 5,
     **kwargs,
 ):
-    print(
-        f"[DEBUG] Configuring task {name} with retry_on_failure={retry_on_failure}, restart_run_on_failure={restart_run_on_failure}"
+    logger.info(
+        "Configuring task",
+        name=name,
+        retry_on_failure=retry_on_failure,
+        restart_run_on_failure=restart_run_on_failure,
     )
     if restart_run_on_failure and retry_on_failure:
         raise ValueError("Cannot restart run on failure if retry on failure is enabled")
@@ -36,14 +42,16 @@ def run_stage_task(
     def wrapper(func):
         @app.task(name=name, bind=True, **kwargs)
         def wrapped(self, metadata):
-            print(f"[DEBUG] Metadata: {metadata}")
+            logger.info("Metadata", metadata=metadata)
             run_id = metadata["run_id"]
             sample_id = metadata["sample_id"]
 
-            print(f"[DEBUG] Starting task {name}")
-            print(f"[DEBUG] Task args - run_id: {run_id}, sample_id: {sample_id}")
-            print(
-                f"[DEBUG] Task instance - retries: {self.request.retries}, max_retries: {self.max_retries}"
+            logger.info("Starting task", name=name)
+            logger.info("Task args", run_id=run_id, sample_id=sample_id)
+            logger.info(
+                "Task instance",
+                retries=self.request.retries,
+                max_retries=self.max_retries,
             )
 
             with managed_session() as db:
@@ -65,7 +73,7 @@ def run_stage_task(
                 # 3. Emit the stage is complete
                 # 4. If terminal stage, emit we are completed
                 try:
-                    print(f"[DEBUG] {name} - Emitting IN_PROGRESS event")
+                    logger.info("Emitting IN_PROGRESS event")
                     emit_event(
                         RunStageStateChanged(
                             stage_id=stage_context.stage_id,
@@ -73,9 +81,7 @@ def run_stage_task(
                         )
                     )
                     result = func(stage_context)
-                    print(
-                        f"[DEBUG] {name} - Task completed successfully, result: {result}"
-                    )
+                    logger.info("Task completed successfully", result=result)
                     emit_event(
                         RunStageStateChanged(
                             stage_id=stage_context.stage_id,
@@ -88,25 +94,25 @@ def run_stage_task(
                         db.add(stage_context.sample)
                         db.commit()
 
-                        print(f"[DEBUG] {name} - Terminal stage, emitting COMPLETED")
+                        logger.info("Terminal stage, emitting COMPLETED")
                         emit_event(
                             RunStateChanged(
                                 run_id=stage_context.run.id,
                                 new_state=RUN_STATE.COMPLETED,
                             )
                         )
-                    print(f"[DEBUG] {name} - Returning result: {result}")
+                    logger.info("Returning result", result=result)
                     return {
                         "run_id": result[0],
                         "sample_id": result[1],
                     }
                 except Exception as e:
-                    print(
-                        f"[DEBUG] {name} - Exception caught: {type(e).__name__}: {str(e)}"
-                    )
+                    logger.error("Exception caught", error=e)
                     if retry_on_failure and self.max_retries > self.request.retries:
-                        print(
-                            f"[DEBUG] {name} - Attempting retry {self.request.retries + 1}/{self.max_retries}"
+                        logger.info(
+                            "Attempting retry",
+                            retries=self.request.retries + 1,
+                            max_retries=self.max_retries,
                         )
                         api_client.update_stage_progress(
                             run_external_id=stage_context.run.external_id,
@@ -126,8 +132,10 @@ def run_stage_task(
                                 new_state=RUN_STATE.IN_RETRY,
                             )
                         )
-                        print(
-                            f"[DEBUG] {name} - Calling retry with args: run_id={run_id}, sample_id={sample_id}"
+                        logger.info(
+                            "Calling retry",
+                            run_id=run_id,
+                            sample_id=sample_id,
                         )
                         self.retry(
                             args=[
@@ -142,8 +150,12 @@ def run_stage_task(
                         restart_run_on_failure
                         and len(stage_context.run.samples) < max_reruns
                     ):
-                        print(
-                            f"[DEBUG] {name} - Attempting run restart ({len(stage_context.run.samples)}/{max_reruns})"
+                        logger.info(
+                            "Attempting run restart",
+                            run_id=run_id,
+                            sample_id=sample_id,
+                            num_samples=len(stage_context.run.samples),
+                            max_reruns=max_reruns,
                         )
 
                         stage_context.sample.is_complete = False
@@ -181,7 +193,7 @@ def run_stage_task(
                             max_retries=0,
                         )
                     else:
-                        print(f"[DEBUG] {name} - Task failed permanently")
+                        logger.info("Task failed permanently")
                         api_client.update_stage_progress(
                             run_external_id=stage_context.run.external_id,
                             stage=stage_context.stage_class.SLUG,

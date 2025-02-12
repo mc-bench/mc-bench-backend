@@ -9,6 +9,10 @@ import docker
 import docker.models.containers
 import docker.models.volumes
 
+from mc_bench.util.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def create_network(suffix, exists_ok=False) -> str:
     """Create a new overlay network and return its name."""
@@ -44,11 +48,11 @@ def start_server(image, network_name: str, suffix, ports=None, replace=False) ->
 
     if current_container is not None:
         if replace:
-            print(f"Stopping existing container {container_name}")
+            logger.info("Stopping existing container", container_name=container_name)
             current_container.stop()
-            print(f"Removing existing container {container_name}")
+            logger.info("Removing existing container", container_name=container_name)
             current_container.remove()
-            print(f"Container {container_name} removed")
+            logger.info("Container removed", container_name=container_name)
         else:
             raise ValueError(f"Container {container_name} already exists")
 
@@ -138,7 +142,7 @@ def cleanup(
     volume: docker.models.volumes.Volume,
 ):
     """Clean up resources after we're done."""
-    print("Cleaning up docker resources after minecraft server run")
+    logger.info("Cleaning up docker resources after minecraft server run")
     client = docker.from_env()
 
     # Stop and remove the server container
@@ -199,7 +203,9 @@ def copy_from_container(container_name, container_path, host_path):
         # Get container object
         container = client.containers.get(container_name)
 
-        print(f"Getting file/directory from container: {container_path}")
+        logger.info(
+            "Getting file/directory from container", container_path=container_path
+        )
         # Get file/directory from container
         bits, stat = container.get_archive(container_path)
 
@@ -217,12 +223,14 @@ def copy_from_container(container_name, container_path, host_path):
             # Extract all contents
             tar.extractall(path=host_path)
 
-        print(f"Successfully copied {container_path} to {host_path}")
+        logger.info(
+            "Successfully copied", container_path=container_path, host_path=host_path
+        )
 
     except docker.errors.NotFound:
-        print(f"Container {container_name} not found")
+        logger.error("Container not found", container_name=container_name)
     except docker.errors.APIError as e:
-        print(f"Error copying file: {e}")
+        logger.error("Error copying file", error=e)
     finally:
         client.close()
 

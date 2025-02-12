@@ -13,3 +13,4 @@ Pillow
 nbt
 mc-data-files==3.83.1rc0
 mc-assets==1.13.0rc0
+structlog

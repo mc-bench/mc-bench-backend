@@ -22,7 +22,7 @@ install-dev:
 	pip install -e ".[dev]"
 
 fmt:
-	ruff check --select I --fix
+	ruff check --select I,T20 --fix
 	ruff format .
 
 check:

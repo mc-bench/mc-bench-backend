@@ -10,8 +10,12 @@ from mc_bench.apps.admin_api.routers.prompts import prompt_router
 from mc_bench.apps.admin_api.routers.runs import run_router
 from mc_bench.apps.admin_api.routers.samples import sample_router
 from mc_bench.apps.admin_api.routers.templates import template_router
+from mc_bench.util.logging import configure_logging
 
+from .config import settings
 from .lifespan import lifespan
+
+configure_logging(humanize=settings.HUMANIZE_LOGS)
 
 app = FastAPI(lifespan=lifespan)
 

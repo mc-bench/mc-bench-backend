@@ -20,12 +20,15 @@ from mc_bench.models.run import (
     ExportingContent,
 )
 from mc_bench.util.docker import wait_for_containers
+from mc_bench.util.logging import get_logger
 from mc_bench.util.object_store import get_client
 from mc_bench.worker.run_stage import StageContext, run_stage_task
 
 from ..app import app
 from ..config import settings
 from ..templates import build_template, export_template
+
+logger = get_logger(__name__)
 
 
 def _get_server_image(minecraft_version: str) -> str:
@@ -130,7 +133,7 @@ def build_structure(stage_context: StageContext):
             container_id, log_line = log_item.container_id, log_item.log_line
             container_name = container_lookup[container_id]
             decoded_log_line = log_line.decode("utf-8")
-            print(f"{container_name}({container_id}): {decoded_log_line}")
+            logger.info(f"{container_name}({container_id}): {decoded_log_line}")
 
             if container_name == "server":
                 if "/setblock" in decoded_log_line or "/fill" in decoded_log_line:
@@ -296,7 +299,7 @@ def export_structure_views(stage_context: StageContext):
             command_list=command_list,
         )
 
-        print(f"Expected frame count: {expected_frame_count}")
+        logger.info("Expected frame count", expected_frame_count=expected_frame_count)
 
         container_lookup = {
             builder_id: "builder",
@@ -320,7 +323,7 @@ def export_structure_views(stage_context: StageContext):
                         note=f"exporting cinematic frames (~{frame_count}/{expected_frame_count})",
                     )
 
-            print(f"{container_name}({container_id}): {decoded_log_line}")
+            logger.info(f"{container_name}({container_id}): {decoded_log_line}")
 
         stage_context.update_stage_progress(
             progress=progress,

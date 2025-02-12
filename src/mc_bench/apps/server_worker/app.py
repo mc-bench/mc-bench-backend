@@ -6,6 +6,11 @@ from mc_bench.events.types import (
 )
 from mc_bench.models.run import Generation, Run, RunStage
 from mc_bench.util.celery import make_worker_celery_app
+from mc_bench.util.logging import configure_logging
+
+from .config import settings
+
+configure_logging(humanize=settings.HUMANIZE_LOGS)
 
 app = make_worker_celery_app()
 

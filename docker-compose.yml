@@ -31,6 +31,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-default_value}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-default_value}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-default_value}
+      HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
 
   admin-api:
     build:
@@ -57,6 +58,8 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+
   worker:
     build:
       dockerfile: "images/worker.Dockerfile"
@@ -65,6 +68,7 @@ services:
     environment:
       CELERY_BROKER_URL: "redis://redis:6379/0"
       REDIS_USE_SSL: "false"
+      HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
 
   admin-worker:
     build:
@@ -93,6 +97,7 @@ services:
       OBJECT_STORE_SECURE: "False"
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       ADMIN_API_URL: "http://admin-api:8000"
+      HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
 
   render-worker:
     platform: linux/amd64
@@ -116,7 +121,8 @@ services:
       OBJECT_STORE_SECURE: "False"
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       ADMIN_API_URL: "http://admin-api:8000"
-      FAST_RENDER: "true"
+      FAST_RENDER: "false"
+      HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
 
   server-worker:
     build:
@@ -145,6 +151,7 @@ services:
       NO_CLEANUP_BUILDER_CONTAINER: ${NO_CLEANUP_BUILDER_CONTAINER:-false}
       NO_IMAGE_PULL: "true"
       EXPOSE_SERVER_PORTS: ${EXPOSE_SERVER_PORTS:-false}
+      HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

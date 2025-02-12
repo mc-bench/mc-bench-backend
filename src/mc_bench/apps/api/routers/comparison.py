@@ -13,12 +13,14 @@ from mc_bench.models.prompt import Prompt
 from mc_bench.models.run import Run, Sample
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_database
 
 from ..transport_types.requests import NewComparisonBatchRequest, UserComparisonRequest
 from ..transport_types.responses import ComparisonBatchResponse, MetricResponse
 
+logger = get_logger(__name__)
 comparison_router = APIRouter()
 
 MAX_BATCH_SIZE = 10
@@ -235,7 +237,7 @@ def post_comparison(
 
     except AssertionError as e:
         # TODO: error log this
-        print(f"AssertionError: {e}")
+        logger.error("AssertionError", error=e)
 
         return {
             "ok": False,
