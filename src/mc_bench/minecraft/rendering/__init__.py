@@ -516,6 +516,7 @@ class Renderer:
                     tint=face.tint_srgb,
                     light_emission=light_emission,
                     ambient_occlusion=face.ambient_occlusion,
+                    use_backface_culling="glass" in material_name,
                 )
                 if mat.name not in mesh.materials:
                     mesh.materials.append(mat)
@@ -556,6 +557,7 @@ class Renderer:
         tint: Optional[Tuple[int, int, int]] = None,
         light_emission: Optional[float] = None,
         ambient_occlusion: bool = True,
+        use_backface_culling: bool = False,
     ) -> bpy.types.Material:
         """Create a material with baked textures for Minecraft blocks.
 
@@ -767,10 +769,10 @@ class Renderer:
         # Material settings based on transparency
         if has_transparency:
             mat.blend_method = "BLEND"
-            mat.use_backface_culling = True
+            mat.use_backface_culling = use_backface_culling
         else:
             mat.blend_method = "OPAQUE"
-            mat.use_backface_culling = True
+            mat.use_backface_culling = use_backface_culling
         return mat
 
     def place_block(self, placed_block: PlacedBlock):
