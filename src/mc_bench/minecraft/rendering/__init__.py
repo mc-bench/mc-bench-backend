@@ -825,11 +825,8 @@ class Renderer:
 
     def bake_material(self, material: bpy.types.Material, time_of_day: TimeOfDay):
         """Bake a single material into a new baked version."""
-        # Skip if material doesn't use nodes
-        if not material.use_nodes:
-            return None
-
-        if material.name in self.baked_images:
+        # Skip if material doesn't use nodes or is already baked
+        if not material.use_nodes or material.name in self.baked_images:
             return None
 
         # Find original texture node and image
@@ -846,61 +843,80 @@ class Renderer:
             width=orig_image.size[0],
             height=orig_image.size[1],
             alpha=True,
-            float_buffer=False,  # Use integer pixels for sharper results
+            float_buffer=False,
         )
-
-        # Set image filtering to closest for sharp pixels
         bake_image.use_generated_float = False
 
         # Store reference for atlas generation
         self.baked_images[material.name] = bake_image
 
-        # Create temporary bake node while preserving original nodes
+        # Create temporary bake node
         bake_node = nodes.new("ShaderNodeTexImage")
         bake_node.name = "Bake_Target"
         bake_node.image = bake_image
         bake_node.interpolation = "Closest"
-        bake_node.extension = "REPEAT"  # Prevent texture wrapping artifacts
+        bake_node.extension = "REPEAT"
         bake_node.select = True
         nodes.active = bake_node
 
-        # Store current selection and active object
-        old_selection = bpy.context.selected_objects[:]
-        old_active = bpy.context.active_object
+        # Find the first object using this material
+        target_obj = None
+        for obj in bpy.data.objects:
+            if obj.type == "MESH":
+                for i, slot in enumerate(obj.material_slots):
+                    if slot.material == material:
+                        target_obj = obj
+                        break
+                if target_obj:
+                    break
+
+        if not target_obj:
+            nodes.remove(bake_node)
+            return None
+
+        # Store current states for ALL objects and collections
+        old_active = bpy.context.view_layer.objects.active
+        states = {}
+
+        # Hide everything in all collections
+        for collection in bpy.data.collections:
+            states[collection] = collection.hide_viewport
+            collection.hide_viewport = True
+
+        # Store and hide all objects
+        for obj in bpy.data.objects:
+            states[obj] = (obj.hide_viewport, obj.hide_render, obj.select_get())
+            obj.hide_viewport = True
+            obj.hide_render = True
+            obj.select_set(False)
+
+        # Unhide and select only our target object
+        target_obj.hide_viewport = False
+        target_obj.hide_render = False
+        target_obj.select_set(True)
+        bpy.context.view_layer.objects.active = target_obj
 
         try:
-            # Select objects using this material
-            bpy.ops.object.select_all(action="DESELECT")
-            objects_with_material = []
-            for obj in bpy.data.objects:
-                if obj.type == "MESH":
-                    for slot in obj.material_slots:
-                        if slot.material == material:
-                            obj.select_set(True)
-                            objects_with_material.append(obj)
-
-            if not objects_with_material:
-                return None
-
-            # Set active object
-            bpy.context.view_layer.objects.active = objects_with_material[0]
-
-            # Bake the material with color-only settings
+            # Perform bake operation
             bpy.ops.object.bake(
-                type="DIFFUSE",  # Changed from COMBINED to DIFFUSE
-                pass_filter={"COLOR"},  # Only bake color information
+                type="DIFFUSE",
+                pass_filter={"COLOR"},
                 use_selected_to_active=False,
                 margin=2,
                 use_clear=True,
             )
-
         finally:
-            # Restore original selection
-            bpy.ops.object.select_all(action="DESELECT")
-            for obj in old_selection:
-                obj.select_set(True)
-            if old_active:
-                bpy.context.view_layer.objects.active = old_active
+            # Restore all states
+            for obj_or_col, state in states.items():
+                if isinstance(obj_or_col, bpy.types.Collection):
+                    obj_or_col.hide_viewport = state
+                else:
+                    hide_viewport, hide_render, was_selected = state
+                    obj_or_col.hide_viewport = hide_viewport
+                    obj_or_col.hide_render = hide_render
+                    obj_or_col.select_set(was_selected)
+
+            bpy.context.view_layer.objects.active = old_active
 
             # Remove temporary bake node
             nodes.remove(bake_node)
