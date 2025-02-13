@@ -24,6 +24,7 @@ class CreatePromptRequest(Base):
     name: str
     build_specification: str
     active: bool
+    tags: Optional[List[str]] = None
 
 
 class UpdatePromptRequest(Base):
@@ -99,3 +100,11 @@ class SampleFilterRequest(Base):
 
 class SampleActionRequest(Base):
     note: str
+
+
+class AddPromptTagRequest(Base):
+    tag_name: str
+
+
+class DeletePromptTagRequest(Base):
+    tag_name: str

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from mc_bench.auth.permissions import PERM
 from mc_bench.models.log import SampleApproval, SampleObservation, SampleRejection
 from mc_bench.models.model import Model
-from mc_bench.models.prompt import Prompt
+from mc_bench.models.prompt import Prompt, Tag
 from mc_bench.models.run import Run, Sample, SampleApprovalState
 from mc_bench.models.template import Template
 from mc_bench.models.user import User
@@ -53,6 +53,7 @@ def list_samples(
     approval_state: Optional[List[SampleApprovalStateEnum]] = Query(None),
     pending: Optional[bool] = Query(None),
     complete: Optional[bool] = Query(None),
+    tag: Optional[List[str]] = Query(None),
     db: Session = Depends(get_managed_session),
 ):
     # Build base query with needed joins
@@ -123,6 +124,13 @@ def list_samples(
             query = query.filter(Sample.is_complete == True)  # noqa: E712
         else:
             query = query.filter(Sample.is_complete == False)  # noqa: E712
+
+    if tag:
+        query = (
+            query.join(Sample.run)
+            .join(Run.prompt)
+            .filter(Prompt.tags.any(Tag.name.in_(tag)))
+        )
 
     # Always sort by created descending
     query = query.order_by(Sample.created.desc())

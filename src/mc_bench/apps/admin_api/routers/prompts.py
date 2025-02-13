@@ -8,19 +8,25 @@ from sqlalchemy.orm import Session, selectinload
 from mc_bench.apps.admin_api.config import settings
 from mc_bench.apps.admin_api.transport_types.generic import ListResponse
 from mc_bench.apps.admin_api.transport_types.requests import (
+    AddPromptTagRequest,
     CreatePromptRequest,
+    DeletePromptTagRequest,
     UpdatePromptRequest,
 )
 from mc_bench.apps.admin_api.transport_types.responses import (
     PromptCreatedResponse,
     PromptDetailResponse,
     PromptResponse,
+    TagListChangeResponse,
 )
 from mc_bench.auth.permissions import PERM
-from mc_bench.models.prompt import Prompt
+from mc_bench.models.prompt import Prompt, Tag
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
+
+logger = get_logger(__name__)
 
 prompt_router = APIRouter()
 
@@ -66,6 +72,22 @@ def create_prompt(
     db: Session = Depends(get_managed_session),
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
+
+    logger.info(f"Creating prompt with tags: {prompt.tags}")
+
+    tags = db.scalars(select(Tag).where(Tag.name.in_(prompt.tags))).all()
+
+    existing_tag_names = set([tag.name for tag in tags])
+
+    new_tag_names = [
+        tag_name for tag_name in prompt.tags if tag_name not in existing_tag_names
+    ]
+
+    new_tags = [Tag(name=tag_name, creator=user) for tag_name in new_tag_names]
+
+    db.add_all(new_tags)
+    db.flush()
+
     prompt = Prompt(
         author=user,
         name=prompt.name,
@@ -75,6 +97,12 @@ def create_prompt(
     db.add(prompt)
     db.flush()
     db.refresh(prompt)
+
+    for tag in tags + new_tags:
+        prompt.add_tag(tag, user)
+
+    db.flush()
+
     return {
         "id": prompt.external_id,
     }
@@ -179,3 +207,68 @@ def get_prompt(
         .first()
     )
     return prompt.to_dict(include_runs=True)
+
+
+@prompt_router.delete(
+    "/api/prompt/{external_id}/tag",
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.PROMPT.ADMIN, PERM.PROMPT.WRITE])),
+    ],
+    response_model=TagListChangeResponse,
+)
+def delete_prompt_tag(
+    external_id: str,
+    tag_request: DeletePromptTagRequest,
+    db: Session = Depends(get_managed_session),
+):
+    prompt = db.query(Prompt).filter(Prompt.external_id == external_id).first()
+    if tag_request.tag_name not in [tag.name for tag in prompt.tags]:
+        return
+
+    tag_to_remove = next(tag for tag in prompt.tags if tag.name == tag_request.tag_name)
+    prompt.remove_tag(tag_to_remove)
+    db.add(prompt)
+
+    db.flush()
+    db.refresh(prompt)
+
+    return {
+        "current_tags": [tag.to_dict() for tag in prompt.tags],
+    }
+
+
+@prompt_router.post(
+    "/api/prompt/{external_id}/tag",
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.PROMPT.ADMIN, PERM.PROMPT.WRITE])),
+    ],
+    response_model=TagListChangeResponse,
+)
+def add_prompt_tag(
+    external_id: str,
+    tag_request: AddPromptTagRequest,
+    db: Session = Depends(get_managed_session),
+    user_uuid: str = Depends(am.get_current_user_uuid),
+):
+    user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
+    prompt = db.query(Prompt).filter(Prompt.external_id == external_id).first()
+
+    if tag_request.tag_name in [tag.name for tag in prompt.tags]:
+        return
+
+    tag = db.query(Tag).filter(Tag.name == tag_request.tag_name).one_or_none()
+
+    if not tag:
+        tag = Tag(name=tag_request.tag_name, creator=user)
+        db.add(tag)
+        db.flush()
+
+    prompt.add_tag(tag, user)
+
+    db.add(prompt)
+    db.flush()
+    db.refresh(prompt)
+
+    return {
+        "current_tags": [tag.to_dict() for tag in prompt.tags],
+    }

@@ -8,6 +8,11 @@ from .generic import Base
 T = TypeVar("T")
 
 
+class TagResponse(Base):
+    id: uuid.UUID
+    name: str
+
+
 class LogResponse(Base):
     id: uuid.UUID
     created: datetime.datetime
@@ -153,6 +158,7 @@ class PromptBaseResponse(Base):
     build_specification: str
     active: bool
     usage: int
+    tags: List[TagResponse]
 
 
 class PromptResponse(PromptBaseResponse):
@@ -233,3 +239,7 @@ class PagingResponse(Base):
 class PagedListResponse(Base, Generic[T]):
     data: List[T]
     paging: PagingResponse
+
+
+class TagListChangeResponse(Base):
+    current_tags: List[TagResponse]
