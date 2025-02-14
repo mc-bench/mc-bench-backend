@@ -33,6 +33,8 @@ class RunBaseResponse(Base):
     template: "TemplateResponse"
     status: str
     generation_id: Optional[uuid.UUID] = None
+    latest_completed_stage: Optional[str] = None
+    earliest_in_progress_stage: Optional[str] = None
 
 
 class RunResponse(RunBaseResponse):

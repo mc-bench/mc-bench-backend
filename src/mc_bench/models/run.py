@@ -66,6 +66,17 @@ def generation_state_id_for(db, state: GENERATION_STATE):
 class Run(Base):
     __table__ = schema.specification.run
 
+    STAGE_SORT_ORDER = [
+        STAGE.PROMPT_EXECUTION.value,
+        STAGE.RESPONSE_PARSING.value,
+        STAGE.CODE_VALIDATION.value,
+        STAGE.BUILDING.value,
+        STAGE.RENDERING_SAMPLE.value,
+        STAGE.EXPORTING_CONTENT.value,
+        STAGE.POST_PROCESSING.value,
+        STAGE.PREPARING_SAMPLE.value,
+    ]
+
     creator = relationship("User", foreign_keys=[schema.specification.run.c.created_by])
     most_recent_editor = relationship(
         "User", foreign_keys=[schema.specification.run.c.last_modified_by]
@@ -97,6 +108,34 @@ class Run(Base):
     def sorted_stages(self, sort_order):
         return sorted(self.stages, key=lambda x: sort_order.index(x.stage.slug))
 
+    def completed_stages(self):
+        return [
+            stage
+            for stage in self.sorted_stages(self.STAGE_SORT_ORDER)
+            if stage.state.slug == RUN_STAGE_STATE.COMPLETED.value
+        ]
+
+    def in_progress_stages(self):
+        return [
+            stage
+            for stage in self.sorted_stages(self.STAGE_SORT_ORDER)
+            if stage.state.slug == RUN_STAGE_STATE.IN_PROGRESS.value
+        ]
+
+    @property
+    def latest_completed_stage_slug(self):
+        completed_stages = self.completed_stages()
+        if completed_stages:
+            return completed_stages[-1].stage.slug
+        return None
+
+    @property
+    def earliest_in_progress_stage_slug(self):
+        in_progress_stages = self.in_progress_stages()
+        if in_progress_stages:
+            return in_progress_stages[0].stage.slug
+        return None
+
     def to_dict(
         self,
         include_samples=False,
@@ -117,6 +156,8 @@ class Run(Base):
             "generation_id": self.generation.external_id
             if self.generation_id
             else None,
+            "latest_completed_stage": self.latest_completed_stage_slug,
+            "earliest_in_progress_stage": self.earliest_in_progress_stage_slug,
         }
 
         if self.most_recent_editor is not None:
