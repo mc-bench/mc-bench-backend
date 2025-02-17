@@ -17,7 +17,7 @@ docker run --rm \
     -v /opt/secrets:/mnt \
     amazon/aws-cli:latest \
     --endpoint-url "$SPACES_ENDPOINT" \
-    s3 cp s3://mc-bench-secrets-dev/mc-bench-render-worker/.env /mnt/.env
+    s3 cp s3://mc-bench-render-worker/.env /mnt/.env
 
 # Set correct permissions for .env file
 chmod 644 /opt/secrets/.env
