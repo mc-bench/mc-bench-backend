@@ -16,11 +16,32 @@ env:
   MINECRAFT_BUILDER_IMAGE_NAME: "mcbench/minecraft-builder"
 
 jobs:
-  build-and-push-server-worker:
+  build-and-push-images:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - name: server-worker
+            path: server-worker.Dockerfile
+          - name: render-worker
+            path: render-worker.Dockerfile
+          - name: minecraft-builder
+            path: builder-runner.Dockerfile
+            context: images/builder-runner
+          - name: admin-api
+            path: admin-api.Dockerfile
+          - name: admin-worker
+            path: admin-worker.Dockerfile
+          - name: api
+            path: api.Dockerfile
+          - name: worker
+            path: worker.Dockerfile
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
@@ -31,19 +52,23 @@ jobs:
         run: doctl registry login --expiry-seconds 1200
 
       - name: Build and push
-        env:
-          GITHUB_SHA: ${{ github.sha }}
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.SERVER_WORKER_IMAGE_NAME }}
-        run: |
-          chmod +x ./deploy/server-worker-push.sh
-          ./deploy/server-worker-push.sh
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.image.context || '.' }}
+          file: ${{ matrix.image.context || 'images' }}/${{ matrix.image.path }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:buildcache,mode=max
 
-  build-and-push-render-worker:
+  tag-development:
+    needs: build-and-push-images
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
@@ -53,37 +78,14 @@ jobs:
       - name: Log in to DO Container Registry
         run: doctl registry login --expiry-seconds 1200
 
-      - name: Build and push
-        env:
-          GITHUB_SHA: ${{ github.sha }}
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.RENDER_WORKER_IMAGE_NAME }}
+      - name: Tag images as development
         run: |
-          chmod +x ./deploy/render-worker-push.sh
-          ./deploy/render-worker-push.sh
-
-  build-and-push-minecraft-builder:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Log in to DO Container Registry
-        run: doctl registry login --expiry-seconds 1200
-
-      - name: Build and push
-        env:
-          GITHUB_SHA: ${{ github.sha }}
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.MINECRAFT_BUILDER_IMAGE_NAME }}
-        run: |
-          chmod +x ./deploy/server-worker-push.sh
-          ./deploy/minecraft-builder-push.sh
+          for image in server-worker render-worker minecraft-builder admin-api admin-worker api worker; do
+            echo "Tagging $image as development..."
+            docker buildx imagetools create \
+              ${{ env.REGISTRY }}/mcbench/$image:${{ github.sha }} \
+              --tag ${{ env.REGISTRY }}/mcbench/$image:development
+          done
 
   prepare-server-worker:
     runs-on: ubuntu-latest
@@ -116,8 +118,7 @@ jobs:
   deploy-server-worker:
     needs:
       - prepare-server-worker
-      - build-and-push-server-worker
-      - build-and-push-minecraft-builder
+      - tag-development
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -133,7 +134,7 @@ jobs:
           DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.SERVER_WORKER_IMAGE_NAME }}
-          GITHUB_SHA: ${{ github.sha }}
+          TAG: "development"
           CONTAINER_PREFIX: ${{ env.SERVER_WORKER_CONTAINER_PREFIX }}
         run: |
           # Set up SSH
@@ -144,12 +145,12 @@ jobs:
           
           # Copy deploy script to server and execute
           scp -i ~/.ssh/deploy_key ./deploy/server-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
-          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME GITHUB_SHA=$GITHUB_SHA CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME TAG=$TAG CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"
 
   deploy-render-worker:
     needs:
       - prepare-render-worker
-      - build-and-push-render-worker
+      - tag-development
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -165,7 +166,7 @@ jobs:
           DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.RENDER_WORKER_IMAGE_NAME }}
-          GITHUB_SHA: ${{ github.sha }}
+          TAG: "development"
           CONTAINER_PREFIX: ${{ env.RENDER_WORKER_CONTAINER_PREFIX }}
         run: |
           # Set up SSH
@@ -176,5 +177,4 @@ jobs:
           
           # Copy deploy script to render worker and execute
           scp -i ~/.ssh/deploy_key ./deploy/render-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
-          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME GITHUB_SHA=$GITHUB_SHA CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"
-
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME TAG=$TAG CONTAINER_PREFIX=$CONTAINER_PREFIX /tmp/deploy.sh"
