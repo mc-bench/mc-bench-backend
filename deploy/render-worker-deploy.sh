@@ -2,10 +2,25 @@
 set -e
 
 # Check if required environment variables are set
-if [ -z "$REGISTRY" ] || [ -z "$IMAGE_NAME" ] || [ -z "$TAG" ] || [ -z "$CONTAINER_PREFIX" ]; then
-    echo "Error: REGISTRY, IMAGE_NAME, TAG, and CONTAINER_PREFIX must be set"
+if [ -z "$REGISTRY" ] || [ -z "$IMAGE_NAME" ] || [ -z "$TAG" ] || [ -z "$CONTAINER_PREFIX" ] || [ -z "$SPACES_ACCESS_KEY" ] || [ -z "$SPACES_SECRET_KEY" ] || [ -z "$SPACES_ENDPOINT" ]; then
+    echo "Error: Missing required environment variables"
     exit 1
 fi
+
+# Create secrets directory if it doesn't exist
+mkdir -p /opt/secrets
+
+# Download .env file from DigitalOcean Spaces using official AWS CLI image
+docker run --rm \
+    -e AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY" \
+    -e AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_KEY" \
+    -v /opt/secrets:/mnt \
+    amazon/aws-cli:latest \
+    --endpoint-url "$SPACES_ENDPOINT" \
+    s3 cp s3://mc-bench-secrets-dev/render-worker/.env /mnt/.env
+
+# Set correct permissions for .env file
+chmod 644 /opt/secrets/.env
 
 # Login to registry
 docker login -u "$DOCKER_LOGIN_USERNAME" -p "$DIGITALOCEAN_ACCESS_TOKEN" registry.digitalocean.com

@@ -136,6 +136,9 @@ jobs:
           IMAGE_NAME: ${{ env.SERVER_WORKER_IMAGE_NAME }}
           TAG: "development"
           CONTAINER_PREFIX: ${{ env.SERVER_WORKER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
         run: |
           # Set up SSH
           mkdir -p ~/.ssh
@@ -168,6 +171,9 @@ jobs:
           IMAGE_NAME: ${{ env.RENDER_WORKER_IMAGE_NAME }}
           TAG: "development"
           CONTAINER_PREFIX: ${{ env.RENDER_WORKER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
         run: |
           # Set up SSH
           mkdir -p ~/.ssh
