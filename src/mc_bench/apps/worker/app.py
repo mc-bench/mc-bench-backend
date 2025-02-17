@@ -5,8 +5,4 @@ from .config import settings
 
 configure_logging(humanize=settings.HUMANIZE_LOGS)
 
-app = make_worker_celery_app(
-    conf=dict(
-        worker_prefetch_multiplier=4,
-    )
-)
+app = make_worker_celery_app()

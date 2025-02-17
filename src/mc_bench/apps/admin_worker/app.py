@@ -12,11 +12,7 @@ from .config import settings
 
 configure_logging(humanize=settings.HUMANIZE_LOGS)
 
-app = make_worker_celery_app(
-    dict(
-        worker_prefetch_multiplier=4,
-    )
-)
+app = make_worker_celery_app()
 
 # Event handler registration
 on_event(RunStageStateChanged, RunStage.state_change_handler)
