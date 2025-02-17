@@ -16,6 +16,10 @@ def elo_calculation():
         db.execute(sqlalchemy.text("SELECT 1"))
         logger.info("Elo calculation completed")
 
+        # we need a leaderboard table
+        # we need a tie flag and a processed flag
+        # eventually need a partial index on comparison table
+
         # get earliest unprocesseed rows (lock for update)
         latest_timestamp = get_latest_unprocessed_rows(db)  # <- will look at index
         rows = get_unprocessed_rows(db, batch_size=1000)    # <- will look at index

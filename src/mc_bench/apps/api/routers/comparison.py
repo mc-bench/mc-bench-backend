@@ -324,3 +324,6 @@ def get_metrics(
     db: Session = Depends(get_managed_session),
 ):
     return map(lambda x: x.to_dict(), db.scalars(select(Metric)).all())
+
+
+# comparison_router.get("/api/leaderboard?tags=")
