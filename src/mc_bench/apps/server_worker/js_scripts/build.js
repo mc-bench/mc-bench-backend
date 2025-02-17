@@ -183,13 +183,15 @@ class CommandQueue {
       const { command, resolve, reject } = this.queue.shift();
 
       try {
-        await bot.chat(command);
+        bot.chat(command);
         resolve();
       } catch (err) {
         reject(err);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, this.DELAY));
+      if (this.DELAY > 0) {
+        await new Promise((resolve) => setTimeout(resolve, this.DELAY));
+      }
     }
 
     this.isProcessing = false;
