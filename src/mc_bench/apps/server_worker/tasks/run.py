@@ -116,6 +116,7 @@ def build_structure(stage_context: StageContext):
             structure_name=structure_name,
             env={
                 "VERSION": minecraft_version,
+                "DELAY": settings.BUILD_DELAY,
             },
         )
 

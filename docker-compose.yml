@@ -160,6 +160,7 @@ services:
       NO_IMAGE_PULL: "true"
       EXPOSE_SERVER_PORTS: ${EXPOSE_SERVER_PORTS:-false}
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+      BUILD_DELAY_MS: ${BUILD_DELAY_MS:-75}
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
