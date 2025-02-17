@@ -17,7 +17,7 @@ docker run --rm \
     -v /opt/secrets:/mnt \
     amazon/aws-cli:latest \
     --endpoint-url "$SPACES_ENDPOINT" \
-    s3 cp s3://mc-bench-secrets-dev/render-worker/.env /mnt/.env
+    s3 cp s3://mc-bench-secrets-dev/mc-bench-render-worker/.env /mnt/.env
 
 # Set correct permissions for .env file
 chmod 644 /opt/secrets/.env
@@ -40,3 +40,11 @@ docker run -d --name "$NEW_CONTAINER_NAME" \
     --restart unless-stopped \
     --env-file /opt/secrets/.env \
     "$REGISTRY/$IMAGE_NAME:$TAG"
+
+# Ensure cleanup script is executable
+chmod +x /opt/docker-cleanup.sh
+
+# Add cron job if it doesn't exist
+if ! crontab -l | grep -q "docker-cleanup"; then
+    (crontab -l 2>/dev/null; echo "0 */6 * * * /opt/docker-cleanup.sh >> /var/log/docker-cleanup.log 2>&1") | crontab -
+fi
