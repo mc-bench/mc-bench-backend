@@ -2,7 +2,6 @@ import json
 from typing import List
 
 import jinja2
-import minecraft_data
 from sqlalchemy import func, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, object_session, relationship
@@ -68,6 +67,8 @@ class Template(Base):
         return self._usage_expression.scalar_subquery()
 
     def get_default_template_kwargs(self):
+        import minecraft_data
+
         mc_data = minecraft_data.MinecraftDataFiles(
             version=self.minecraft_version,
             game_type=minecraft_data.PC,

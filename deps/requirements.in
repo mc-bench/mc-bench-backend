@@ -2,9 +2,7 @@ celery[redis]>=5.4.0
 psycopg2-binary>=2.9.10
 sqlalchemy>=2.0.36
 alembic>=1.14.0
-anthropic
-openai
 jinja2
 minio
-mc-data-files==3.83.1rc0
 structlog
+pydantic

@@ -4,10 +4,7 @@ python-jose[cryptography]
 requests
 fastapi[standard]>=0.115.3
 pyhumps
-anthropic
-openai
 jinja2
 scalar-fastapi
 valx
 regex
-mc-data-files==3.83.1rc0

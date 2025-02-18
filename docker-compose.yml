@@ -92,12 +92,6 @@ services:
       POSTGRES_PASSWORD: "mc-bench"
       POSTGRES_SSLMODE: "disable"
       REDIS_USE_SSL: "false"
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      XAI_API_KEY: ${XAI_API_KEY}
       INTERNAL_OBJECT_BUCKET: "mcbench-backend-object-local"
       OBJECT_STORE_DSN: "object:9000"
       OBJECT_STORE_ACCESS_KEY: "fake_key"
@@ -106,6 +100,18 @@ services:
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       ADMIN_API_URL: "http://admin-api:8000"
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+
+      # LLM Service API Keys
+      ALIBABA_CLOUD_API_KEY: ${ALIBABA_CLOUD_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      XAI_API_KEY: ${XAI_API_KEY}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+      REKA_API_KEY: ${REKA_API_KEY}
+      ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY}
 
   render-worker:
     platform: linux/amd64

@@ -4,31 +4,10 @@
 #
 #    pip-compile --constraint=api-requirements.txt --constraint=known-constraints.in --constraint=requirements.txt --output-file=worker-requirements.txt worker-requirements.in
 #
-alembic==1.14.0
-    # via
-    #   -c requirements.txt
-    #   -r worker-requirements.in
 amqp==5.2.0
     # via
     #   -c requirements.txt
     #   kombu
-annotated-types==0.7.0
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   pydantic
-anthropic==0.40.0
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   -r worker-requirements.in
-anyio==4.6.2.post1
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   anthropic
-    #   httpx
-    #   openai
 billiard==4.2.1
     # via
     #   -c requirements.txt
@@ -37,13 +16,10 @@ celery[redis]==5.4.0
     # via
     #   -c requirements.txt
     #   -r worker-requirements.in
-    #   flower
 certifi==2024.8.30
     # via
     #   -c api-requirements.txt
     #   -c requirements.txt
-    #   httpcore
-    #   httpx
     #   requests
 charset-normalizer==3.4.0
     # via
@@ -69,80 +45,18 @@ click-repl==0.3.0
     # via
     #   -c requirements.txt
     #   celery
-distro==1.9.0
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   anthropic
-    #   openai
-flower==2.0.1
-    # via -r worker-requirements.in
 greenlet==3.1.1
     # via
     #   -c requirements.txt
     #   sqlalchemy
-h11==0.14.0
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   httpcore
-httpcore==1.0.7
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   httpx
-httpx==0.28.0
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   anthropic
-    #   openai
-humanize==4.11.0
-    # via flower
 idna==3.10
     # via
     #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   anyio
-    #   httpx
     #   requests
-jinja2==3.1.4
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   -r worker-requirements.in
-jiter==0.8.0
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   anthropic
-    #   openai
 kombu==5.4.2
     # via
     #   -c requirements.txt
     #   celery
-mako==1.3.6
-    # via
-    #   -c requirements.txt
-    #   alembic
-markupsafe==3.0.2
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   jinja2
-    #   mako
-mc-data-files==3.83.1rc0
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   -r worker-requirements.in
-openai==1.55.3
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   -r worker-requirements.in
-prometheus-client==0.21.0
-    # via flower
 prompt-toolkit==3.0.48
     # via
     #   -c requirements.txt
@@ -151,23 +65,10 @@ psycopg2-binary==2.9.10
     # via
     #   -c requirements.txt
     #   -r worker-requirements.in
-pydantic==2.10.2
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   anthropic
-    #   openai
-pydantic-core==2.27.1
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   pydantic
 python-dateutil==2.9.0.post0
     # via
     #   -c requirements.txt
     #   celery
-pytz==2024.2
-    # via flower
 redis==5.2.0
     # via
     #   -c requirements.txt
@@ -181,34 +82,14 @@ six==1.16.0
     #   -c api-requirements.txt
     #   -c requirements.txt
     #   python-dateutil
-sniffio==1.3.1
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   anthropic
-    #   anyio
-    #   openai
 sqlalchemy==2.0.36
     # via
     #   -c requirements.txt
     #   -r worker-requirements.in
-    #   alembic
-tornado==6.4.2
-    # via flower
-tqdm==4.67.1
-    # via
-    #   -c api-requirements.txt
-    #   -c requirements.txt
-    #   openai
 typing-extensions==4.12.2
     # via
     #   -c api-requirements.txt
     #   -c requirements.txt
-    #   alembic
-    #   anthropic
-    #   openai
-    #   pydantic
-    #   pydantic-core
     #   sqlalchemy
 tzdata==2024.2
     # via

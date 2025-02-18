@@ -24,8 +24,9 @@ dependencies = { file = "deps/requirements.in" }
 dev = {file = "deps/dev-requirements.in"}
 api = {file = "deps/api-requirements.in"}
 worker = {file = "deps/worker-requirements.in"}
-server-worker = { file = "deps/server-worker-requirements.in"}
-render-worker = { file = "deps/render-worker-requirements.in"}
+admin-worker = {file = "deps/admin-worker-requirements.in"}
+server-worker = {file = "deps/server-worker-requirements.in"}
+render-worker = {file = "deps/render-worker-requirements.in"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

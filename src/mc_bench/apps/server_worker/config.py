@@ -8,4 +8,5 @@ class Settings:
     HUMANIZE_LOGS = os.environ.get("HUMANIZE_LOGS", "false") == "true"
     BUILD_DELAY = os.environ.get("BUILD_DELAY_MS", "25")
 
+
 settings = Settings()
