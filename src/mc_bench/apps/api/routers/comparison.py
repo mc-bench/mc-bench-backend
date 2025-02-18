@@ -327,3 +327,6 @@ def get_metrics(
 
 
 # comparison_router.get("/api/leaderboard?tags=")
+# by default it is all
+# user can select(?) tags to view?
+# compare tag scores?
