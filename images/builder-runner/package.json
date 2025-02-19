@@ -9,7 +9,7 @@
     "node-canvas-webgl": "^0.3.0",
     "prettier": "^3.4.1",
     "prismarine-chunk": "^1.36.0",
-    "prismarine-viewer": "^1.28.0",
+    "prismarine-viewer": "^1.33.0",
     "prismarine-world": "^3.6.3",
     "three": "^0.171.0",
     "vec3": "^0.1.10"

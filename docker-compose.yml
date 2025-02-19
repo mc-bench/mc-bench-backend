@@ -167,6 +167,7 @@ services:
       EXPOSE_SERVER_PORTS: ${EXPOSE_SERVER_PORTS:-false}
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
       BUILD_DELAY_MS: ${BUILD_DELAY_MS:-25}
+      EXPORT_STRUCTURE_VIEWS: ${EXPORT_STRUCTURE_VIEWS:-true}
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
