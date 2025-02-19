@@ -86,7 +86,7 @@ import os
 import random
 import re
 import textwrap
-from math import cos, radians, sin
+from math import atan2, cos, degrees, radians, sin
 from typing import List, Tuple
 
 import minecraft_assets
@@ -104,6 +104,33 @@ logger = get_logger(__name__)
 WATERLOGGABLE_BLOCKS = [
     "sea_pickle",
 ]
+
+
+DIRECTIONAL_COORDINATE_OFFSET_MAP = {
+    (-1, 0): "west",
+    (1, 0): "east",
+    (0, 1): "south",
+    (0, -1): "north",
+    (1, -1): "northeast",
+    (-1, -1): "northwest",
+    (1, 1): "southeast",
+    (-1, 1): "southwest",
+    (0, 0): "center",
+}
+
+INVERSE_DIRECTIONAL_COORDINATE_OFFSET_MAP = {
+    value: key for key, value in DIRECTIONAL_COORDINATE_OFFSET_MAP.items()
+}
+
+LEVEL_DIRECTIONAL_COORDINATE_OFFSET_MAP = {
+    -1: "below",
+    0: "adjacent",
+    1: "above",
+}
+
+INVERSE_LEVEL_DIRECTIONAL_COORDINATE_OFFSET_MAP = {
+    value: key for key, value in LEVEL_DIRECTIONAL_COORDINATE_OFFSET_MAP.items()
+}
 
 
 class BlockStates:
@@ -437,6 +464,19 @@ class ResourceLoader:
     def get_block(self, canonical_name):
         models = self.get_models(canonical_name)
 
+        if "water" in canonical_name:
+            still_texture = self.get_block_texture("minecraft:block/water_still")
+            flow_texture = self.get_block_texture("minecraft:block/water_flow")
+            for model in models:
+                model._specification["textures"]["_still"] = still_texture
+                model._specification["textures"]["_flow"] = flow_texture
+        elif "lava" in canonical_name:
+            still_texture = self.get_block_texture("minecraft:block/lava_still")
+            flow_texture = self.get_block_texture("minecraft:block/lava_flow")
+            for model in models:
+                model._specification["textures"]["_still"] = still_texture
+                model._specification["textures"]["_flow"] = flow_texture
+
         name = canonical_name.split("[")[0]
         tint_lookup = self.biome_tints.get_block_tint_lookup(name)
         block_data = self.get_block_data(name)
@@ -487,6 +527,8 @@ class BiomeTints:
     def get_block_tint_lookup(self, block_name):
         if block_name in self.tint_lookup:
             return self.tint_lookup[block_name]
+        elif block_name.startswith("water"):
+            return self.tint_lookup["water"]
         elif block_name.startswith("grass"):
             return self.tint_lookup["grass"]
         elif block_name.startswith("redstone"):
@@ -528,12 +570,26 @@ class BlockData:
                 )
             )
 
+        if (
+            self.canonical_name.split("[")[0] == "water"
+            or self.canonical_name.split("[")[0] == "lava"
+        ):
+            liquid_block = MinecraftLiquidBlock(
+                self.canonical_name,
+                models,
+                states=self.states,
+                transparent=self.transparent,
+            )
+            liquid_block.add_tint_lookup(self.tint_lookup)
+            return liquid_block
+
         return MinecraftBlock(
             self.canonical_name,
             models,
             states=self.states,
             transparent=self.transparent,
             light_emission=self.light_emission,
+            tint_lookup=self.tint_lookup,
         )
 
     @property
@@ -665,22 +721,7 @@ class MinecraftModelFace:
         if self.tintindex == -1:
             return None
 
-        adjacent_biomes = adjacent_biomes or []
-
-        main_biome_color = self.tint_lookup[biome]
-
-        # adjacent_biomes_colors: List[Tuple[str, int]] = [
-        #     self.tint_lookup[biome] for biome in adjacent_biomes
-        # ]
-        adjacent_biomes_colors: List[str] = [
-            self.tint_lookup[biome[0]] for biome in adjacent_biomes
-        ]
-
-        # return blend_colors(main_biome_color, adjacent_biomes_colors)
-        return blend_colors(
-            main_biome_color,
-            list(zip(adjacent_biomes_colors, [el[1] for el in adjacent_biomes])),
-        )
+        return _tint_from_biomes(self.tint_lookup, biome, adjacent_biomes)
 
 
 def blend_colors(main_color: str, adjacent_colors: List[Tuple[str, int]]) -> str:
@@ -1104,10 +1145,13 @@ class MinecraftModel:
                     transformed_cullface = self._transform_cullface_direction(
                         face.cullface, self.x_rotation, self.y_rotation, self.z_rotation
                     )
-                    if adjacent_blocks[transformed_cullface]:
-                        logger.info(
-                            f"Cullface {face.cullface} transformed to {transformed_cullface} and adjacent block found."
-                        )
+                    if (
+                        adjacent_blocks.get(transformed_cullface)
+                        and adjacent_blocks[transformed_cullface][1]
+                    ):
+                        # logger.info(
+                        #     f"Cullface {face.cullface} transformed to {transformed_cullface} and adjacent block found."
+                        # )
                         continue
 
                 # Get vertex indices and UVs for this face direction
@@ -1456,6 +1500,7 @@ class MinecraftBlock:
         states=None,
         transparent=False,
         light_emission=None,
+        tint_lookup=None,
     ):
         self.canonical_name = canonical_name
         self.models = list(models)
@@ -1463,6 +1508,7 @@ class MinecraftBlock:
         self.base_name = canonical_name.split("[")[0]
         self.transparent = transparent
         self.light_emission = light_emission
+        self.tint_lookup = tint_lookup
 
     @property
     def is_cube(self):
@@ -1502,10 +1548,27 @@ class MinecraftBlock:
 
         return False
 
+    @property
+    def is_water(self):
+        return self.canonical_name.split("[")[0] == "water"
+
+    @property
+    def is_lava(self):
+        return self.canonical_name.split("[")[0] == "lava"
+
+    @property
+    def type(self):
+        if self.is_water:
+            return "water"
+        elif self.is_lava:
+            return "lava"
+        else:
+            return self.canonical_name.split("[")[0]
+
     def to_blender_block(self, adjacent_blocks=None, biome=None, adjacent_biomes=None):
+        """Convert block to Blender format with special handling for water/lava."""
         logger.info(f"converting block {self.canonical_name} to blender block")
         adjacent_blocks = adjacent_blocks or collections.defaultdict(lambda: None)
-
         # Convert block models
         blender_models = []
         for model in self.models:
@@ -1533,6 +1596,470 @@ class MinecraftBlock:
             info.append(model.debug_info(indent + 2))
 
         return "\n".join(info)
+
+
+class MinecraftLiquidBlock(MinecraftBlock):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._still_texture = self.models[0].textures["_still"]
+        self._flow_texture = self.models[0].textures["_flow"]
+        self.tint_lookup = None
+        self._vertices = []
+        self.flow_vector = (0, 0)
+        self.states["level"] = (
+            8 - int(self.states["level"])
+            if self.states["level"] not in ("0", "8")
+            else int(self.states["level"])
+        )
+
+    def add_tint_lookup(self, tint_lookup):
+        self.tint_lookup = tint_lookup
+
+    def is_cube(self):
+        if self.states["level"] == "8":
+            return True
+        else:
+            return False
+
+    def update_from_surrounding_blocks(self, surrounding_blocks):
+        # Get flow vector and vertex heights
+        top_flow_vector = self.get_top_flow_vector(surrounding_blocks)
+        northeast_height = self.get_northeast_liquid_vertex(surrounding_blocks)
+        northwest_height = self.get_northwest_liquid_vertex(surrounding_blocks)
+        southeast_height = self.get_southeast_liquid_vertex(surrounding_blocks)
+        southwest_height = self.get_southwest_liquid_vertex(surrounding_blocks)
+
+        if (
+            northeast_height == 0
+            or northwest_height == 0
+            or southeast_height == 0
+            or southwest_height == 0
+        ):
+            raise RuntimeError
+
+        # Create vertices list with Minecraft coordinates (0-16)
+        # Bottom vertices are always at y=0
+        self._vertices = [
+            [0, 0, 16],  # 0: southwest bottom (swapped Z)
+            [16, 0, 16],  # 1: southeast bottom (swapped Z)
+            [16, 0, 0],  # 2: northeast bottom (swapped Z)
+            [0, 0, 0],  # 3: northwest bottom (swapped Z)
+            [0, southwest_height, 16],  # 4: southwest top (swapped Z)
+            [16, southeast_height, 16],  # 5: southeast top (swapped Z)
+            [16, northeast_height, 0],  # 6: northeast top (swapped Z)
+            [0, northwest_height, 0],  # 7: northwest top (swapped Z)
+        ]
+
+        # Store flow vector for texture animation
+        self.flow_vector = top_flow_vector
+
+        return (
+            top_flow_vector,
+            northeast_height,
+            northwest_height,
+            southeast_height,
+            southwest_height,
+        )
+
+    def _get_texture_dimensions(self, texture_path):
+        """Get dimensions and frame count for a texture."""
+        if isinstance(texture_path, str) and os.path.exists(texture_path):
+            with PIL.Image.open(texture_path) as img:
+                width, height = img.size
+                frame_count = height // width
+                return width, height, frame_count
+        return 16, 16, 1
+
+    def _process_still_uvs(self, base_uvs):
+        """Process UVs for still texture, accounting for animation frames."""
+        _, height, _ = self._get_texture_dimensions(self._still_texture)
+        scale = 16.0 / height  # Scale to use only first 16px vertically
+
+        processed = []
+        for u, v in base_uvs:
+            processed.append((u, v * scale))
+        return processed
+
+    def _get_flow_texture_uvs(self, base_uvs):
+        """Process UVs for flow texture, matching the logic of _process_face_uvs.
+
+        The flow texture is 32x1024px. We need to:
+        1. Center our UVs in the middle 16px horizontally (8-24px region)
+        2. Use first 16px vertically and apply correct scaling
+        """
+        # Get texture dimensions
+        with PIL.Image.open(self._flow_texture) as img:
+            _, height = img.size
+            vertical_scale = 16 / height
+
+        # For flow texture, we want to use the middle 16px of 32px width
+        # Convert input UVs (0-1) to target the center region (8-24px) of 32px texture
+        processed = []
+        for u, v in base_uvs:
+            # Center the UV horizontally in middle 16px
+            # Map u from 0-1 to 8/32-24/32 (0.25-0.75)
+            u = 0.25 + (u * 0.5)
+
+            # First invert v since Minecraft uses top-indexed textures
+            v = 1 - v
+
+            # Scale to use first 16px vertically
+            v = v * vertical_scale
+
+            # Shift down by 16 pixels in UV space
+            v = v + (16.0 / height)
+
+            # Invert back to maintain correct orientation
+            v = 1 - v
+
+            processed.append((u, v))
+
+        return processed
+
+    def _rotate_uvs(self, uvs, angle_degrees):
+        """Rotate UVs around their center point by the given angle in degrees.
+
+        Args:
+            uvs: List of (u,v) tuples
+            angle_degrees: Rotation angle in degrees (clockwise)
+
+        Returns:
+            List of rotated (u,v) tuples
+        """
+        # Convert to radians
+        angle = radians(angle_degrees)
+
+        # Calculate center point
+        center_u = sum(u for u, _ in uvs) / len(uvs)
+        center_v = sum(v for _, v in uvs) / len(uvs)
+
+        # Rotate each UV coordinate around center
+        rotated_uvs = []
+        for u, v in uvs:
+            # Translate to origin
+            u -= center_u
+            v -= center_v
+
+            # Rotate
+            new_u = u * cos(angle) - v * sin(angle)
+            new_v = u * sin(angle) + v * cos(angle)
+
+            # Translate back
+            new_u += center_u
+            new_v += center_v
+
+            rotated_uvs.append((new_u, new_v))
+
+        return rotated_uvs
+
+    def _get_flow_angle(self, flow_vector):
+        """Calculate rotation angle in degrees from flow vector.
+
+        Args:
+            flow_vector: (x,z) tuple representing flow direction
+
+        Returns:
+            Angle in degrees (clockwise from north)
+        """
+        x, z = flow_vector
+        if x == 0 and z == 0:
+            return 0
+
+        # Calculate angle using atan2
+        # atan2(x,z) gives angle counter-clockwise from positive z-axis
+        angle = degrees(atan2(x, z))
+
+        # Convert to clockwise angle from north (-z axis)
+        return (180 - angle) % 360
+
+    def to_blender_block(self, adjacent_blocks=None, biome=None, adjacent_biomes=None):
+        """Convert liquid block to Blender format with proper flow and height handling.
+
+
+        See https://dev.mcbench.ai/generations/81da3b27-cce2-4213-b5e2-ca4cdaffbd08 for info
+        """
+        # Get tint for water/lava
+        tint = (
+            _tint_from_biomes(self.tint_lookup, biome, adjacent_biomes)
+            if self.tint_lookup
+            else None
+        )
+
+        # Determine if we should use still or flowing texture
+        is_still = self.flow_vector == (0, 0)
+        top_texture = self._still_texture if is_still else self._flow_texture
+
+        # Convert vertices to Blender coordinates
+        blender_vertices = []
+        for vertex in self._vertices:
+            # Convert from Minecraft's 0-16 range to 0-1 range and apply correct coordinate mapping
+            x = vertex[0] / 16.0  # Minecraft X -> Blender X
+            y = -(vertex[2] / 16.0)  # Minecraft Z -> Blender -Y (need negation here)
+            z = vertex[1] / 16.0  # Minecraft Y -> Blender Z
+            blender_vertices.append([x, y, z])
+
+        faces = []
+
+        # Calculate flow rotation angle
+        flow_angle = self._get_flow_angle(self.flow_vector)
+
+        if not adjacent_blocks["down"][1]:
+            # Bottom face (always uses still texture)
+            bottom_uvs = [(0, 0), (1, 0), (1, 1), (0, 1)]  # Standard UV mapping
+            faces.append(
+                rendering.Face(
+                    name="liquid_bottom",
+                    vertex_indices=[0, 3, 2, 1],  # Matches "down" face vertex order
+                    texture=self._still_texture,
+                    uvs=self._process_still_uvs(bottom_uvs),
+                    tint=tint,
+                    ambient_occlusion=False,
+                    block_name=self.canonical_name,
+                )
+            )
+
+        cull_up = (
+            adjacent_blocks["up"][0] and adjacent_blocks["up"][0].type == self.type
+        )
+
+        if not cull_up:
+            # Always use triangles for top faces
+            # First create and rotate the full rectangle for UVs
+            full_rect_uvs = [(0, 0), (1, 0), (1, 1), (0, 1)]  # Complete rectangle
+            rotated_rect = self._rotate_uvs(full_rect_uvs, flow_angle)
+
+            # Get heights for each corner
+            sw_height = self._vertices[4][1]  # Southwest (vertex 4)
+            se_height = self._vertices[5][1]  # Southeast (vertex 5)
+            ne_height = self._vertices[6][1]  # Northeast (vertex 6)
+            nw_height = self._vertices[7][1]  # Northwest (vertex 7)
+
+            # Keep the working vertex order but choose which diagonal to use
+            # based on heights and flow direction
+            if (sw_height + ne_height < se_height + nw_height) == (
+                self.flow_vector[0] > 0
+            ):
+                # Use SW to NE diagonal
+                tri1_indices = [4, 5, 7]  # Keep working winding order
+                tri2_indices = [5, 6, 7]  # Keep working winding order
+                tri1_uvs = [rotated_rect[0], rotated_rect[1], rotated_rect[3]]
+                tri2_uvs = [rotated_rect[1], rotated_rect[2], rotated_rect[3]]
+            else:
+                # Use NW to SE diagonal
+                tri1_indices = [4, 5, 7]  # Keep working winding order
+                tri2_indices = [5, 6, 7]  # Keep working winding order
+                tri1_uvs = [rotated_rect[0], rotated_rect[1], rotated_rect[3]]
+                tri2_uvs = [rotated_rect[1], rotated_rect[2], rotated_rect[3]]
+
+            processed_tri1 = (
+                self._process_still_uvs(tri1_uvs)
+                if is_still
+                else self._get_flow_texture_uvs(tri1_uvs)
+            )
+            processed_tri2 = (
+                self._process_still_uvs(tri2_uvs)
+                if is_still
+                else self._get_flow_texture_uvs(tri2_uvs)
+            )
+
+            faces.extend(
+                [
+                    rendering.Face(
+                        name="liquid_top_tri1",
+                        vertex_indices=tri1_indices,
+                        texture=top_texture,
+                        uvs=processed_tri1,
+                        tint=tint,
+                        ambient_occlusion=False,
+                        block_name=self.canonical_name,
+                    ),
+                    rendering.Face(
+                        name="liquid_top_tri2",
+                        vertex_indices=tri2_indices,
+                        texture=top_texture,
+                        uvs=processed_tri2,
+                        tint=tint,
+                        ambient_occlusion=False,
+                        block_name=self.canonical_name,
+                    ),
+                ]
+            )
+
+        # Side faces with proper culling and rotated UVs
+        side_faces = [
+            ("north", [3, 7, 6, 2], (7, 6)),  # Matches north face vertex order
+            ("south", [1, 5, 4, 0], (5, 4)),  # Matches south face vertex order
+            ("west", [0, 4, 7, 3], (4, 7)),  # Matches west face vertex order
+            ("east", [2, 6, 5, 1], (6, 5)),  # Matches east face vertex order
+        ]
+
+        for direction, indices, height_indices in side_faces:
+            adj_block_info = adjacent_blocks.get(direction, (None, False))
+            should_cull = False
+
+            if adj_block_info[0]:
+                if adj_block_info[0].type == self.type:
+                    should_cull = True
+                else:
+                    should_cull = adj_block_info[1]
+
+            if not should_cull:
+                height1 = self._vertices[height_indices[0]][1] / 16.0
+                height2 = self._vertices[height_indices[1]][1] / 16.0
+
+                # Start with standard UV mapping
+                base_uvs = [(0, 1), (1, 1), (1, 0), (0, 0)]
+
+                # First rotate the UVs based on flow direction
+                rotated_uvs = self._rotate_uvs(
+                    base_uvs, 90
+                )  # Side faces are rotated 90° by default
+
+                # Then adjust UV heights based on liquid heights
+                height_adjusted_uvs = []
+                for i, (u, v) in enumerate(rotated_uvs):
+                    if i in (0, 3):  # Left vertices
+                        v = v * height1  # Scale by first height
+                    else:  # Right vertices (1, 2)
+                        v = v * height2  # Scale by second height
+                    height_adjusted_uvs.append((u, v))
+
+                # Finally process the UVs to use the correct region of the flow texture
+                processed_uvs = self._get_flow_texture_uvs(height_adjusted_uvs)
+
+                faces.append(
+                    rendering.Face(
+                        name=f"liquid_{direction}",
+                        vertex_indices=indices,
+                        texture=self._flow_texture,
+                        uvs=processed_uvs,
+                        tint=tint,
+                        ambient_occlusion=False,
+                        block_name=self.canonical_name,
+                    )
+                )
+
+        element = rendering.Element(
+            name="liquid_element", vertices=blender_vertices, faces=faces
+        )
+
+        model = rendering.Model(name="liquid_model", elements=[element])
+
+        return rendering.Block(
+            name=self.canonical_name, models=[model], ambient_occlusion=False
+        )
+
+    def get_top_flow_vector(self, surrounding_blocks):
+        """Return the x,z flow vector for the top of the block.
+
+        Water flows towards non source water blocks. Flows from opposite directions "cancel out".
+
+        """
+
+        vector = [0, 0]
+        level = self.states["level"]
+
+        for direction in ["adjacent", "above"]:
+            adjacent_blocks = surrounding_blocks[direction]
+            if (
+                adjacent_blocks["north"] and adjacent_blocks["north"].type == self.type
+                # and adjacent_blocks["north"].states["level"] != 0
+            ):
+                adjacent_level = adjacent_blocks["north"].states["level"]
+                if adjacent_level < level:
+                    vector[1] -= 1
+                elif adjacent_level > level:
+                    vector[1] += 1
+
+            if (
+                adjacent_blocks["south"] and adjacent_blocks["south"].type == self.type
+                # and adjacent_blocks["south"].states["level"] != 0
+            ):
+                adjacent_level = adjacent_blocks["south"].states["level"]
+                if adjacent_level < level:
+                    vector[1] += 1
+                elif adjacent_level > level:
+                    vector[1] -= 1
+
+            if (
+                adjacent_blocks["east"] and adjacent_blocks["east"].type == self.type
+                # and adjacent_blocks["east"].states["level"] != 0
+            ):
+                adjacent_level = adjacent_blocks["east"].states["level"]
+                if adjacent_level < level:
+                    vector[0] += 1
+                elif adjacent_level > level:
+                    vector[0] -= 1
+
+            if (
+                adjacent_blocks["west"] and adjacent_blocks["west"].type == self.type
+                # and adjacent_blocks["west"].states["level"] != 0
+            ):
+                adjacent_level = adjacent_blocks["west"].states["level"]
+                if adjacent_level < level:
+                    vector[0] -= 1
+                elif adjacent_level > level:
+                    vector[0] += 1
+
+        return tuple(vector)
+
+    def get_vertext_height(self, surrounding_blocks, directions):
+        above_blocks = [
+            surrounding_blocks["above"][direction] for direction in directions
+        ]
+
+        if any([block and block.type == self.type for block in above_blocks]) or (
+            int(self.states["level"]) == 8
+        ):
+            return 16
+
+        if int(self.states["level"]) == 0 and (
+            surrounding_blocks["above"]["up"] is None
+            or surrounding_blocks["above"]["up"].type != self.type
+        ):
+            return 15
+
+        adjacent_blocks = [
+            surrounding_blocks["adjacent"][direction] for direction in directions
+        ]
+
+        liquid_levels = [
+            int(block.states["level"])
+            for block in adjacent_blocks
+            if block and block.type == self.type
+        ] + [int(self.states["level"])]
+
+        if any(level == 0 for level in liquid_levels):
+            return 15
+
+        if any(level == 8 for level in liquid_levels):
+            return 16
+
+        liquid_levels.extend([0 for block in adjacent_blocks if block is None])
+
+        average_level = sum(liquid_levels) / len(liquid_levels)
+
+        return max(int(average_level * 15 / 8), 1)
+
+    def get_northeast_liquid_vertex(self, surrounding_blocks):
+        return self.get_vertext_height(
+            surrounding_blocks, ["east", "north", "northeast"]
+        )
+
+    def get_northwest_liquid_vertex(self, surrounding_blocks):
+        return self.get_vertext_height(
+            surrounding_blocks, ["west", "north", "northwest"]
+        )
+
+    def get_southeast_liquid_vertex(self, surrounding_blocks):
+        return self.get_vertext_height(
+            surrounding_blocks, ["east", "south", "southeast"]
+        )
+
+    def get_southwest_liquid_vertex(self, surrounding_blocks):
+        return self.get_vertext_height(
+            surrounding_blocks, ["west", "south", "southwest"]
+        )
 
 
 class PlacedMinecraftBlock:
@@ -1652,26 +2179,100 @@ class MinecraftWorld:
                         # Cull faces between identical glass blocks
                         should_cull = True
                     elif (
+                        (block.block.is_water or block.block.is_lava)
+                        and face == "down"
+                        and adjacent_block.block.type == block.block.type
+                    ):
+                        # Cull faces against water or lava blocks
+                        should_cull = True
+                    elif (
                         not adjacent_block.block.transparent
+                        # TODO: We actually care if the face facing us is there, but because of block rotations this is non trivial
+                        # e.g. a stair block has one side that should cause culling - the back side.
                         and adjacent_block.block.is_cube
+                        and not adjacent_block.block.is_water
                     ):
                         # Cull faces against opaque, cube blocks
                         should_cull = True
 
-            adjacent[face] = should_cull
+            if adjacent_block:
+                adjacent[face] = (adjacent_block.block, should_cull)
+            else:
+                adjacent[face] = (None, should_cull)
 
         logger.info(f"Block: {block.block.canonical_name} adjacent: {adjacent}")
 
         return adjacent
 
+    def get_surrounding_blocks(self, x, y, z):
+        offsets = (-1, 0, 1)
+        surrounding_blocks = {
+            "above": {
+                "north": None,
+                "south": None,
+                "east": None,
+                "west": None,
+                "northeast": None,
+                "northwest": None,
+                "southeast": None,
+                "southwest": None,
+                "up": None,
+            },
+            "adjacent": {
+                "north": None,
+                "south": None,
+                "east": None,
+                "west": None,
+                "northeast": None,
+                "northwest": None,
+                "southeast": None,
+                "southwest": None,
+            },
+            "below": {
+                "north": None,
+                "south": None,
+                "east": None,
+                "west": None,
+                "northeast": None,
+                "northwest": None,
+                "southeast": None,
+                "southwest": None,
+                "down": None,
+            },
+        }
+        for dx in offsets:
+            for dy in offsets:
+                for dz in offsets:
+                    coordinate = (x + dx, y + dy, z + dz)
+                    if coordinate != (x, y, z) and coordinate in self.location_index:
+                        direction = DIRECTIONAL_COORDINATE_OFFSET_MAP[(dx, dz)]
+                        level = LEVEL_DIRECTIONAL_COORDINATE_OFFSET_MAP[dy]
+                        surrounding_blocks[level][direction] = self.location_index[
+                            coordinate
+                        ].block
+
+        return surrounding_blocks
+
+    def resolve_liquid_blocks(self):
+        for placed_block in self.blocks:
+            if isinstance(placed_block.block, MinecraftLiquidBlock):
+                placed_block.block.update_from_surrounding_blocks(
+                    surrounding_blocks=self.get_surrounding_blocks(
+                        x=placed_block.x, y=placed_block.y, z=placed_block.z
+                    )
+                )
+
     def to_blender_blocks(self):
+        self.resolve_liquid_blocks()
+
         blender_blocks = []
         for block in self.blocks:
             logger.info(
                 f"converting block {block.block.canonical_name} at {block.x}, {block.y}, {block.z} to blender block"
             )
+            adjacent_blocks = self.get_adjacent_blocks(block)
             blender_block = block.to_blender_block(
-                adjacent_blocks=self.get_adjacent_blocks(block)
+                adjacent_blocks=adjacent_blocks,
             )
             blender_blocks.append(blender_block)
 
@@ -1903,3 +2504,22 @@ def int_to_rgb_hex(color_int: int) -> str:
 
     # Format as hex string with # prefix
     return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def _tint_from_biomes(tint_lookup, biome, adjacent_biomes):
+    adjacent_biomes = adjacent_biomes or []
+
+    main_biome_color = tint_lookup[biome]
+
+    # adjacent_biomes_colors: List[Tuple[str, int]] = [
+    #     self.tint_lookup[biome] for biome in adjacent_biomes
+    # ]
+    adjacent_biomes_colors: List[str] = [
+        tint_lookup[biome[0]] for biome in adjacent_biomes
+    ]
+
+    # return blend_colors(main_biome_color, adjacent_biomes_colors)
+    return blend_colors(
+        main_biome_color,
+        list(zip(adjacent_biomes_colors, [el[1] for el in adjacent_biomes])),
+    )

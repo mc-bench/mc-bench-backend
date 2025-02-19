@@ -146,7 +146,7 @@ class Element:
         for face in self.faces:
             face_key = (
                 tuple(face.vertex_indices),
-                face.material_name,
+                face.material_name_from_element(self),
                 tuple(tuple(uv) for uv in face.uvs) if face.uvs else None,
                 face.tint,
                 face.ambient_occlusion,
@@ -203,13 +203,19 @@ class Face:
         if self.tint:
             return hex_to_srgb(self.tint)
 
-    @property
-    def material_name(self):
+    def material_name_from_element(self, element):
+        vertices = element.vertices
+        face_vertices = [tuple(vertices[i]) for i in self.vertex_indices]
+        uvs = tuple([tuple(uv) for uv in self.uvs]) if self.uvs else None
+        prefix = str(hash(tuple([tuple(face_vertices), uvs])))
+        return self.material_name(prefix=prefix)
+
+    def material_name(self, prefix=""):
         _, filename = os.path.split(self.texture)
         texture_name, _ = os.path.splitext(filename)
 
         unique_hash = hashlib.sha256(
-            f"{self.block_name}_{self.name}".encode()
+            f"{prefix}_{self.block_name}_{self.name}".encode()
         ).hexdigest()[:8]
 
         name = f"{unique_hash}_{texture_name}"
@@ -508,7 +514,7 @@ class Renderer:
         face_lookup = {}
         for idx, face in enumerate(element.faces):
             if face.texture:
-                material_name = face.material_name
+                material_name = face.material_name_from_element(element)
                 face_lookup[id(face)] = material_name
                 mat = self.create_material(
                     face.texture,
@@ -525,7 +531,7 @@ class Renderer:
         for i, face in enumerate(element.faces):
             if i < len(mesh.polygons):
                 # Assign material index
-                if face.material_name:
+                if face.material_name_from_element(element):
                     mat_idx = mesh.materials.find(face_lookup[id(face)])
                     if mat_idx >= 0:
                         mesh.polygons[i].material_index = mat_idx

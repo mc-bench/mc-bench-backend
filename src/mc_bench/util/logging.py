@@ -4,7 +4,7 @@ import sys
 import structlog
 
 
-def configure_logging(humanize: bool = True):
+def configure_logging(humanize: bool = True, level: int = logging.INFO):
     if humanize:
         renderer = structlog.dev.ConsoleRenderer()
     else:
@@ -13,7 +13,7 @@ def configure_logging(humanize: bool = True):
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
-        level=logging.INFO,
+        level=level,
     )
 
     structlog.configure(
