@@ -84,9 +84,10 @@ def create_runs(
                 app.signature("run.code_validation", queue="admin", headers=headers),
                 app.signature("run.build_structure", queue="server", headers=headers),
                 app.signature("run.render_sample", queue="render", headers=headers),
-                app.signature(
-                    "run.export_structure_views", queue="server", headers=headers
-                ),
+                # TODO: Add exporting content back in once implemented in blender
+                # app.signature(
+                #     "run.export_structure_views", queue="server", headers=headers
+                # ),
                 app.signature("run.post_processing", queue="admin", headers=headers),
                 app.signature("run.prepare_sample", queue="admin", headers=headers),
             )

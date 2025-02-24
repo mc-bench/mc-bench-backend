@@ -205,11 +205,12 @@ class Run(Base):
                 stage_id=stage_id_for(db, STAGE.RENDERING_SAMPLE),
                 state_id=pending_stage_state,
             ),
-            ExportingContent(
-                run_id=self.id,
-                stage_id=stage_id_for(db, STAGE.EXPORTING_CONTENT),
-                state_id=pending_stage_state,
-            ),
+            # TODO: Add exporting content back in once implemented in blender
+            # ExportingContent(
+            #     run_id=self.id,
+            #     stage_id=stage_id_for(db, STAGE.EXPORTING_CONTENT),
+            #     state_id=pending_stage_state,
+            # ),
             PostProcessing(
                 run_id=self.id,
                 stage_id=stage_id_for(db, STAGE.POST_PROCESSING),
