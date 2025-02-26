@@ -285,3 +285,16 @@ class PagedListResponse(Base, Generic[T]):
 
 class TagListChangeResponse(Base):
     current_tags: List[TagResponse]
+
+
+class RoleResponse(Base):
+    id: uuid.UUID
+    name: str
+    permissions: List[str]
+
+
+class UserResponse(Base):
+    id: uuid.UUID
+    username: str
+    roles: List[RoleResponse]
+    permissions: List[str]

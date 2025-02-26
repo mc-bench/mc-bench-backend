@@ -47,3 +47,7 @@ class PERM:
 
     class VOTING:
         ADMIN = "voting:admin"
+        VOTE = "voting:vote"
+
+    class USER:
+        ADMIN = "user:admin"

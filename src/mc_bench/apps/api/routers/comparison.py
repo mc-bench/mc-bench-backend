@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mc_bench.apps.api.config import settings
+from mc_bench.auth.permissions import PERM
 from mc_bench.models.comparison import Comparison, Metric
 from mc_bench.models.prompt import Prompt
 from mc_bench.models.run import Run, Sample
@@ -261,15 +262,17 @@ def post_comparison(
         )
     )
 
-    comparison = Comparison(
-        user_id=user.id,
-        metric_id=metric.id,
-        sample_1_id=sample_1.id,
-        sample_2_id=sample_2.id,
-        winning_sample_id=winning_sample.id,
-    )
-    db.add(comparison)
-    db.flush()
+    if PERM.VOTING.VOTE in user.scopes:
+        # shadow ban ineligible voters
+        comparison = Comparison(
+            user_id=user.id,
+            metric_id=metric.id,
+            sample_1_id=sample_1.id,
+            sample_2_id=sample_2.id,
+            winning_sample_id=winning_sample.id,
+        )
+        db.add(comparison)
+        db.flush()
 
     sample_1_run = db.scalar(
         select(Sample).where(Sample.comparison_sample_id == sample_1_id)

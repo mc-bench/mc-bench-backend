@@ -163,3 +163,7 @@ class ModelObservationRequest(Base):
 
 class TemplateObservationRequest(Base):
     note: str
+
+
+class UpdateRolesRequest(Base):
+    roles: List[uuid.UUID]

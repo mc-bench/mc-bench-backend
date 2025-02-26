@@ -23,7 +23,7 @@ class Role(Base):
         secondary=schema.auth.user_role,
         primaryjoin=schema.auth.role.c.id == schema.auth.user_role.c.role_id,
         secondaryjoin=schema.auth.user.c.id == schema.auth.user_role.c.user_id,
-        back_populates="roles",
+        viewonly=True,
     )
     permissions = relationship(
         "Permission",
@@ -31,7 +31,27 @@ class Role(Base):
         primaryjoin=schema.auth.role.c.id == schema.auth.role_permission.c.role_id,
         secondaryjoin=schema.auth.permission.c.id
         == schema.auth.role_permission.c.permission_id,
-        back_populates="roles",
+        viewonly=True,
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.external_id,
+            "name": self.name,
+            "permissions": [permission.name for permission in self.permissions],
+        }
+
+
+class UserRole(Base):
+    __table__ = schema.auth.user_role
+    creator: Mapped["User"] = relationship(
+        uselist=False, foreign_keys=[schema.auth.user_role.c.created_by]
+    )
+    user: Mapped["User"] = relationship(
+        uselist=False, foreign_keys=[schema.auth.user_role.c.user_id]
+    )
+    role: Mapped["Role"] = relationship(
+        uselist=False, foreign_keys=[schema.auth.user_role.c.role_id]
     )
 
 
@@ -44,7 +64,7 @@ class Permission(Base):
         primaryjoin=schema.auth.permission.c.id
         == schema.auth.role_permission.c.permission_id,
         secondaryjoin=schema.auth.role.c.id == schema.auth.role_permission.c.role_id,
-        back_populates="permissions",
+        viewonly=True,
     )
 
 
@@ -80,6 +100,8 @@ class User(Base):
         return {
             "id": self.external_id,
             "username": self.username,
+            "roles": [role.to_dict() for role in self.roles],
+            "permissions": self.scopes,
         }
 
 
