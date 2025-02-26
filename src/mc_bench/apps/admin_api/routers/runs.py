@@ -1,19 +1,21 @@
 import datetime
+from typing import List, Optional
+from uuid import UUID
 
 import celery
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.routing import APIRouter
 from redis import StrictRedis
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from mc_bench.apps.admin_api.config import settings
-from mc_bench.apps.admin_api.transport_types.generic import ListResponse
 from mc_bench.apps.admin_api.transport_types.requests import (
     StageProgress,
     TaskRetryRequest,
 )
 from mc_bench.apps.admin_api.transport_types.responses import (
+    PagedListResponse,
     RunDetailResponse,
     RunResponse,
     RunRetryResponse,
@@ -27,7 +29,10 @@ from mc_bench.events.types import (
     RunStageStateChanged,
     RunStateChanged,
 )
-from mc_bench.models.run import Run
+from mc_bench.models.model import Model
+from mc_bench.models.prompt import Prompt
+from mc_bench.models.run import Generation, Run, run_state_id_for
+from mc_bench.models.template import Template
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.postgres import get_managed_session
@@ -48,18 +53,66 @@ am = AuthManager(
     dependencies=[
         Depends(am.require_any_scopes([PERM.RUN.ADMIN, PERM.RUN.READ, PERM.RUN.WRITE])),
     ],
-    response_model=ListResponse[RunResponse],
+    response_model=PagedListResponse[RunResponse],
 )
 def get_runs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    model_id: Optional[List[UUID]] = Query(None),
+    template_id: Optional[List[UUID]] = Query(None),
+    prompt_id: Optional[List[UUID]] = Query(None),
+    generation_id: Optional[List[UUID]] = Query(None),
+    state: Optional[List[str]] = Query(None),
     db: Session = Depends(get_managed_session),
+    current_scopes: List[str] = Depends(am.current_scopes),
+    user_uuid: str = Depends(am.get_current_user_uuid),
 ):
-    runs = list(db.scalars(select(Run)))
-    payload = {
-        "data": [run.to_dict() for run in runs],
-        "total": len(runs),
-    }
+    user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
 
-    return payload
+    if PERM.RUN.ADMIN in current_scopes or PERM.RUN.READ in current_scopes:
+        query = select(Run).order_by(Run.created.desc())
+    else:
+        query = select(Run).order_by(Run.created.desc()).where(Run.creator == user)
+
+    # Apply filters
+    if model_id:
+        query = query.join(Run.model).filter(Model.external_id.in_(model_id))
+
+    if template_id:
+        query = query.join(Run.template).filter(Template.external_id.in_(template_id))
+
+    if prompt_id:
+        query = query.join(Run.prompt).filter(Prompt.external_id.in_(prompt_id))
+
+    if generation_id:
+        query = query.join(Run.generation).filter(
+            Generation.external_id.in_(generation_id)
+        )
+
+    # Update state filter to use the state_slug column
+    if state:
+        state_ids = [
+            run_state_id_for(db, RUN_STATE(state_element)) for state_element in state
+        ]
+        query = query.filter(Run.state_id.in_(state_ids))
+
+    # Execute query and handle pagination
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
+
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    runs = db.scalars(query).all()
+
+    return {
+        "data": [run.to_dict() for run in runs],
+        "paging": {
+            "page": page,
+            "pageSize": page_size,
+            "totalPages": (total + page_size - 1) // page_size,
+            "totalItems": total,
+            "hasNext": page * page_size < total,
+            "hasPrevious": page > 1,
+        },
+    }
 
 
 @run_router.get(
@@ -73,13 +126,27 @@ def get_run(
     external_id: str,
     db: Session = Depends(get_managed_session),
     redis: StrictRedis = Depends(get_redis_database(RedisDatabase.CACHE)),
+    current_scopes: List[str] = Depends(am.current_scopes),
+    user_uuid: str = Depends(am.get_current_user_uuid),
 ):
-    run = (
+    user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
+    query = (
         db.query(Run)
         .options(selectinload(Run.samples), selectinload(Run.artifacts))
         .filter(Run.external_id == external_id)
-        .first()
     )
+
+    if PERM.RUN.ADMIN in current_scopes or PERM.RUN.READ in current_scopes:
+        run = query.first()
+    else:
+        run = query.where(Run.creator == user).first()
+
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown run id: {external_id}",
+        )
+
     return run.to_dict(
         include_samples=True, include_artifacts=True, include_stages=True, redis=redis
     )
@@ -134,13 +201,29 @@ def task_retry(
     external_id: str,
     db: Session = Depends(get_managed_session),
     redis: StrictRedis = Depends(get_redis_database(RedisDatabase.CACHE)),
+    current_scopes: List[str] = Depends(am.current_scopes),
+    user_uuid: str = Depends(am.get_current_user_uuid),
 ):
+    user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
+
     run = (
         db.query(Run)
         .options(selectinload(Run.samples), selectinload(Run.artifacts))
         .filter(Run.external_id == external_id)
-        .first()
     )
+
+    if PERM.RUN.ADMIN in current_scopes or PERM.RUN.WRITE in current_scopes:
+        run = run.first()
+    else:
+        run = run.where(Run.creator == user).first()
+
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown run id: {external_id}",
+        )
+
+    emit_event(RunStateChanged(run_id=run.id, new_state=RUN_STATE.IN_RETRY))
 
     emit_event(RunStateChanged(run_id=run.id, new_state=RUN_STATE.IN_RETRY))
 

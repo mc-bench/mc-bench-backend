@@ -2,6 +2,8 @@ import os
 import subprocess
 import tempfile
 
+from mc_bench.constants import EXPERIMENTAL_STATE
+from mc_bench.models.experimental_state import experimental_state_id_for
 from mc_bench.models.run import (
     Artifact,
     CodeValidation,
@@ -48,6 +50,29 @@ def execute_prompt(stage_context: StageContext):
         "raw": response,
         "comparison_correlation_id": stage_context.run.generate_correlation_id(),
     }
+
+    experimental_states = [
+        stage_context.run.template.experimental_state.name
+        if stage_context.run.template.experimental_state
+        else EXPERIMENTAL_STATE.EXPERIMENTAL.value,
+        stage_context.run.model.experimental_state.name
+        if stage_context.run.model.experimental_state
+        else EXPERIMENTAL_STATE.EXPERIMENTAL.value,
+        stage_context.run.prompt.experimental_state.name
+        if stage_context.run.prompt.experimental_state
+        else EXPERIMENTAL_STATE.EXPERIMENTAL.value,
+    ]
+
+    if all(
+        [state == EXPERIMENTAL_STATE.RELEASED.value for state in experimental_states]
+    ):
+        sample_kwargs["experimental_state_id"] = experimental_state_id_for(
+            stage_context.db, EXPERIMENTAL_STATE.RELEASED
+        )
+    else:
+        sample_kwargs["experimental_state_id"] = experimental_state_id_for(
+            stage_context.db, EXPERIMENTAL_STATE.EXPERIMENTAL
+        )
 
     sample = Sample(**sample_kwargs)
     stage_context.db.add(sample)

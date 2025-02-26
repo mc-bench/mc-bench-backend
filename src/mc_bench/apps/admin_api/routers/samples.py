@@ -3,10 +3,12 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.routing import APIRouter
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from mc_bench.auth.permissions import PERM
+from mc_bench.constants import EXPERIMENTAL_STATE
+from mc_bench.models.experimental_state import experimental_state_id_for
 from mc_bench.models.log import SampleApproval, SampleObservation, SampleRejection
 from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt, Tag
@@ -54,6 +56,7 @@ def list_samples(
     pending: Optional[bool] = Query(None),
     complete: Optional[bool] = Query(None),
     tag: Optional[List[str]] = Query(None),
+    experimental_state: Optional[List[str]] = Query(None),
     db: Session = Depends(get_managed_session),
 ):
     # Build base query with needed joins
@@ -92,7 +95,11 @@ def list_samples(
             ]
         ]
 
-        pending_approval_filter = Sample.approval_state_id.is_(None)
+        pending_approval_filter = and_(
+            Sample.approval_state_id.is_(None),
+            Sample.experimental_state_id
+            == experimental_state_id_for(db, EXPERIMENTAL_STATE.RELEASED),
+        )
 
         if (
             valid_approval_filters
@@ -112,6 +119,16 @@ def list_samples(
                 pending_approval_filter,
             )
             query = query.outerjoin(Sample.approval_state).filter(approval_filter)
+
+    if experimental_state:
+        query = query.filter(
+            Sample.experimental_state_id.in_(
+                [
+                    experimental_state_id_for(db, EXPERIMENTAL_STATE(state))
+                    for state in experimental_state
+                ]
+            ),
+        )
 
     if pending is not None:
         if pending:
@@ -175,7 +192,9 @@ def get_sample(
             detail=f"Sample with external_id {external_id} not found",
         )
     return sample.to_dict(
-        include_run_detail=True, include_logs=True, include_artifacts=True
+        include_run_detail=True,
+        include_logs=True,
+        include_artifacts=True,
     )
 
 
@@ -197,6 +216,12 @@ def approve_sample(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Sample with external_id {external_id} not found",
+        )
+
+    if sample.experimental_state.name != EXPERIMENTAL_STATE.RELEASED.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Sample with external_id {external_id} is experimental and cannot be approved",
         )
 
     user = db.scalar(select(User).where(User.external_id == user_uuid))
@@ -285,6 +310,7 @@ def observe_sample(
     )
     db.add(sample_observation)
     db.commit()
+
     return sample.to_dict(
         include_run_detail=True, include_logs=True, include_artifacts=True
     )

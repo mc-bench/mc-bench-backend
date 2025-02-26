@@ -35,6 +35,12 @@ prompt = Table(
     Column("name", String, unique=True, nullable=False),
     Column("active", Boolean, nullable=True),
     Column("build_specification", String, nullable=False),
+    Column(
+        "experimental_state_id",
+        Integer,
+        ForeignKey("research.experimental_state.id"),
+        nullable=True,
+    ),
     comment=__doc__.strip(),
     schema="specification",
 )

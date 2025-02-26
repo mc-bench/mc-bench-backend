@@ -286,34 +286,9 @@ def post_comparison(
         logger.debug("Elo calculation already in progress")
 
     return {
-        "sample_1_model": sample_1_run.model.slug,
-        "sample_2_model": sample_2_run.model.slug,
+        "sample_1_model": sample_1_run.model.name,
+        "sample_2_model": sample_2_run.model.name,
     }
-
-
-# @comparison_router.get("/api/sample/asset_details", response_model=SamplesAssetDetailResponse)
-# def get_samples_asset_details(
-#     request: SamplesAssetDetailRequest
-# ):
-#     assets = []
-#
-#     for sample_id in request.ordered_sample_ids:
-#         assets.append({
-#             "sample_id": sample_id,
-#             "files": [
-#                 {
-#                     "kind": "gltf_scene",
-#                     "url": random.choice([
-#                         "/my_awesome_house.gltf",
-#                         "/my_cool_house.gltf"
-#                     ])
-#                 }
-#             ]
-#         })
-#
-#     return {
-#         "assets": assets,
-#     }
 
 
 @comparison_router.get(

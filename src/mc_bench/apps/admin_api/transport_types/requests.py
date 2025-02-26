@@ -17,6 +17,7 @@ class CreateProviderRequest(Base):
 
 class CreateModelRequest(Base):
     slug: str
+    name: Optional[str] = None
     providers: List[CreateProviderRequest]
 
 
@@ -108,3 +109,57 @@ class AddPromptTagRequest(Base):
 
 class DeletePromptTagRequest(Base):
     tag_name: str
+
+
+class PromptExperimentalStateProposalRequest(Base):
+    current_state: str
+    proposed_state: str
+    note: Optional[str] = None
+
+
+class ModelExperimentalStateProposalRequest(Base):
+    current_state: str
+    proposed_state: str
+    note: Optional[str] = None
+
+
+class TemplateExperimentalStateProposalRequest(Base):
+    current_state: str
+    proposed_state: str
+    note: Optional[str] = None
+
+
+class PromptExperimentalStateApprovalRequest(Base):
+    note: Optional[str] = None
+
+
+class PromptExperimentalStateRejectionRequest(Base):
+    note: Optional[str] = None
+
+
+class ModelExperimentalStateApprovalRequest(Base):
+    note: Optional[str] = None
+
+
+class ModelExperimentalStateRejectionRequest(Base):
+    note: Optional[str] = None
+
+
+class TemplateExperimentalStateApprovalRequest(Base):
+    note: Optional[str] = None
+
+
+class TemplateExperimentalStateRejectionRequest(Base):
+    note: Optional[str] = None
+
+
+class PromptObservationRequest(Base):
+    note: str
+
+
+class ModelObservationRequest(Base):
+    note: str
+
+
+class TemplateObservationRequest(Base):
+    note: str

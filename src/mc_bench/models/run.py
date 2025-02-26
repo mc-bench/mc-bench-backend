@@ -8,7 +8,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Mapped, declared_attr, object_session, relationship
 
 import mc_bench.schema.postgres as schema
-from mc_bench.constants import GENERATION_STATE, RUN_STAGE_STATE, RUN_STATE, STAGE
+from mc_bench.constants import (
+    GENERATION_STATE,
+    RUN_STAGE_STATE,
+    RUN_STATE,
+    STAGE,
+)
 from mc_bench.events.types import (
     GenerationStateChanged,
     RunStageStateChanged,
@@ -22,6 +27,7 @@ from mc_bench.util.object_store import (
 from mc_bench.util.uuid import uuid_from_ints
 
 from ._base import Base
+from .experimental_state import ExperimentalState
 from .log import Log
 
 _run_state_cache: Dict[RUN_STATE, int] = {}
@@ -277,6 +283,10 @@ class Sample(Base):
         back_populates="sample",
     )
 
+    experimental_state: Mapped["ExperimentalState"] = relationship(
+        "ExperimentalState", lazy="joined"
+    )
+
     def to_dict(
         self,
         include_logs=False,
@@ -296,6 +306,9 @@ class Sample(Base):
             "approval_state": self.approval_state.name if self.approval_state else None,
             "is_complete": self.is_complete,
             "is_pending": self.is_pending,
+            "experimental_state": self.experimental_state.name
+            if self.experimental_state
+            else None,
         }
 
         if include_logs:

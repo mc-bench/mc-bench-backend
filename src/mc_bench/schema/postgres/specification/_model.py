@@ -37,7 +37,14 @@ model = Table(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
     Column("slug", String, unique=True, nullable=False),
+    Column("name", String, unique=True, nullable=False),
     Column("active", Boolean, nullable=True),
+    Column(
+        "experimental_state_id",
+        Integer,
+        ForeignKey("research.experimental_state.id"),
+        nullable=True,
+    ),
     comment=__doc__.strip(),
     schema="specification",
 )

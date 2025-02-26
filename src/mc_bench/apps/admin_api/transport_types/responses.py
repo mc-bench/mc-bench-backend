@@ -8,6 +8,23 @@ from .generic import Base
 T = TypeVar("T")
 
 
+class BaseProposalResponse(Base):
+    id: uuid.UUID
+    created: datetime.datetime
+    created_by: str
+    proposed_state: str
+    accepted: Optional[bool] = None
+    accepted_at: Optional[datetime.datetime] = None
+    accepted_by: Optional[str] = None
+    rejected: Optional[bool] = None
+    rejected_at: Optional[datetime.datetime] = None
+    rejected_by: Optional[str] = None
+
+
+class ProposalResponse(BaseProposalResponse):
+    pass
+
+
 class TagResponse(Base):
     id: uuid.UUID
     name: str
@@ -20,6 +37,13 @@ class LogResponse(Base):
     note: str
     kind: str
     action: str
+    proposal: Optional[ProposalResponse] = None
+
+
+class ProposalResponseDetail(BaseProposalResponse):
+    log: Optional[LogResponse] = None
+    accepted_log: Optional[LogResponse] = None
+    rejected_log: Optional[LogResponse] = None
 
 
 class RunBaseResponse(Base):
@@ -101,6 +125,7 @@ class SampleResponse(Base):
     is_complete: bool
     approval_state: Optional[Literal["APPROVED", "REJECTED", None]] = None
     run: Optional[RunInfo] = None
+    experimental_state: Optional[str] = None
 
 
 class SampleDetailResponse(SampleResponse):
@@ -126,7 +151,7 @@ class GenerationResponse(GenerationBaseResponse):
 
 
 class GenerationDetailResponse(GenerationResponse):
-    runs: List[RunResponse]
+    runs: Optional[List[RunResponse]] = None
 
 
 class GenerationCreatedResponse(Base):
@@ -161,6 +186,7 @@ class PromptBaseResponse(Base):
     active: bool
     usage: int
     tags: List[TagResponse]
+    experimental_state: Optional[str] = None
 
 
 class PromptResponse(PromptBaseResponse):
@@ -168,7 +194,9 @@ class PromptResponse(PromptBaseResponse):
 
 
 class PromptDetailResponse(PromptBaseResponse):
-    runs: List[RunResponse]
+    runs: Optional[List[RunResponse]] = None
+    logs: List[LogResponse]
+    proposals: List[ProposalResponseDetail]
 
 
 class PromptCreatedResponse(Base):
@@ -182,9 +210,11 @@ class ModelBaseResponse(Base):
     last_modified: Optional[datetime.datetime]
     last_modified_by: Optional[str]
     slug: str
+    name: str
     providers: List[ProviderResponse]
     active: bool
     usage: int
+    experimental_state: Optional[str] = None
 
 
 class ModelResponse(ModelBaseResponse):
@@ -193,6 +223,8 @@ class ModelResponse(ModelBaseResponse):
 
 class ModelDetailResponse(ModelBaseResponse):
     runs: Optional[List[RunResponse]] = None
+    logs: List[LogResponse]
+    proposals: List[ProposalResponseDetail]
 
 
 class ModelCreatedResponse(Base):
@@ -215,6 +247,7 @@ class TemplateBaseResponse(Base):
     active: bool
     frozen: bool
     usage: int
+    experimental_state: Optional[str] = None
 
 
 class TemplateResponse(TemplateBaseResponse):
@@ -222,7 +255,14 @@ class TemplateResponse(TemplateBaseResponse):
 
 
 class TemplateDetailResponse(TemplateBaseResponse):
-    runs: List[RunResponse]
+    runs: Optional[List[RunResponse]] = None
+    logs: List[LogResponse]
+    proposals: List[ProposalResponseDetail]
+
+
+class ExperimentalStateResponse(Base):
+    id: uuid.UUID
+    name: str
 
 
 class RunRetryResponse(Base):

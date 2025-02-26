@@ -35,5 +35,11 @@ template = Table(
     Column("active", Boolean, nullable=True),
     Column("frozen", Boolean, nullable=True),
     Column("minecraft_version", String, nullable=False),
+    Column(
+        "experimental_state_id",
+        Integer,
+        ForeignKey("research.experimental_state.id"),
+        nullable=True,
+    ),
     schema="specification",
 )

@@ -161,4 +161,4 @@ def get_generation(
         .options(selectinload(Generation.runs))
     )
 
-    return generation.to_dict(include_runs=True, include_stats=True)
+    return generation.to_dict(include_runs=False, include_stats=True)

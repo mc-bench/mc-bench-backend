@@ -5,6 +5,7 @@ docker-compose.yml
 .git
 **/node_modules
 data/
+notebooks/
 
 ### venv template
 # Virtualenv

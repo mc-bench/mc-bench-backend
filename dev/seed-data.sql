@@ -147,12 +147,12 @@ Remember:
 - The build is intended for human consumption in game and for visual display. When producing the build, consider how it can be viewed, explored, and used.
 ') ON CONFLICT DO NOTHING;
 
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-5-sonnet-20241022', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gpt-4o-2024-11-20', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'llama-3.1-405b-instruct', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gemini-2.0-flash-exp', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'grok-2-1212', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'deepseek-r1', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet (2024-10-22)', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gpt-4o-2024-11-20', 'GPT-4o (2024-11-20)', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'llama-3.1-405b-instruct', 'Llama 3.1 405B Instruct', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash Exp', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'grok-2-1212', 'Grok 2.1 (1212)', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'deepseek-r1', 'DeepSeek R1', true) ON CONFLICT DO NOTHING;
 
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (1, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'claude-3-5-sonnet-20241022'), 'ANTHROPIC_SDK', '"{\"model\": \"claude-3-5-sonnet-20241022\", \"max_tokens\": 4000}"', 'claude-3-5-sonnet-20241022', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (2, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'gpt-4o-2024-11-20'), 'OPENAI_SDK', '{"model": "gpt-4o-2024-11-20", "max_tokens": 4000}', 'OpenAI', true) ON CONFLICT DO NOTHING;
