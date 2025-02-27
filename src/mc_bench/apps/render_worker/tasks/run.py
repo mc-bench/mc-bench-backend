@@ -94,7 +94,8 @@ def render_sample(stage_context: StageContext):
             progress=None: stage_context.update_stage_progress(
                 progress=progress,
                 note=msg,
-            )
+            ),
+            cores_enabled=settings.BLENDER_RENDER_CORES,
         )
         logger.info(
             "Rendering blocks",

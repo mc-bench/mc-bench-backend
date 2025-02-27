@@ -264,7 +264,9 @@ class Renderer:
         self,
         texture_cache: AbstractTextureCache = None,
         progress_callback: Callable[[str], None] = None,
+        cores_enabled: int = 1,
     ):
+        self.cores_enabled = cores_enabled
         self.setup_blender_env()
         self._next_index = 0
         self.texture_paths = set()  # Track unique textures
@@ -298,6 +300,8 @@ class Renderer:
         # Set up basic scene with optimized settings
         scene = bpy.context.scene
         scene.render.engine = "CYCLES"
+        scene.render.threads_mode = "FIXED"
+        scene.render.threads = self.cores_enabled
 
         # Configure render settings for baking
         scene.render.bake.use_pass_direct = True
