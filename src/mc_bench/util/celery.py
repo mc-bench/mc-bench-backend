@@ -12,7 +12,7 @@ DEFAULT_WORKER_CONF = dict(
     broker_heartbeat=300,
     broker_connection_timeout=30,
     # Our tasks are technically idempotent, but we want to avoid multiple executions
-    task_acks_late=False,
+    task_acks_late=True,
     # worker_lost might occur during redeploys and that kind of thing
     task_reject_on_worker_lost=True,
     # We want to avoid stale results
