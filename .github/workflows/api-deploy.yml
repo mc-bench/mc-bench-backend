@@ -1,0 +1,52 @@
+name: API Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_hash:
+        description: 'Commit hash to deploy to production'
+        required: true
+        type: string
+
+env:
+  REGISTRY: "registry.digitalocean.com"
+  DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
+
+jobs:
+  verify-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit is on main
+        run: |
+          if ! git branch --contains ${{ github.event.inputs.commit_hash }} | grep -q "main"; then
+            echo "Error: Commit ${{ github.event.inputs.commit_hash }} is not on the main branch"
+            exit 1
+          fi
+
+  tag-api-production:
+    needs: verify-commit
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Tag API image as production
+        run: |
+          echo "Tagging api as production..."
+          docker buildx imagetools create \
+            ${{ env.REGISTRY }}/mcbench/api:${{ github.event.inputs.commit_hash }} \
+            --tag ${{ env.REGISTRY }}/mcbench/api:production 
