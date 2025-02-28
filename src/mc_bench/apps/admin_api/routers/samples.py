@@ -158,7 +158,11 @@ def list_samples(
     # Execute query and handle pagination
     total = db.scalar(select(func.count()).select_from(query.subquery()))
 
-    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = (
+        query.order_by(Sample.created.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     samples = db.scalars(query).all()
 
     return {

@@ -269,6 +269,12 @@ class RunRetryResponse(Base):
     pass
 
 
+class RunStagesResponse(Base):
+    """Response for available run stages."""
+
+    data: List[str]
+
+
 class PagingResponse(Base):
     page: int
     page_size: int

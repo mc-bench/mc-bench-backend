@@ -35,7 +35,7 @@ am = AuthManager(
 def get_tags(
     db: Session = Depends(get_managed_session),
 ):
-    tags = list(db.scalars(select(Tag)))
+    tags = list(db.scalars(select(Tag).order_by(Tag.created.desc())))
     payload = {
         "data": [tag.to_dict() for tag in tags],
         "total": len(tags),

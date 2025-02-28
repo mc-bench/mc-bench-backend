@@ -87,9 +87,15 @@ def get_models(
     models = list(db.scalars(select(Model)).all())
 
     if PERM.MODEL.ADMIN in current_scopes or PERM.MODEL.READ in current_scopes:
-        models = list(db.scalars(select(Model)))
+        models = list(db.scalars(select(Model).order_by(Model.created.desc())))
     else:
-        models = list(db.scalars(select(Model)).where(Model.creator == user))
+        models = list(
+            db.scalars(
+                select(Model)
+                .where(Model.creator == user)
+                .order_by(Model.created.desc())
+            )
+        )
 
     payload = {
         "data": [model.to_dict() for model in models],

@@ -67,9 +67,15 @@ def get_templates(
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
     if PERM.TEMPLATE.ADMIN in current_scopes or PERM.TEMPLATE.READ in current_scopes:
-        templates = list(db.scalars(select(Template)))
+        templates = list(db.scalars(select(Template).order_by(Template.created.desc())))
     else:
-        templates = list(db.scalars(select(Template).where(Template.author == user)))
+        templates = list(
+            db.scalars(
+                select(Template)
+                .where(Template.author == user)
+                .order_by(Template.created.desc())
+            )
+        )
 
     payload = {
         "data": [template.to_dict() for template in templates],

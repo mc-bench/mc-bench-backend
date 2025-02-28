@@ -32,6 +32,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-default_value}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-default_value}
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+      SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
 
   admin-api:
     build:
@@ -59,6 +60,7 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+      SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
 
   worker:
     build:
@@ -77,6 +79,7 @@ services:
       POSTGRES_PASSWORD: "mc-bench"
       POSTGRES_SSLMODE: "disable"
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+      SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
 
   admin-worker:
     build:
@@ -100,6 +103,7 @@ services:
       EXTERNAL_OBJECT_BUCKET: "mcbench-object-cdn-local"
       ADMIN_API_URL: "http://admin-api:8000"
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+      SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
 
       # LLM Service API Keys
       ALIBABA_CLOUD_API_KEY: ${ALIBABA_CLOUD_API_KEY}
@@ -137,6 +141,7 @@ services:
       ADMIN_API_URL: "http://admin-api:8000"
       FAST_RENDER: ${FAST_RENDER:-true}
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
+      SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
 
   server-worker:
     build:
@@ -168,6 +173,7 @@ services:
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
       BUILD_DELAY_MS: ${BUILD_DELAY_MS:-25}
       EXPORT_STRUCTURE_VIEWS: ${EXPORT_STRUCTURE_VIEWS:-true}
+      SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

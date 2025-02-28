@@ -19,6 +19,7 @@ from mc_bench.apps.admin_api.transport_types.responses import (
     RunDetailResponse,
     RunResponse,
     RunRetryResponse,
+    RunStagesResponse,
     RunStatusResponse,
 )
 from mc_bench.auth.permissions import PERM
@@ -31,14 +32,24 @@ from mc_bench.events.types import (
 )
 from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt
-from mc_bench.models.run import Generation, Run, run_state_id_for
+from mc_bench.models.run import (
+    Generation,
+    Run,
+    RunStage,
+    Stage,
+    run_stage_state_id_for,
+    run_state_id_for,
+)
 from mc_bench.models.template import Template
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
+from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_database
 
 from ..celery import celery as celery_app
+
+logger = get_logger(__name__)
 
 run_router = APIRouter()
 
@@ -63,6 +74,9 @@ def get_runs(
     prompt_id: Optional[List[UUID]] = Query(None),
     generation_id: Optional[List[UUID]] = Query(None),
     state: Optional[List[str]] = Query(None),
+    completed_stage: Optional[List[str]] = Query(None),
+    in_progress_stage: Optional[List[str]] = Query(None),
+    username: Optional[str] = Query(None),
     db: Session = Depends(get_managed_session),
     current_scopes: List[str] = Depends(am.current_scopes),
     user_uuid: str = Depends(am.get_current_user_uuid),
@@ -70,8 +84,32 @@ def get_runs(
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
 
     if PERM.RUN.ADMIN in current_scopes or PERM.RUN.READ in current_scopes:
-        query = select(Run).order_by(Run.created.desc())
+        # Basic permissions - allow global access with username filter
+        if username:
+            filtered_user = db.scalars(
+                select(User).where(User.username == username)
+            ).first()
+            if not filtered_user:
+                return {
+                    "data": [],
+                    "paging": {
+                        "page": page,
+                        "pageSize": page_size,
+                        "totalPages": 0,
+                        "totalItems": 0,
+                        "hasNext": False,
+                        "hasPrevious": False,
+                    },
+                }
+            query = (
+                select(Run)
+                .order_by(Run.created.desc())
+                .where(Run.creator == filtered_user)
+            )
+        else:
+            query = select(Run).order_by(Run.created.desc())
     else:
+        # Limited permissions - only see own runs
         query = select(Run).order_by(Run.created.desc()).where(Run.creator == user)
 
     # Apply filters
@@ -96,10 +134,59 @@ def get_runs(
         ]
         query = query.filter(Run.state_id.in_(state_ids))
 
+    # Add filter for completed stages
+    if completed_stage:
+        for stage_name in completed_stage:
+            # For each completed stage, add a join to find runs with that stage completed
+            stage_subquery = (
+                select(Stage.id).where(Stage.slug == stage_name).scalar_subquery()
+            )
+            completed_state_id = run_stage_state_id_for(db, RUN_STAGE_STATE.COMPLETED)
+
+            # Create a correlated subquery that properly links to the current Run
+            run_stage_alias = (
+                db.query(RunStage)
+                .filter(
+                    RunStage.run_id == Run.id,  # Important: Link to the current Run
+                    RunStage.stage_id == stage_subquery,
+                    RunStage.state_id == completed_state_id,
+                )
+                .exists()
+            )
+            query = query.filter(run_stage_alias)
+
+    # Add filter for in-progress stages
+    if in_progress_stage:
+        for stage_name in in_progress_stage:
+            # For each in-progress stage, add a join to find runs with that stage in progress
+            stage_subquery = (
+                select(Stage.id).where(Stage.slug == stage_name).scalar_subquery()
+            )
+            in_progress_state_id = run_stage_state_id_for(
+                db, RUN_STAGE_STATE.IN_PROGRESS
+            )
+
+            # Create a correlated subquery that properly links to the current Run
+            run_stage_alias = (
+                db.query(RunStage)
+                .filter(
+                    RunStage.run_id == Run.id,  # Important: Link to the current Run
+                    RunStage.stage_id == stage_subquery,
+                    RunStage.state_id == in_progress_state_id,
+                )
+                .exists()
+            )
+            query = query.filter(run_stage_alias)
+
     # Execute query and handle pagination
     total = db.scalar(select(func.count()).select_from(query.subquery()))
 
-    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = (
+        query.order_by(Run.created.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
     runs = db.scalars(query).all()
 
     return {
@@ -112,6 +199,23 @@ def get_runs(
             "hasNext": page * page_size < total,
             "hasPrevious": page > 1,
         },
+    }
+
+
+@run_router.get(
+    "/api/run/stages",
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.RUN.ADMIN, PERM.RUN.READ, PERM.RUN.WRITE])),
+    ],
+    response_model=RunStagesResponse,
+)
+def get_run_stages(
+    db: Session = Depends(get_managed_session),
+):
+    """Get all possible run stages for filtering."""
+    stages = db.scalars(select(Stage).order_by(Stage.slug)).all()
+    return {
+        "data": [stage.slug for stage in stages],
     }
 
 

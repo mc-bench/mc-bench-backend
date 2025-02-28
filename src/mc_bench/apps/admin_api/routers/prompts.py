@@ -70,9 +70,15 @@ def get_prompts(
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
     if PERM.PROMPT.ADMIN in current_scopes or PERM.PROMPT.READ in current_scopes:
-        prompts = list(db.scalars(select(Prompt)))
+        prompts = list(db.scalars(select(Prompt).order_by(Prompt.created.desc())))
     else:
-        prompts = list(db.scalars(select(Prompt).where(Prompt.creator == user)))
+        prompts = list(
+            db.scalars(
+                select(Prompt)
+                .where(Prompt.creator == user)
+                .order_by(Prompt.created.desc())
+            )
+        )
 
     payload = {
         "data": [prompt.to_dict(include_runs=False) for prompt in prompts],
