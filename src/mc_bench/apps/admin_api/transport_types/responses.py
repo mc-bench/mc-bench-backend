@@ -183,6 +183,7 @@ class PromptBaseResponse(Base):
     last_modified: Optional[datetime.datetime] = None
     last_modified_by: Optional[str] = None
     build_specification: str
+    build_size: Optional[str] = None
     active: bool
     usage: int
     tags: List[TagResponse]

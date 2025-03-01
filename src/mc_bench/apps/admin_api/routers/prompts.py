@@ -121,6 +121,7 @@ def create_prompt(
         author=user,
         name=prompt.name,
         build_specification=prompt.build_specification,
+        build_size=prompt.build_size,
         active=True,
     )
     db.add(prompt)

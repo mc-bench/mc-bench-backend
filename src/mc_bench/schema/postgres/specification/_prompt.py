@@ -35,6 +35,7 @@ prompt = Table(
     Column("name", String, unique=True, nullable=False),
     Column("active", Boolean, nullable=True),
     Column("build_specification", String, nullable=False),
+    Column("build_size", String, nullable=True),
     Column(
         "experimental_state_id",
         Integer,

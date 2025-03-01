@@ -107,6 +107,7 @@ class Prompt(Base):
             "last_modified": self.last_modified,
             "name": self.name,
             "build_specification": self.build_specification,
+            "build_size": self.build_size,
             "active": self.active,
             "usage": self.usage,
             "tags": [tag.to_dict() for tag in self.tags],

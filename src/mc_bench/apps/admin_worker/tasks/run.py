@@ -38,10 +38,15 @@ MOCK_SCRIPT = os.path.join(ADMIN_WORKER_DIR, "js_scripts", "mockScript.js")
     retry_on_failure=True,
 )
 def execute_prompt(stage_context: StageContext):
+    render_kwargs = {
+        "build_specification": stage_context.run.prompt.build_specification,
+    }
+
+    if stage_context.run.prompt.build_size is not None:
+        render_kwargs["build_size"] = stage_context.run.prompt.build_size
+
     response = stage_context.run.model.default_provider.execute_prompt(
-        prompt=stage_context.run.template.render(
-            build_specification=stage_context.run.prompt.build_specification,
-        )
+        prompt=stage_context.run.template.render(**render_kwargs)
     )
 
     sample_kwargs = {

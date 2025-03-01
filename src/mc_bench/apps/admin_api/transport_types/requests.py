@@ -24,6 +24,7 @@ class CreateModelRequest(Base):
 class CreatePromptRequest(Base):
     name: str
     build_specification: str
+    build_size: Optional[str] = None
     active: bool
     tags: Optional[List[str]] = None
 
