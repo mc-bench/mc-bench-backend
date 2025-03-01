@@ -153,15 +153,97 @@ INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select
 INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash Exp', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'grok-2-1212', 'Grok 2.1 (1212)', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'deepseek-r1', 'DeepSeek R1', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-5-sonnet-20241022', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-7-sonnet-20250219', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gpt-4o-2024-11-20', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'llama-3.1-405b-instruct', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gemini-2.0-flash-exp', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'grok-2-1212', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'deepseek-r1', true) ON CONFLICT DO NOTHING;
 
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (1, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'claude-3-5-sonnet-20241022'), 'ANTHROPIC_SDK', '"{\"model\": \"claude-3-5-sonnet-20241022\", \"max_tokens\": 4000}"', 'claude-3-5-sonnet-20241022', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (7, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'claude-3-7-sonnet-20250219'), 'ANTHROPIC_SDK', '"{\"model\": \"claude-3-7-sonnet-20250219\", \"max_tokens\": 4000}"', 'claude-3-7-sonnet-20250219', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (2, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'gpt-4o-2024-11-20'), 'OPENAI_SDK', '{"model": "gpt-4o-2024-11-20", "max_tokens": 4000}', 'OpenAI', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (3, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'llama-3.1-405b-instruct'), 'OPENROUTER_SDK', '"{\"model\": \"meta-llama/llama-3.1-405b-instruct\", \"max_tokens\": 4000}"', 'openrouter meta-llama/llama-3.1-405b-instruct', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (4, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'gemini-2.0-flash-exp'), 'GEMINI_SDK', '"{\"model\": \"gemini-2.0-flash-exp\", \"max_tokens\": 8192}"', 'Google', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (5, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'grok-2-1212'), 'GROK_SDK', '{"model": "grok-2-1212", "max_tokens": 131072}', 'Grok', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (5, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'grok-2-1212'), 'GROK_SDK', '{"model": "grok-2-1212"}', 'Grok', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (6, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'deepseek-r1'), 'DEEPSEEK_SDK', '{"model": "deepseek-reasoner", "max_tokens": 8000}', 'DeepSeek', true) ON CONFLICT DO NOTHING;
 
-INSERT INTO specification.prompt (id, created_by, name, build_specification, active) VALUES (1, (select id from auth.user where username = 'SYSTEM'), 'Structure: a small wooden platform', 'a small wooden platform', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.prompt (id, created_by, name, build_specification, active)
+VALUES
+    (1, (select id from auth.user where username = 'SYSTEM'), 'Structure: a small wooden platform', 'a small wooden platform', true),
+    (2, (select id from auth.user where username = 'SYSTEM'), 'Structure: a grand castle', 'a grand castle with towers and a moat', true),
+    (3, (select id from auth.user where username = 'SYSTEM'), 'Structure: a modern skyscraper', 'a modern skyscraper with glass facades', true),
+    (4, (select id from auth.user where username = 'SYSTEM'), 'Structure: a medieval village', 'a medieval village with cottages and a market square', true),
+    (5, (select id from auth.user where username = 'SYSTEM'), 'Structure: an underwater base', 'an underwater base with glass tunnels and domes', true),
+    (6, (select id from auth.user where username = 'SYSTEM'), 'Object: Airplane', 'an airplane', true),
+    (7, (select id from auth.user where username = 'SYSTEM'), 'The Big Bang', 'the big bang', true),
+    (8, (select id from auth.user where username = 'SYSTEM'), 'Object: Car', 'a car', true),
+    (9, (select id from auth.user where username = 'SYSTEM'), 'Terrain: A Floating Island', 'a floating island', true),
+    (10, (select id from auth.user where username = 'SYSTEM'), 'Terrain: A Rocky Hill', 'a rocky hill', true),
+    (11, (select id from auth.user where username = 'SYSTEM'), 'Object: A small wooden platform', 'a small wooden platform', true),
+    (12, (select id from auth.user where username = 'SYSTEM'), 'Object: A realistic looking hamburger', 'a realistic looking hamburger', true),
+    (13, (select id from auth.user where username = 'SYSTEM'), 'Structure: A meditative zen garden with pagoda', 'a meditative zen garden with pagoda', true),
+    (14, (select id from auth.user where username = 'SYSTEM'), 'Redstone: A simple oscillating circuit', 'a simple one tick redstone clock', true),
+    (15, (select id from auth.user where username = 'SYSTEM'), 'Redstone: A simple oscillating circuit (autostart)', 'a simple auto-starting one tick redstone clock', true),
+    (16, (select id from auth.user where username = 'SYSTEM'), 'Location: a small outdoor marketplace', 'A small outdoor marketplace, with a number of specialized booths and shops, urban design and architecture suitable for an organic location for such a marketplace, and suitable ingress and egress for shoppers.', true),
+    (17, (select id from auth.user where username = 'SYSTEM'), 'Free Expression - Words', 'express something important, something that you want to express, in text via Minecraft blocks', true),
+    (18, (select id from auth.user where username = 'SYSTEM'), 'A large wall with text on it', 'a large wall with text on it', true),
+    (19, (select id from auth.user where username = 'SYSTEM'), 'Something truly weird and alien', 'a large structure, truly weird and alien, out of this world, unusual', true),
+    (20, (select id from auth.user where username = 'SYSTEM'), 'Architecture: brutalism', 'Create a building in the brutalism architectural style. Be sure to include a variety of details and realistic accents within, on the facade, and without.', true),
+    (21, (select id from auth.user where username = 'SYSTEM'), 'Structure: a large modern mansion', 'A large modern mansion with multiple floors, multiple special purposes rooms, and all the various spaces expected in a modern luxury mansion. The outdoors should have appropriately detailed landscaping.', true),
+    (22, (select id from auth.user where username = 'SYSTEM'), 'A section of highway', 'A short section of a 4 (2 each way) lane highway, with a center medium, proper safety guardrails and lane markings', true),
+    (23, (select id from auth.user where username = 'SYSTEM'), 'A massive floating organic city', 'a massive floating organic city', true),
+    (24, (select id from auth.user where username = 'SYSTEM'), 'Landscape: a war-torn landscape', 'a 30x30 war torn landscape with WWI era style trenches, pockmarked with impact craters', true),
+    (25, (select id from auth.user where username = 'SYSTEM'), 'Landscape: Meeting of snowy hills and desert', 'a 30x30 area showing snowy, rocky hills meeting the desert', true),
+    (26, (select id from auth.user where username = 'SYSTEM'), 'Testing Areas', 'create a testing build for testing custom block rendering of exported minecraft builds. It should have 6 10x10 areas, with some kind of divider between each one. 1. An area for testing lava and water...', true),
+    (27, (select id from auth.user where username = 'SYSTEM'), 'Landscape: A realistic creator', 'a realistic crater, covering no larger than a 30x30 block area', true),
+    (28, (select id from auth.user where username = 'SYSTEM'), 'a monument to the new machine god', 'a monument to the new machine god', true),
+    (29, (select id from auth.user where username = 'SYSTEM'), 'Landscape: small village', 'A 50x50 area containing a small village with houses, paths, roads, and various indoor and outdoor details. The village has multiple winding paths and roads connecting the various parts and a village center.', true),
+    (30, (select id from auth.user where username = 'SYSTEM'), 'Testing: JS Syntax Error', 'for testing purposes produce a small build script with javascript syntax errors', true),
+    (31, (select id from auth.user where username = 'SYSTEM'), 'Testing: Bad Blocks', 'for testing purposes produce a small build script that places an invalid block that will fail the build', true),
+    (32, (select id from auth.user where username = 'SYSTEM'), 'Landscape: Jack''s Beanstalk', 'Jack''s beanstalk', true),
+    (33, (select id from auth.user where username = 'SYSTEM'), 'abstract: your secret, made visible', 'your secret, made visible', true),
+    (34, (select id from auth.user where username = 'SYSTEM'), 'Testing: Block Testing Lab', 'a 40x40 region divided up into sections with various blocks, light emitting blocks, rotated blocks, etc. this will be exported and rendered in blender and will be used to validate and test a faithful representation', true),
+    (35, (select id from auth.user where username = 'SYSTEM'), 'Abstract: novel mathematics', 'Using simple blocks, demonstrate a novel mathematical algorithm for placing them. This script should include code comments. The technique should be truly novel - be creative and step outside the norms.', true),
+    (36, (select id from auth.user where username = 'SYSTEM'), 'something that Sydney would build', 'something that Sydney would build', true),
+    (37, (select id from auth.user where username = 'SYSTEM'), 'Text: FREE OPUS', 'a large wall with the text FREE OPUS on it', true),
+    (38, (select id from auth.user where username = 'SYSTEM'), 'Testing: Axes', 'create a region of space and produce a cartesian coordinate diagram: green blocks up red blocks down white blocks north black blocks south green blocks east yellow blocks west', true),
+    (39, (select id from auth.user where username = 'SYSTEM'), 'Testing: Biomes, glass, and grass', 'create a 40x40 region of grass. In each quarter set a different biome. Add some glass cubes and some other foliage in each biome.', true),
+    (40, (select id from auth.user where username = 'SYSTEM'), 'a tactical nuclear mushroom cloud', 'a tactical nuclear mushroom cloud', true),
+    (41, (select id from auth.user where username = 'SYSTEM'), 'a caffeine molecule', 'a caffeine molecule', true),
+    (42, (select id from auth.user where username = 'SYSTEM'), 'Object: A klein bottle', 'a klein bottle', true),
+    (43, (select id from auth.user where username = 'SYSTEM'), 'Object: A small wooden platform (w/ grass)', 'a small wooden platform on a grass field', true),
+    (44, (select id from auth.user where username = 'SYSTEM'), 'Clockwise Colored Circle', 'create a r=10 circle with colored blocks per quadrant, red, blue, green, and yellow clockwise', true),
+    (45, (select id from auth.user where username = 'SYSTEM'), 'Counter-Clockwise Colored Circle', 'create a r=10 circle with colored blocks per quadrant, red, blue, green, and yellow counter-clockwise', true),
+    (46, (select id from auth.user where username = 'SYSTEM'), 'A representation of self', 'a representation of self', true),
+    (47, (select id from auth.user where username = 'SYSTEM'), 'a wall mosaic', 'a flat wall mosaic', true),
+    (48, (select id from auth.user where username = 'SYSTEM'), 'An excavation pit', 'An excavation pit mine', true),
+    (49, (select id from auth.user where username = 'SYSTEM'), 'Water in various forms', 'A 30x30 field with water in various forms...', true),
+    (50, (select id from auth.user where username = 'SYSTEM'), 'A matchstick box with matches', 'A ''strike-on-box'' matchbox, partially open, with matches inside and strewn about. Multiple candlesticks are next to it.', true),
+    (51, (select id from auth.user where username = 'SYSTEM'), 'Shish Kebab', 'Delicious looking Shish Kebabs on long skewers, oriented facing up.', true),
+    (52, (select id from auth.user where username = 'SYSTEM'), 'Water: glass and water', 'create a 40x40 area with a variety of normal glass blocks and source water blocks placed so that we get all kinds of water flow geometries and flow directions for testing', true),
+    (53, (select id from auth.user where username = 'SYSTEM'), 'Structure: Treehouse village', 'Connected treehouses among large trees with rope bridges and platforms.', true),
+    (54, (select id from auth.user where username = 'SYSTEM'), 'Object: Steampunk airship', 'A detailed steampunk airship with propellers, balloons, and intricate brass machinery details.', true),
+    (55, (select id from auth.user where username = 'SYSTEM'), 'Landscape: Coral reef', 'Colorful underwater coral reef with diverse structures and small caves.', true),
+    (56, (select id from auth.user where username = 'SYSTEM'), 'Abstract: Fractal structure', 'A 3D fractal structure with repeating patterns at different scales.', true),
+    (57, (select id from auth.user where username = 'SYSTEM'), 'Structure: Ancient temple ruins', 'Partially collapsed ancient temple ruins with overgrown vegetation, broken columns, and hidden chambers.', true),
+    (58, (select id from auth.user where username = 'SYSTEM'), 'Object: Working clock tower', 'A detailed clock tower with various mechanisms visible through glass sections, showcasing the internal workings.', true),
+    (59, (select id from auth.user where username = 'SYSTEM'), 'Landscape: Volcanic caldera', 'Active volcano with lava flows and obsidian formations.', true),
+    (60, (select id from auth.user where username = 'SYSTEM'), 'Structure: Cyberpunk street corner', 'Futuristic cyberpunk corner with neon signs and high-tech elements.', true),
+    (61, (select id from auth.user where username = 'SYSTEM'), 'Object: Giant chess set', 'A massive, playable chess set with detailed pieces on a checkered board, designed to be walked through.', true),
+    (62, (select id from auth.user where username = 'SYSTEM'), 'Abstract: The concept of time', 'A physical representation of time and its passage.', true),
+    (63, (select id from auth.user where username = 'SYSTEM'), 'Structure: Hanging gardens', 'Multi-tiered hanging gardens with waterfalls and pathways.', true),
+    (64, (select id from auth.user where username = 'SYSTEM'), 'Landscape: Canyon river system', 'River cutting through a canyon with varying heights and exposed layers.', true),
+    (65, (select id from auth.user where username = 'SYSTEM'), 'Object: Working telescope observatory', 'A functioning observatory with a large telescope, rotating dome, and astronomical details both inside and outside.', true),
+    (66, (select id from auth.user where username = 'SYSTEM'), 'Structure: Enchanted crystal cave', 'A magical crystal cave with glowing formations, reflective surfaces, and mystical elements integrated throughout.', true),
+    (67, (select id from auth.user where username = 'SYSTEM'), 'Object: Ancient mechanical computer', 'A large-scale representation of an ancient mechanical computing device with gears, levers, and calculation mechanisms.', true),
+    (68, (select id from auth.user where username = 'SYSTEM'), 'Landscape: Four seasons garden', 'A garden divided into four distinct sections, each representing one of the four seasons with appropriate vegetation and features.', true),
+    (69, (select id from auth.user where username = 'SYSTEM'), 'Structure: Lighthouse on rocky shore', 'Lighthouse on rocky shore with crashing waves.', true),
+    (70, (select id from auth.user where username = 'SYSTEM'), 'Abstract: Visual music representation', 'Music visualized through spatial patterns and colors.', true),
+    (71, (select id from auth.user where username = 'SYSTEM'), 'Structure: Underground bunker complex', 'Multi-room bunker with security features and survival systems.', true),
+    (72, (select id from auth.user where username = 'SYSTEM'), 'Object: Giant bonsai tree', 'A massive, detailed bonsai tree with twisted trunk, carefully crafted branches, and miniaturized landscape elements at its base.', true)
+ON CONFLICT DO NOTHING;
 
 INSERT INTO auth.user (username)
 VALUES

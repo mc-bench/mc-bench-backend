@@ -268,3 +268,6 @@ test-schema-conversion/
 *.obj
 .DS_Store
 notebooks
+
+backups/
+backup/
