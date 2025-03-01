@@ -167,3 +167,16 @@ class TemplateObservationRequest(Base):
 
 class UpdateRolesRequest(Base):
     roles: List[uuid.UUID]
+
+
+class CancelConsumerRequest(Base):
+    """Request to cancel a worker's consumption from a queue."""
+
+    queue: str
+
+
+class WorkerActionRequest(Base):
+    """Request to perform an action on a worker."""
+
+    action: str  # Can be "shutdown", "restart", "pool_grow", "pool_shrink"
+    option: Optional[Any] = None  # Additional option for the action if needed

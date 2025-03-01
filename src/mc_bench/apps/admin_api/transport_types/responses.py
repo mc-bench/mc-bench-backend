@@ -304,3 +304,68 @@ class UserResponse(Base):
     username: str
     roles: List[RoleResponse]
     permissions: List[str]
+
+
+class WorkerTaskResponse(Base):
+    """Information about a task being processed by a worker."""
+
+    id: str
+    name: str
+    started_at: Optional[datetime.datetime] = None
+    args: List[Any]
+    kwargs: Dict[str, Any]
+    status: str
+    eta: Optional[datetime.datetime] = None
+    retries: int = 0
+
+
+class WorkerResponse(Base):
+    """Information about a Celery worker."""
+
+    id: str
+    hostname: str
+    status: str
+    queues: List[str]
+    concurrency: int
+    pool_size: int
+    tasks: List[WorkerTaskResponse]
+    last_heartbeat: Optional[datetime.datetime] = None
+    started_at: Optional[datetime.datetime] = None
+
+
+class QueuedTaskResponse(Base):
+    """Information about a task in the queue not yet picked up."""
+
+    id: str
+    name: str
+    args: List[Any]
+    kwargs: Dict[str, Any]
+    eta: Optional[datetime.datetime] = None
+    priority: Optional[int] = None
+    queued_at: Optional[datetime.datetime] = None
+
+
+class QueueResponse(Base):
+    """Information about a Celery queue."""
+
+    name: str
+    count: int
+    tasks: List[QueuedTaskResponse]
+    worker_count: int
+
+
+class InfraStatusResponse(Base):
+    """Overall infrastructure status."""
+
+    workers: List[WorkerResponse]
+    queues: List[QueueResponse]
+    total_active_tasks: int
+    total_queued_tasks: int
+    warnings: List[str]
+
+
+class CancelConsumerResponse(Base):
+    """Response for cancelling a consumer."""
+
+    success: bool
+    message: str

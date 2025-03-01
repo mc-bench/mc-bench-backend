@@ -24,6 +24,8 @@ DEFAULT_WORKER_CONF = dict(
     # We want to make sure to retry connection to the broker on startup
     broker_connection_retry_on_startup=True,
     worker_hijack_root_logger=False,
+    # Enable pool restarts
+    worker_pool_restarts=True,
 )
 
 DEFAULT_CLIENT_CONF = dict()

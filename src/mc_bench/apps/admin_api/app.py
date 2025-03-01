@@ -6,6 +6,7 @@ from scalar_fastapi import get_scalar_api_reference
 
 from mc_bench.apps.admin_api.routers.auth import auth_router
 from mc_bench.apps.admin_api.routers.generations import generation_router
+from mc_bench.apps.admin_api.routers.infra import infra_router
 from mc_bench.apps.admin_api.routers.models import model_router
 from mc_bench.apps.admin_api.routers.prompts import prompt_router
 from mc_bench.apps.admin_api.routers.runs import run_router
@@ -39,6 +40,7 @@ app.include_router(sample_router)
 app.include_router(tag_router)
 app.include_router(user_router)
 app.include_router(auth_router)
+app.include_router(infra_router)
 
 
 @app.get("/scalar", include_in_schema=False)
