@@ -259,6 +259,86 @@ class PlacedBlock:
         return f"PlacedBlock(\n{formatted_attrs}\n)"
 
 
+def hex_to_srgb(hex_color: str) -> tuple[float, float, float]:
+    """Convert a hex color string to RGB tuple with values between 0 and 1.
+
+    Args:
+        hex_color: Hex color string (e.g. '#79c05f' or '79c05f')
+
+    Returns:
+        Tuple of (red, green, blue) values normalized between 0 and 1
+
+    Example:
+        >>> hex_to_rgb('#79c05f')
+        (0.4745098039215686, 0.7529411764705882, 0.37254901960784315)
+    """
+    # Remove '#' if present
+    hex_color = hex_color.lstrip("#")
+
+    # Convert hex to RGB values (0-255)
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+
+    # Normalize to 0-1 range
+    color = (r / 255.0, g / 255.0, b / 255.0)
+    srgb = tuple(pow(c, 2.2) for c in color)
+    return srgb
+
+
+def _apply_contrast(value: float, contrast: float) -> float:
+    """Apply contrast adjustment to a single color value.
+
+    Args:
+        value: Color value between 0 and 1
+        contrast: Contrast adjustment value
+
+    Returns:
+        Adjusted color value between 0 and 1
+    """
+    # This matches Blender's contrast adjustment formula
+    return max(0.0, min(1.0, 0.5 + (1.0 + contrast) * (value - 0.5)))
+
+
+def _modify_texture_pixels(
+    pixels: list[float],
+    tint: Optional[tuple[float, float, float]] = None,
+    contrast: float = 0.0,
+) -> list[float]:
+    """Modify texture pixels by applying tint and contrast adjustments.
+
+    Args:
+        pixels: List of pixel values in RGBA format (values between 0 and 1)
+        tint: Optional RGB tint color to multiply with pixel colors
+        contrast: Contrast adjustment value
+
+    Returns:
+        Modified list of pixel values
+    """
+    modified = pixels.copy()
+
+    # Process 4 values at a time (RGBA)
+    for i in range(0, len(modified), 4):
+        # Apply tint if specified
+        if tint:
+            modified[i] *= tint[0]  # R
+            modified[i + 1] *= tint[1]  # G
+            modified[i + 2] *= tint[2]  # B
+
+        # Apply contrast if specified
+        if contrast != 0.0:
+            modified[i] = _apply_contrast(modified[i], contrast)
+            modified[i + 1] = _apply_contrast(modified[i + 1], contrast)
+            modified[i + 2] = _apply_contrast(modified[i + 2], contrast)
+
+        # Ensure values stay in valid range
+        modified[i] = max(0.0, min(1.0, modified[i]))
+        modified[i + 1] = max(0.0, min(1.0, modified[i + 1]))
+        modified[i + 2] = max(0.0, min(1.0, modified[i + 2]))
+
+    return modified
+
+
 class Renderer:
     def __init__(
         self,
@@ -331,7 +411,9 @@ class Renderer:
 
         scene.world.use_nodes = True
 
-    def create_block(self, block: Block) -> dict[str, list[bpy.types.Object]]:
+    def create_block(
+        self, block: Block, fast_render: bool = False
+    ) -> dict[str, list[bpy.types.Object]]:
         """Create all models for a block"""
         object_index = self.get_next_index()
         object_index_str = f"{object_index:05d}"
@@ -410,6 +492,7 @@ class Renderer:
                 model,
                 object_index_str,
                 light_emission=block.light_emission,
+                fast_render=fast_render,
             )
 
             # Parent all model objects to the model empty
@@ -426,6 +509,7 @@ class Renderer:
         index_str: str,
         collection=None,
         light_emission=None,
+        fast_render=False,
     ) -> list[bpy.types.Object]:
         """Create all elements for a model"""
 
@@ -443,13 +527,16 @@ class Renderer:
                 f"{index_str}_{element.name}",
                 index_str,
                 light_emission=light_emission,
+                fast_render=fast_render,
             )
             collection.objects.link(obj)
             objects.append(obj)
 
         return objects
 
-    def create_element_mesh(self, element, name, index_str, light_emission=None):
+    def create_element_mesh(
+        self, element, name, index_str, light_emission=None, fast_render=False
+    ):
         """Create a mesh object for an element, using instancing when possible."""
         # Check if we already have this element cached
         element_key = element.key
@@ -527,6 +614,7 @@ class Renderer:
                     light_emission=light_emission,
                     ambient_occlusion=face.ambient_occlusion,
                     use_backface_culling="glass" in material_name,
+                    fast_render=fast_render,
                 )
                 if mat.name not in mesh.materials:
                     mesh.materials.append(mat)
@@ -568,6 +656,7 @@ class Renderer:
         light_emission: Optional[float] = None,
         ambient_occlusion: bool = True,
         use_backface_culling: bool = False,
+        fast_render: bool = False,
     ) -> bpy.types.Material:
         """Create a material with baked textures for Minecraft blocks.
 
@@ -577,6 +666,8 @@ class Renderer:
             tint (tuple, optional): The tint color for the material.
             light_emission (float, optional): The light emission level for the material.
             ambient_occlusion (bool, optional): Whether to include ambient occlusion.
+            use_backface_culling (bool): Whether to enable backface culling.
+            fast_render (bool): Whether to use fast rendering mode.
         Returns:
             bpy.types.Material: The created material.
         """
@@ -597,27 +688,33 @@ class Renderer:
             #     f"All materials must be unique due to baking. {name} not unique"
             # )
 
-        # Load and bake the texture
+        # Load the texture
         img = bpy.data.images.load(texture_path)
         img.use_fake_user = True
 
-        # NOTE: The following code creates an image copy and packs it
-        # I do not know why this is needed, but when I remove it all my
-        # transparent textures are black. C'est la vie.
+        if fast_render and (
+            tint is not None or True
+        ):  # Always apply contrast in fast mode
+            # Create a copy of the image for modification
+            img_copy = bpy.data.images.new(
+                name=f"{name}_modified",
+                width=img.size[0],
+                height=img.size[1],
+                alpha=True,
+            )
 
-        # Create a new image for the baked result
-        img_copy = bpy.data.images.new(
-            name=f"{name}_copy",
-            width=img.size[0],
-            height=img.size[1],
-            alpha=True,
-        )
-
-        # Copy pixel data and ensure alpha is properly set
-        if img.has_data:
+            # Get and modify pixels
             pixels = list(img.pixels[:])
-            img_copy.pixels = pixels
-            img_copy.pack()  # Pack image data into .blend file
+            modified_pixels = _modify_texture_pixels(
+                pixels,
+                tint=tint,
+                contrast=0.0,  # 0.09,  # Same contrast value as before
+            )
+
+            # Apply modified pixels
+            img_copy.pixels = modified_pixels
+            img_copy.pack()
+            img = img_copy  # Use the modified image
 
         # Check for transparency in the image
         has_transparency = False
@@ -643,23 +740,21 @@ class Renderer:
         tex_image = nodes.new("ShaderNodeTexImage")
         tex_image.location = (-200, 0)
 
-        # Tinting Nodes
-        tint_node = nodes.new("ShaderNodeRGB")
-        tint_node.location = (-200, 200)
-        tint_multiply_node = nodes.new("ShaderNodeMixRGB")
-        tint_multiply_node.location = (100, 250)
-        tint_multiply_node.blend_type = "MULTIPLY"
-        tint_multiply_node.inputs[0].default_value = 1.0
+        if not fast_render:
+            # Tinting Nodes (only in normal mode)
+            if tint is not None:
+                tint_node = nodes.new("ShaderNodeRGB")
+                tint_node.location = (-200, 200)
+                tint_multiply_node = nodes.new("ShaderNodeMixRGB")
+                tint_multiply_node.location = (100, 250)
+                tint_multiply_node.blend_type = "MULTIPLY"
+                tint_multiply_node.inputs[0].default_value = 1.0
 
-        # Ambient Occlusion Nodes
-        ao_node = nodes.new("ShaderNodeAmbientOcclusion")
-        ao_node.location = (-200, -300)
-        ao_mix_node = nodes.new("ShaderNodeMixRGB")
-        ao_mix_node.location = (300, 0)
-        ao_mix_node.blend_type = "MULTIPLY"
-        ao_mix_node.inputs[0].default_value = 1.0
-
-        # Emission Nodes
+            # Color correction for more vibrant colors (only in normal mode)
+            color_correct = nodes.new("ShaderNodeBrightContrast")
+            color_correct.location = (0, 0)
+            color_correct.inputs["Bright"].default_value = 0.0
+            color_correct.inputs["Contrast"].default_value = 0.09
 
         principled_bsdf = nodes.new("ShaderNodeBsdfPrincipled")
         principled_bsdf.location = (500, 0)
@@ -676,118 +771,56 @@ class Renderer:
         output_node = nodes.new("ShaderNodeOutputMaterial")
         output_node.location = (1000, 0)
 
-        # Optimize Principled BSDF settings for more vibrant Minecraft-like textures
-        principled_bsdf.inputs["Specular IOR Level"].default_value = 0  # No specular
-        principled_bsdf.inputs["Roughness"].default_value = 1.0  # Full roughness
-        principled_bsdf.inputs["Metallic"].default_value = 0  # No metallic
-        principled_bsdf.inputs["Alpha"].default_value = 1.0  # Full opacity
-
-        # Add color correction nodes for more vibrant colors
-        color_correct = nodes.new("ShaderNodeBrightContrast")
-        color_correct.location = (0, 0)
-        color_correct.inputs["Bright"].default_value = 0.0
-        color_correct.inputs["Contrast"].default_value = 0.09
-
-        # Update these settings for the texture image node
-        tex_image.interpolation = "Closest"
-        tex_image.extension = "CLIP"  # Changed from REPEAT to prevent edge bleeding
-
-        # Modify Principled BSDF settings to prevent edge artifacts
+        # Optimize Principled BSDF settings
         principled_bsdf.inputs["Specular IOR Level"].default_value = 0
-        principled_bsdf.inputs["Roughness"].default_value = 1
+        principled_bsdf.inputs["Roughness"].default_value = 1.0
         principled_bsdf.inputs["Metallic"].default_value = 0
-        principled_bsdf.inputs["Alpha"].default_value = 1
+        principled_bsdf.inputs["Alpha"].default_value = 1.0
 
         tex_image.image = img
         tex_image.interpolation = "Closest"
         tex_image.extension = "REPEAT"
 
         color = tex_image.outputs["Color"]
-        raw_color = tex_image.outputs["Color"]
 
-        has_tint = tint is not None
-        # TODO: Add emission if we get a better rendering pipeline built
-        has_emission = False  # light_emission is not None
-        # TODO: Add ambient occlusion that doesn't black out most side blocks
-        has_ambient_occlusion = False  # ambient_occlusion
+        if not fast_render:
+            # Apply tinting in shader network
+            if tint is not None:
+                _rgba_tint = (tint[0], tint[1], tint[2], 1)
+                tint_node.outputs[0].default_value = _rgba_tint
+                links.new(tint_node.outputs[0], tint_multiply_node.inputs[1])
+                links.new(color, tint_multiply_node.inputs[2])
+                color = tint_multiply_node.outputs[0]
 
-        # with the color input from the image to create a tinted image
-        if has_tint:
-            _rgba_tint = (tint[0], tint[1], tint[2], 1)
-            tint_node.outputs[0].default_value = _rgba_tint
-            links.new(tint_node.outputs[0], tint_multiply_node.inputs[1])
-            links.new(color, tint_multiply_node.inputs[2])
-            color = tint_multiply_node.outputs[0]
-            raw_color = tint_multiply_node.outputs[0]
-        else:
-            nodes.remove(tint_node)
-            nodes.remove(tint_multiply_node)
+            # Apply contrast adjustment in shader network
+            links.new(color, color_correct.inputs["Color"])
+            color = color_correct.outputs["Color"]
 
-        links.new(color, color_correct.inputs["Color"])
-        color = color_correct.outputs["Color"]
-        raw_color = color_correct.outputs["Color"]
-
-        if has_ambient_occlusion:
-            links.new(color, ao_mix_node.inputs[1])
-            links.new(ao_node.outputs["Color"], ao_mix_node.inputs[2])
-            color = ao_mix_node.outputs[0]
-            links.new(color, principled_bsdf.inputs["Base Color"])
-        else:
-            links.new(color, principled_bsdf.inputs["Base Color"])
-            nodes.remove(ao_node)
-            nodes.remove(ao_mix_node)
-
-        if has_emission:
-            links.new(raw_color, emission_node.inputs[0])
-            links.new(emission_node.outputs[0], emission_mix_node.inputs[1])
-            links.new(principled_bsdf.outputs[0], emission_mix_node.inputs[2])
-            links.new(emission_mix_node.outputs[0], output_node.inputs["Surface"])
-
-            if has_transparency:
-                links.new(
-                    emission_transparent_bsdf.outputs[0],
-                    emission_alpha_mix_node.inputs[1],
-                )
-                links.new(
-                    emission_mix_node.outputs[0], emission_alpha_mix_node.inputs[2]
-                )
-                links.new(tex_image.outputs["Alpha"], emission_alpha_mix_node.inputs[0])
-                links.new(
-                    emission_alpha_mix_node.outputs[0], output_node.inputs["Surface"]
-                )
-            else:
-                links.new(emission_mix_node.outputs[0], output_node.inputs["Surface"])
-                nodes.remove(emission_transparent_bsdf)
-                nodes.remove(emission_alpha_mix_node)
-
-        else:
-            links.new(principled_bsdf.outputs[0], output_node.inputs["Surface"])
-            nodes.remove(emission_node)
-            nodes.remove(emission_mix_node)
+        # Connect final color to Principled BSDF
+        links.new(color, principled_bsdf.inputs["Base Color"])
 
         # Connect nodes
         links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
         links.new(mapping.outputs["Vector"], tex_image.inputs["Vector"])
 
-        # Only connect alpha if transparency is detected
+        # Handle transparency
         if has_transparency:
             links.new(tex_image.outputs["Alpha"], principled_bsdf.inputs["Alpha"])
-        else:
-            # Set alpha to 1.0 for opaque materials
-            principled_bsdf.inputs["Alpha"].default_value = 1.0
-
-        # Material settings based on transparency
-        if has_transparency:
             mat.blend_method = "BLEND"
             mat.use_backface_culling = use_backface_culling
         else:
+            principled_bsdf.inputs["Alpha"].default_value = 1.0
             mat.blend_method = "OPAQUE"
             mat.use_backface_culling = use_backface_culling
+
+        # Connect final output
+        links.new(principled_bsdf.outputs[0], output_node.inputs["Surface"])
+
         return mat
 
-    def place_block(self, placed_block: PlacedBlock):
+    def place_block(self, placed_block: PlacedBlock, fast_render: bool = False):
         """Place a block at the specified coordinates"""
-        block_data = self.create_block(placed_block.block)
+        block_data = self.create_block(placed_block.block, fast_render=fast_render)
 
         # Move only the main parent object, which will move all children
         block_data["parent"].location = Vector(
@@ -1029,7 +1062,7 @@ class Renderer:
 
         # Place all blocks first
         for i, placed_block in enumerate(placed_blocks):
-            self.place_block(placed_block)
+            self.place_block(placed_block, fast_render=fast_render)
             if i % 100 == 0:
                 msg = f"{i+1} / {len(placed_blocks)} blocks placed in the scene"
                 logger.info(msg)
@@ -1327,30 +1360,3 @@ class Renderer:
 
         # Force scene update to refresh materials
         bpy.context.view_layer.update()
-
-
-def hex_to_srgb(hex_color: str) -> tuple[float, float, float]:
-    """Convert a hex color string to RGB tuple with values between 0 and 1.
-
-    Args:
-        hex_color: Hex color string (e.g. '#79c05f' or '79c05f')
-
-    Returns:
-        Tuple of (red, green, blue) values normalized between 0 and 1
-
-    Example:
-        >>> hex_to_rgb('#79c05f')
-        (0.4745098039215686, 0.7529411764705882, 0.37254901960784315)
-    """
-    # Remove '#' if present
-    hex_color = hex_color.lstrip("#")
-
-    # Convert hex to RGB values (0-255)
-    r = int(hex_color[0:2], 16)
-    g = int(hex_color[2:4], 16)
-    b = int(hex_color[4:6], 16)
-
-    # Normalize to 0-1 range
-    color = (r / 255.0, g / 255.0, b / 255.0)
-    srgb = tuple(pow(c, 2.2) for c in color)
-    return srgb
