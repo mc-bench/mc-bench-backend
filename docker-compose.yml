@@ -83,8 +83,7 @@ services:
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
       SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      CONTAINER_NAME: "worker-local"
-    command: celery -A mc_bench.apps.worker worker -Q default --concurrency ${NUM_WORKERS:-1} -n "worker-local@localhost"
+      WORKER_NAME: "worker-local@localhost"
 
   admin-worker:
     build:
@@ -111,7 +110,7 @@ services:
       SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_INTERVAL_COMMANDS: ${LOG_INTERVAL_COMMANDS:-50}
-      CONTAINER_NAME: "admin-worker-local"
+      WORKER_NAME: "admin-worker-local@localhost"
 
       # LLM Service API Keys
       ALIBABA_CLOUD_API_KEY: ${ALIBABA_CLOUD_API_KEY}
@@ -124,7 +123,6 @@ services:
       MISTRAL_API_KEY: ${MISTRAL_API_KEY}
       REKA_API_KEY: ${REKA_API_KEY}
       ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY}
-    command: celery -A mc_bench.apps.admin_worker worker -Q admin --concurrency ${NUM_WORKERS:-4} -n "admin-worker-local@localhost"
 
   render-worker:
     platform: linux/amd64
@@ -154,8 +152,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_INTERVAL_BLOCKS: ${LOG_INTERVAL_BLOCKS:-100}
       LOG_INTERVAL_MATERIALS: ${LOG_INTERVAL_MATERIALS:-10}
-      CONTAINER_NAME: "render-worker-local"
-    command: celery -A mc_bench.apps.render_worker worker -Q render --concurrency ${NUM_WORKERS:-1} -n "render-worker-local@localhost"
+      WORKER_NAME: "render-worker-local@localhost"
 
   server-worker:
     build:
@@ -191,11 +188,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_INTERVAL_COMMANDS: ${LOG_INTERVAL_COMMANDS:-50}
       LOG_INTERVAL_EXPORT_PERCENT: ${LOG_INTERVAL_EXPORT_PERCENT:-10}
-      CONTAINER_NAME: "server-worker-local"
-
+      WORKER_NAME: "server-worker-local@localhost"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    command: celery -A mc_bench.apps.server_worker worker -Q server --concurrency ${NUM_WORKERS:-1} -n "server-worker-local@localhost"
 
   admin-flower:
     build:

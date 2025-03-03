@@ -11,4 +11,4 @@ RUN pip install /usr/lib/mc-bench-backend[admin-worker]
 
 ENV NUM_WORKERS=4
 ENTRYPOINT []
-CMD exec celery -A mc_bench.apps.admin_worker worker -Q admin --concurrency $NUM_WORKERS
+CMD exec celery -A mc_bench.apps.admin_worker worker -Q admin --concurrency $NUM_WORKERS -n $WORKER_NAME
