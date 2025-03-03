@@ -105,7 +105,34 @@ See the docker-compose.yml file for what services are started up and which ports
 
 # Tail the logs
 
+```shell
 docker-compose logs -f
+```
+
+# Logging Configuration
+
+The application uses structured logging with configurable log levels. The default level is INFO, but you can change it to DEBUG for more detailed logs:
+
+```shell
+# In your .env file or as environment variables:
+export LOG_LEVEL="DEBUG"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+```
+
+Additionally, several interval settings control how frequently certain operations are logged at INFO level:
+
+```shell
+# Log every N blocks placed during rendering
+export LOG_INTERVAL_BLOCKS="100"  
+
+# Log every N materials baked during rendering
+export LOG_INTERVAL_MATERIALS="10"  
+
+# Log every N build commands during server operations
+export LOG_INTERVAL_COMMANDS="50"  
+
+# Log export progress at every N percent complete
+export LOG_INTERVAL_EXPORT_PERCENT="10"
+```
 
 # Formatting/Linting
 

@@ -134,17 +134,28 @@ def build_structure(stage_context: StageContext):
             container_id, log_line = log_item.container_id, log_item.log_line
             container_name = container_lookup[container_id]
             decoded_log_line = log_line.decode("utf-8")
-            logger.info(f"{container_name}({container_id}): {decoded_log_line}")
+            # Keep individual container logs at DEBUG level - very high cardinality
+            logger.debug(f"{container_name}({container_id}): {decoded_log_line}")
+            last_command_count_logged = build_command_count
 
             if container_name == "server":
                 if "/setblock" in decoded_log_line or "/fill" in decoded_log_line:
                     build_command_count += 1
 
-                if build_command_count % 50 == 0:
+                if (
+                    build_command_count != last_command_count_logged
+                    and build_command_count > 1
+                    and build_command_count % settings.LOG_INTERVAL_COMMANDS == 0
+                ):
+                    # Add INFO log with configurable interval
+                    logger.info(
+                        f"Build progress: {build_command_count} commands executed"
+                    )
                     stage_context.update_stage_progress(
                         progress=0,
                         note=f"building... ({build_command_count} build commands executed)",
                     )
+                    last_command_count_logged = build_command_count
 
         stage_context.update_stage_progress(
             progress=0.9,
@@ -300,7 +311,9 @@ def export_structure_views(stage_context: StageContext):
             command_list=command_list,
         )
 
-        logger.info("Expected frame count", expected_frame_count=expected_frame_count)
+        logger.info(
+            "Expected frame count", expected_frame_count=expected_frame_count
+        )  # Keep as info - important configuration detail
 
         container_lookup = {
             builder_id: "builder",
@@ -323,8 +336,19 @@ def export_structure_views(stage_context: StageContext):
                         progress=progress,
                         note=f"exporting cinematic frames (~{frame_count}/{expected_frame_count})",
                     )
+                    # Add INFO log with frame count at configurable percentage intervals
+                    interval_frames = (
+                        expected_frame_count
+                        * settings.LOG_INTERVAL_EXPORT_PERCENT
+                        // 100
+                    )
+                    if interval_frames > 0 and frame_count % interval_frames == 0:
+                        logger.info(
+                            f"Export progress: {frame_count}/{expected_frame_count} frames ({progress:.1%})"
+                        )
 
-            logger.info(f"{container_name}({container_id}): {decoded_log_line}")
+            # Keep individual container logs at DEBUG level - very high cardinality
+            logger.debug(f"{container_name}({container_id}): {decoded_log_line}")
 
         stage_context.update_stage_progress(
             progress=progress,

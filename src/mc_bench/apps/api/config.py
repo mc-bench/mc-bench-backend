@@ -1,3 +1,4 @@
+import logging
 import os
 
 
@@ -22,6 +23,8 @@ class Settings:
     GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
     GOOGLE_REDIRECT_URI = os.environ["GOOGLE_REDIRECT_URI"]
     HUMANIZE_LOGS = os.environ.get("HUMANIZE_LOGS", "false") == "true"
+    LOG_LEVEL_STR = os.environ.get("LOG_LEVEL", "INFO")
+    LOG_LEVEL = getattr(logging, LOG_LEVEL_STR.upper(), logging.INFO)
 
 
 settings = Settings()

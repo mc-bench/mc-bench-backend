@@ -40,7 +40,7 @@ sed -i "s/minecraft-builder:[[:alnum:]_-]\+/minecraft-builder:$TAG/" /opt/secret
 # Start the new container
 docker run -d --name "$NEW_CONTAINER_NAME" \
     --pull always \
-    --restart unless-stopped \
+    --rm \
     --env-file /opt/secrets/.env \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /root/.docker/config.json:/root/.docker/config.json \

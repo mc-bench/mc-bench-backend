@@ -55,6 +55,7 @@ import time
 
 from mathutils import Vector
 
+from mc_bench.apps.render_worker.config import settings
 from mc_bench.util.logging import get_logger
 
 logger = get_logger(__name__)
@@ -223,7 +224,7 @@ class Face:
         if self.tint:
             name = f"{name}_tinted_{self.tint.lstrip('#')}"
 
-        logger.info(f"Material name: {name}")
+        logger.debug(f"Material name: {name}")
 
         return name
 
@@ -1056,16 +1057,18 @@ class Renderer:
 
         name, _ = os.path.splitext(name)
 
-        logger.info("Placing blocks", flush=True)
+        logger.info(
+            "Placing blocks", flush=True
+        )  # Keep as info - signals start of process
 
         self.progress_callback("Placing blocks in the rendered scene", progress=0.0)
 
         # Place all blocks first
         for i, placed_block in enumerate(placed_blocks):
             self.place_block(placed_block, fast_render=fast_render)
-            if i % 100 == 0:
+            if i % settings.LOG_INTERVAL_BLOCKS == 0:
                 msg = f"{i+1} / {len(placed_blocks)} blocks placed in the scene"
-                logger.info(msg)
+                logger.info(msg)  # Keeping at INFO level with configurable interval
                 self.progress_callback(
                     msg,
                     progress=0.1 * (i + 1) / len(placed_blocks),
@@ -1073,7 +1076,7 @@ class Renderer:
 
         self.progress_callback("All blocks placed in the scene", progress=0.1)
 
-        logger.info("Done placing blocks")
+        logger.info("Done placing blocks")  # Keep as info - signals end of process
 
         if pre_export:
             # Continue with existing render code...
@@ -1092,11 +1095,14 @@ class Renderer:
 
             return
 
-        logger.info("Baking materials")
+        logger.info("Baking materials")  # Keep as info - signals start of process
         # Stage 1: Bake all materials
         for i, material in enumerate(bpy.data.materials):
             self.bake_material(material, time_of_day)
-            if i % 10 == 0:
+            if i % settings.LOG_INTERVAL_MATERIALS == 0:
+                logger.info(
+                    f"{i+1} / {len(bpy.data.materials)} materials baked"
+                )  # Keeping at INFO with configurable interval
                 self.progress_callback(
                     f"{i+1} / {len(bpy.data.materials)} materials baked",
                     progress=0.1 + (0.7 * (i + 1) / len(bpy.data.materials)),
@@ -1106,14 +1112,18 @@ class Renderer:
 
         logger.info("Done baking materials")
 
-        logger.info("Applying baked materials")
+        logger.info(
+            "Applying baked materials"
+        )  # Keep as info - signals start of process
         # Stage 2: Apply all baked materials
         self.progress_callback("Applying baked materials", progress=0.81)
         self.apply_baked_materials()
         self.progress_callback("Done applying baked materials", progress=0.82)
-        logger.info("Done applying baked materials")
+        logger.info(
+            "Done applying baked materials"
+        )  # Keep as info - signals end of process
 
-        logger.info("Exporting")
+        logger.info("Exporting")  # Keep as info - signals start of process
         # Export based on file extension
         if "blend" in types:
             self.export_blend(f"{name}.blend")
@@ -1121,7 +1131,7 @@ class Renderer:
         if "glb" in types:
             self.export_glb(f"{name}.glb")
 
-        logger.info("Done")
+        logger.info("Done")  # Keep as info - signals end of entire process
 
     def export_blend(self, filepath):
         """Export the scene to Blender's native format."""
@@ -1299,10 +1309,14 @@ class Renderer:
 
         # Update all materials to use atlas
         for material_name in self.atlas_mapping:
-            logger.info(f"Remapping UVs for material {material_name}")
+            logger.debug(
+                f"Remapping UVs for material {material_name}"
+            )  # Changed to debug - repetitive and high cardinality
             material = bpy.data.materials.get(material_name)
             if not material or not material.use_nodes:
-                logger.info(f"Material {material_name} not found or not using nodes")
+                logger.debug(
+                    f"Material {material_name} not found or not using nodes"
+                )  # Changed to debug - error condition but not critical
                 continue
 
             uv_map = self.atlas_mapping[material_name]
@@ -1314,7 +1328,9 @@ class Renderer:
             # Find and update texture node
             tex_node = next((n for n in nodes if n.type == "TEX_IMAGE"), None)
             if not tex_node:
-                logger.info(f"Texture node for material {material_name} not found")
+                logger.debug(
+                    f"Texture node for material {material_name} not found"
+                )  # Changed to debug - error condition but not critical
                 continue
 
             # Store old image for cleanup

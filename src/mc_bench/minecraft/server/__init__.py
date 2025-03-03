@@ -19,14 +19,20 @@ def create_network(suffix, exists_ok=False) -> str:
     client = docker.from_env()
     network_name = f"mctest-net-{suffix}"
     try:
-        logger.info("Checking if network exists", network_name=network_name)
+        logger.debug(
+            "Checking if network exists", network_name=network_name
+        )  # Changed to debug - implementation detail
         client.networks.get(network_name)
         if not exists_ok:
             raise ValueError(f"Network {network_name} already exists")
     except docker.errors.NotFound:
-        logger.info("Network does not exist, creating it", network_name=network_name)
+        logger.info(
+            "Network does not exist, creating it", network_name=network_name
+        )  # Keep as info - important state change
         client.networks.create(network_name, driver="bridge", check_duplicate=True)
-        logger.info("Network created", network_name=network_name)
+        logger.info(
+            "Network created", network_name=network_name
+        )  # Keep as info - important state change
     return network_name
 
 
@@ -44,19 +50,29 @@ def start_server(image, network_name: str, suffix, ports=None, replace=False) ->
     container_name = f"mc-server-{suffix}"
 
     try:
-        logger.info("Getting existing container", container_name=container_name)
+        logger.debug(
+            "Getting existing container", container_name=container_name
+        )  # Changed to debug - implementation detail
         current_container = client.containers.get(container_name)
     except docker.errors.NotFound:
-        logger.info("Container not found", container_name=container_name)
+        logger.debug(
+            "Container not found", container_name=container_name
+        )  # Changed to debug - implementation detail
         current_container = None
 
     if current_container is not None:
         if replace:
-            logger.info("Stopping existing container", container_name=container_name)
+            logger.info(
+                "Stopping existing container", container_name=container_name
+            )  # Keep as info - important state change
             current_container.stop()
-            logger.info("Removing existing container", container_name=container_name)
+            logger.info(
+                "Removing existing container", container_name=container_name
+            )  # Keep as info - important state change
             current_container.remove()
-            logger.info("Container removed", container_name=container_name)
+            logger.info(
+                "Container removed", container_name=container_name
+            )  # Keep as info - important state change
         else:
             raise ValueError(f"Container {container_name} already exists")
 
@@ -87,7 +103,9 @@ def wait_for_server(container_id: str, timeout: int = 300) -> bool:
         bool: True if server is ready, False if timeout reached
     """
     client = docker.from_env()
-    logger.info("Getting container", container_id=container_id)
+    logger.debug(
+        "Getting container", container_id=container_id
+    )  # Changed to debug - implementation detail
     container = client.containers.get(container_id)
     start_time = time.time()
 
@@ -121,12 +139,12 @@ def run_builder(
     server_container = client.containers.get(server_container_id)
 
     if not os.environ.get("NO_IMAGE_PULL"):
-        logger.info("Pulling image", image=image)
+        logger.info("Pulling image", image=image)  # Keep as info - important operation
         client.images.pull(image)
 
     logger.info(
         "Running builder", image=image, network_name=network_name, suffix=suffix
-    )
+    )  # Keep as info - important operation
     builder = client.containers.run(
         image,
         environment={

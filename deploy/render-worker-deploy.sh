@@ -37,7 +37,7 @@ done
 # Start the new container
 docker run -d --name "$NEW_CONTAINER_NAME" \
     --pull always \
-    --restart unless-stopped \
+    --rm \
     --env-file /opt/secrets/.env \
     "$REGISTRY/$IMAGE_NAME:$TAG"
 

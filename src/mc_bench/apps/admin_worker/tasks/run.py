@@ -113,7 +113,9 @@ def parse_prompt(
                 if "```" in line:
                     continue
                 code_lines.append(line)
-            logger.info("num code lines", num_code_lines=len(code_lines))
+            logger.debug(
+                "num code lines", num_code_lines=len(code_lines)
+            )  # Changed to debug - detail information
             parsed["code"] = "\n".join(code_lines)
 
         stage_context.sample.result_code_text = parsed["code"].strip()
@@ -161,7 +163,9 @@ def code_validation(stage_context: StageContext):
             full_code = f"{mock_script}\n\n{code}"
             f.write(full_code)
 
-        logger.info("Validating code", run_id=stage_context.run.id)
+        logger.info(
+            "Validating code", run_id=stage_context.run.id
+        )  # Keep as info - signals start of important process
         result = subprocess.run(
             ["eslint", "--config", ESLINT_CONFIG, "code.js"],
             cwd=temp_dir,

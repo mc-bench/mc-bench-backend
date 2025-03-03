@@ -69,22 +69,22 @@ def managed_session():
     session = get_session()
     try:
         yield session
-        logger.info("Committing session")
+        logger.debug("Committing session")
         session.commit()
-        logger.info("Session committed")
+        logger.debug("Session committed")
     except Exception:
         logger.error("Rolling back session", error=traceback.format_exc())
         session.rollback()
         logger.info("Session rolled back")
         raise
     finally:
-        logger.info("Closing session")
+        logger.debug("Closing session")
         session.close()
 
 
 def get_managed_session():
-    logger.info("Getting managed session")
+    logger.debug("Getting managed session")
     with managed_session() as db:
         logger.info("Yielding managed session")
         yield db
-    logger.info("Exited managed session")
+    logger.debug("Exited managed session")

@@ -48,7 +48,7 @@ def render_sample(stage_context: StageContext):
 
         with open(schematic_filepath, "wb") as f:
             logger.info(
-                "Writing schematic to file",
+                "Writing schematic to file",  # Keep as info - signals start of process
                 run_id=stage_context.run.id,
                 sample_id=stage_context.sample.id,
             )

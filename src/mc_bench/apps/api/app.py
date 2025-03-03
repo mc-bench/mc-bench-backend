@@ -11,7 +11,7 @@ from mc_bench.util.logging import configure_logging
 from .config import settings
 from .lifespan import lifespan
 
-configure_logging(humanize=settings.HUMANIZE_LOGS)
+configure_logging(humanize=settings.HUMANIZE_LOGS, level=settings.LOG_LEVEL)
 
 allow_origins = os.environ.get("CORS_ALLOWED_ORIGIN", "").split(",")
 
