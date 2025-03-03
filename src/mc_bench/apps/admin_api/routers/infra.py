@@ -201,11 +201,27 @@ def get_workers() -> List[WorkerResponse]:
                 )
             )
 
+        # Parse worker name for container and hostname info
+        # The worker_name should now be in format: container_name@hostname
+        container_name = worker_name
+        node_name = ""
+        display_name = worker_name
+
+        # Check if we have the expected format with '@'
+        if "@" in worker_name:
+            parts = worker_name.split("@", 1)
+            container_name = parts[0]
+            node_name = parts[1]
+            display_name = f"{container_name}@{node_name}"
+
         workers.append(
             WorkerResponse(
                 id=worker_name,
                 hostname=worker_name,
                 status="online",
+                display_name=display_name,
+                container_name=container_name,
+                node_name=node_name,
                 queues=queues,
                 concurrency=worker_stats.get("pool", {}).get("max-concurrency", 0),
                 pool_size=len(worker_stats.get("pool", {}).get("processes", [])),
@@ -215,7 +231,9 @@ def get_workers() -> List[WorkerResponse]:
             )
         )
 
-    return sorted(workers, key=lambda x: tuple([sorted(x.queues), x.id]))
+    return sorted(
+        workers, key=lambda x: tuple([sorted(x.queues), x.node_name, x.container_name])
+    )
 
 
 def get_queues(redis: StrictRedis) -> List[QueueResponse]:

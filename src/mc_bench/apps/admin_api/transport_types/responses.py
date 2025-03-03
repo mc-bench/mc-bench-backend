@@ -326,6 +326,9 @@ class WorkerResponse(Base):
     id: str
     hostname: str
     status: str
+    display_name: str = ""  # Formatted name for UI display (container@node)
+    container_name: str = ""  # Container part of the worker name
+    node_name: str = ""  # Node part of the worker name
     queues: List[str]
     concurrency: int
     pool_size: int

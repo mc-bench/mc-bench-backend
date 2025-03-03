@@ -28,6 +28,7 @@ docker login -u "$DOCKER_LOGIN_USERNAME" -p "$DIGITALOCEAN_ACCESS_TOKEN" registr
 # Get timestamp for unique container name
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 NEW_CONTAINER_NAME="${CONTAINER_PREFIX}_${TIMESTAMP}"
+HOSTNAME=$(hostname)
 
 # Send stop signal to existing workers
 for container in $(docker ps -f name="$CONTAINER_PREFIX" -q); do
@@ -37,14 +38,47 @@ done
 # Update environment file with new tag
 sed -i "s/minecraft-builder:[[:alnum:]_-]\+/minecraft-builder:$TAG/" /opt/secrets/.env
 
-# Start the new container
+# Start the new container with named worker
 docker run -d --name "$NEW_CONTAINER_NAME" \
     --pull always \
     --rm \
     --env-file /opt/secrets/.env \
+    -e CONTAINER_NAME="$NEW_CONTAINER_NAME" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /root/.docker/config.json:/root/.docker/config.json \
-    "$REGISTRY/$IMAGE_NAME:$TAG"
+    "$REGISTRY/$IMAGE_NAME:$TAG" \
+    celery -A mc_bench.apps.server_worker worker -Q server --concurrency $NUM_WORKERS -n "${NEW_CONTAINER_NAME}@${HOSTNAME}"
+
+# Create run script for manual execution
+cat > /opt/run-${CONTAINER_PREFIX}.sh << EOF
+#!/bin/bash
+# Manual server worker runner script - generated at $(date)
+# Run this script to manually start a server worker container
+
+# Pull latest image
+docker pull "$REGISTRY/$IMAGE_NAME:$TAG"
+
+# Generate a container name
+MANUAL_CONTAINER_NAME="${CONTAINER_PREFIX}_manual_\$(date +%Y%m%d_%H%M%S)"
+HOSTNAME=\$(hostname)
+
+# Run the container
+docker run -d --name "\$MANUAL_CONTAINER_NAME" \\
+    --rm \\
+    --env-file /opt/secrets/.env \\
+    -e CONTAINER_NAME="\$MANUAL_CONTAINER_NAME" \\
+    -v /var/run/docker.sock:/var/run/docker.sock \\
+    -v /root/.docker/config.json:/root/.docker/config.json \\
+    "$REGISTRY/$IMAGE_NAME:$TAG" \\
+    celery -A mc_bench.apps.server_worker worker -Q server --concurrency \$NUM_WORKERS -n "\${MANUAL_CONTAINER_NAME}@\${HOSTNAME}"
+
+echo "Started server worker container: \$MANUAL_CONTAINER_NAME"
+echo "To view logs: docker logs -f \$MANUAL_CONTAINER_NAME"
+echo "To stop: docker kill \$MANUAL_CONTAINER_NAME"
+EOF
+
+chmod +x /opt/run-${CONTAINER_PREFIX}.sh
+echo "Created manual runner script at /opt/run-${CONTAINER_PREFIX}.sh"
 
 # Ensure cleanup script is executable
 chmod +x /opt/docker-cleanup.sh
