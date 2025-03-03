@@ -43,11 +43,10 @@ docker run -d --name "$NEW_CONTAINER_NAME" \
     --pull always \
     --rm \
     --env-file /opt/secrets/.env \
-    -e CONTAINER_NAME="$NEW_CONTAINER_NAME" \
+    -e WORKER_NAME="${NEW_CONTAINER_NAME}@${HOSTNAME}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /root/.docker/config.json:/root/.docker/config.json \
-    "$REGISTRY/$IMAGE_NAME:$TAG" \
-    celery -A mc_bench.apps.server_worker worker -Q server --concurrency $NUM_WORKERS -n "${NEW_CONTAINER_NAME}@${HOSTNAME}"
+    "$REGISTRY/$IMAGE_NAME:$TAG"
 
 # Create run script for manual execution
 cat > /opt/run-${CONTAINER_PREFIX}.sh << EOF
@@ -66,11 +65,10 @@ HOSTNAME=\$(hostname)
 docker run -d --name "\$MANUAL_CONTAINER_NAME" \\
     --rm \\
     --env-file /opt/secrets/.env \\
-    -e CONTAINER_NAME="\$MANUAL_CONTAINER_NAME" \\
+    -e WORKER_NAME="\$MANUAL_CONTAINER_NAME@\$HOSTNAME" \\
     -v /var/run/docker.sock:/var/run/docker.sock \\
     -v /root/.docker/config.json:/root/.docker/config.json \\
-    "$REGISTRY/$IMAGE_NAME:$TAG" \\
-    celery -A mc_bench.apps.server_worker worker -Q server --concurrency \$NUM_WORKERS -n "\${MANUAL_CONTAINER_NAME}@\${HOSTNAME}"
+    "$REGISTRY/$IMAGE_NAME:$TAG"
 
 echo "Started server worker container: \$MANUAL_CONTAINER_NAME"
 echo "To view logs: docker logs -f \$MANUAL_CONTAINER_NAME"
