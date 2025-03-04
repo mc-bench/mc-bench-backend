@@ -35,3 +35,6 @@ where = ["src"]
 allowed-unused-imports = [
     "mc_bench.schema.postgres.specification"
 ]
+
+[tool.ruff.lint]
+ignore = ["E712", "E711"]

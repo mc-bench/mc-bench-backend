@@ -52,6 +52,81 @@ class Model(Base):
         back_populates="model",
     )
 
+    @property
+    def _observational_note_count_expression(self):
+        return (
+            select(func.count(1))
+            .select_from(schema.research.model_log)
+            .join(
+                schema.research.log,
+                schema.research.model_log.c.log_id == schema.research.log.c.id,
+            )
+            .join(
+                schema.research.note,
+                schema.research.log.c.note_id == schema.research.note.c.id,
+            )
+            .where(
+                schema.research.model_log.c.model_id == self.id,
+                schema.research.note.c.kind_slug == "OBSERVATION",
+            )
+        )
+
+    @property
+    def _pending_proposal_count_expression(self):
+        return (
+            select(func.count(1))
+            .select_from(schema.research.model_experimental_state_proposal)
+            .where(
+                schema.research.model_experimental_state_proposal.c.model_id == self.id,
+                (
+                    schema.research.model_experimental_state_proposal.c.accepted.is_(
+                        None
+                    )
+                    | (
+                        schema.research.model_experimental_state_proposal.c.accepted
+                        == False
+                    )
+                ),
+                (
+                    schema.research.model_experimental_state_proposal.c.rejected.is_(
+                        None
+                    )
+                    | (
+                        schema.research.model_experimental_state_proposal.c.rejected
+                        == False
+                    )
+                ),
+            )
+        )
+
+    @hybrid_property
+    def observational_note_count(self):
+        # Use cached count from the query if available to avoid N+1 queries
+        if hasattr(self, "_observational_note_count"):
+            return self._observational_note_count
+
+        # Fall back to the database query if necessary
+        session = object_session(self)
+        return session.scalar(self._observational_note_count_expression)
+
+    @observational_note_count.expression
+    def observational_note_count(cls):
+        return cls._observational_note_count_expression.scalar_subquery()
+
+    @hybrid_property
+    def pending_proposal_count(self):
+        # Use cached count from the query if available to avoid N+1 queries
+        if hasattr(self, "_pending_proposal_count"):
+            return self._pending_proposal_count
+
+        # Fall back to the database query if necessary
+        session = object_session(self)
+        return session.scalar(self._pending_proposal_count_expression)
+
+    @pending_proposal_count.expression
+    def pending_proposal_count(cls):
+        return cls._pending_proposal_count_expression.scalar_subquery()
+
     def to_dict(
         self,
         include_providers=True,
@@ -68,6 +143,8 @@ class Model(Base):
             "name": self.name,
             "active": bool(self.active),
             "usage": self.usage,
+            "observational_note_count": self.observational_note_count,
+            "pending_proposal_count": self.pending_proposal_count,
             "experimental_state": self.experimental_state.name
             if self.experimental_state
             else EXPERIMENTAL_STATE.EXPERIMENTAL.value,

@@ -1,10 +1,11 @@
-from typing import Union
+from typing import List, Optional, Union
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.routing import APIRouter
-from sqlalchemy import select
+from sqlalchemy import and_, exists, func, select
 from sqlalchemy.orm import Session, selectinload
 
+import mc_bench.schema.postgres as schema
 from mc_bench.apps.admin_api.config import settings
 from mc_bench.apps.admin_api.transport_types.generic import ListResponse
 from mc_bench.apps.admin_api.transport_types.requests import (
@@ -67,18 +68,154 @@ def get_prompts(
     db: Session = Depends(get_managed_session),
     current_scopes=Depends(am.current_scopes),
     user_uuid: str = Depends(am.get_current_user_uuid),
+    has_observations: Optional[bool] = None,
+    has_pending_proposals: Optional[bool] = None,
+    active: Optional[bool] = None,
+    tags: Optional[List[str]] = Query(None),
+    experimental_states: Optional[List[str]] = Query(None),
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    if PERM.PROMPT.ADMIN in current_scopes or PERM.PROMPT.READ in current_scopes:
-        prompts = list(db.scalars(select(Prompt).order_by(Prompt.created.desc())))
-    else:
-        prompts = list(
-            db.scalars(
-                select(Prompt)
-                .where(Prompt.creator == user)
-                .order_by(Prompt.created.desc())
-            )
+
+    # Create a subquery to get observation counts in bulk
+    observation_counts = (
+        select(
+            schema.research.prompt_log.c.prompt_id.label("prompt_id"),
+            func.count().label("observation_count"),
         )
+        .select_from(schema.research.prompt_log)
+        .join(
+            schema.research.log,
+            schema.research.prompt_log.c.log_id == schema.research.log.c.id,
+        )
+        .join(
+            schema.research.note,
+            schema.research.log.c.note_id == schema.research.note.c.id,
+        )
+        .where(schema.research.note.c.kind_slug == "OBSERVATION")
+        .group_by(schema.research.prompt_log.c.prompt_id)
+        .subquery()
+    )
+
+    # Create a subquery to get pending proposal counts in bulk
+    pending_proposal_counts = (
+        select(
+            schema.research.prompt_experimental_state_proposal.c.prompt_id.label(
+                "prompt_id"
+            ),
+            func.count().label("proposal_count"),
+        )
+        .select_from(schema.research.prompt_experimental_state_proposal)
+        .where(
+            (
+                schema.research.prompt_experimental_state_proposal.c.accepted.is_(None)
+                | (
+                    schema.research.prompt_experimental_state_proposal.c.accepted
+                    == False
+                )
+            ),
+            (
+                schema.research.prompt_experimental_state_proposal.c.rejected.is_(None)
+                | (
+                    schema.research.prompt_experimental_state_proposal.c.rejected
+                    == False
+                )
+            ),
+        )
+        .group_by(schema.research.prompt_experimental_state_proposal.c.prompt_id)
+        .subquery()
+    )
+
+    # Build the base query with the left joins to include prompts with zero counts
+    base_query = (
+        select(
+            Prompt,
+            func.coalesce(observation_counts.c.observation_count, 0).label(
+                "note_count"
+            ),
+            func.coalesce(pending_proposal_counts.c.proposal_count, 0).label(
+                "proposal_count"
+            ),
+        )
+        .outerjoin(observation_counts, Prompt.id == observation_counts.c.prompt_id)
+        .outerjoin(
+            pending_proposal_counts, Prompt.id == pending_proposal_counts.c.prompt_id
+        )
+    )
+
+    # Apply filters
+    if has_observations is not None:
+        if has_observations:
+            base_query = base_query.where(
+                func.coalesce(observation_counts.c.observation_count, 0) > 0
+            )
+        else:
+            base_query = base_query.where(
+                func.coalesce(observation_counts.c.observation_count, 0) == 0
+            )
+
+    # Apply filter for pending proposals if specified
+    if has_pending_proposals is not None:
+        if has_pending_proposals:
+            base_query = base_query.where(
+                func.coalesce(pending_proposal_counts.c.proposal_count, 0) > 0
+            )
+        else:
+            base_query = base_query.where(
+                func.coalesce(pending_proposal_counts.c.proposal_count, 0) == 0
+            )
+
+    if active is not None:
+        base_query = base_query.where(Prompt.active == active)
+
+    # Apply experimental states filter if specified
+    if experimental_states and len(experimental_states) > 0:
+        # Handle the case where EXPERIMENTAL is the default (null in database)
+        if "EXPERIMENTAL" in experimental_states:
+            base_query = base_query.where(
+                (Prompt.experimental_state_id == None)
+                | (
+                    Prompt.experimental_state.has(
+                        ExperimentalState.name.in_(experimental_states)
+                    )
+                )
+            )
+        else:
+            base_query = base_query.where(
+                Prompt.experimental_state.has(
+                    ExperimentalState.name.in_(experimental_states)
+                )
+            )
+
+    if tags and len(tags) > 0:
+        tag_filters = []
+        for tag_name in tags:
+            tag_subquery = select(Tag.id).where(Tag.name == tag_name).scalar_subquery()
+            tag_filters.append(
+                exists().where(
+                    and_(
+                        schema.specification.prompt_tag.c.prompt_id == Prompt.id,
+                        schema.specification.prompt_tag.c.tag_id == tag_subquery,
+                    )
+                )
+            )
+        if tag_filters:
+            base_query = base_query.where(and_(*tag_filters))
+
+    # Apply permission-based filters
+    if PERM.PROMPT.ADMIN in current_scopes or PERM.PROMPT.READ in current_scopes:
+        query_results = db.execute(base_query.order_by(Prompt.created.desc())).all()
+    else:
+        query_results = db.execute(
+            base_query.where(Prompt.creator == user).order_by(Prompt.created.desc())
+        ).all()
+
+    # Extract prompts from results and cache the counts
+    prompts = []
+    for prompt, note_count, proposal_count in query_results:
+        # Cache the counts to avoid additional queries
+        prompt._observational_note_count = note_count
+        prompt._pending_proposal_count = proposal_count
+        prompts.append(prompt)
 
     payload = {
         "data": [prompt.to_dict(include_runs=False) for prompt in prompts],
@@ -233,8 +370,55 @@ def get_prompt(
     user_uuid: str = Depends(am.get_current_user_uuid),
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
+
+    # Create a subquery to get observation count
+    observation_count = (
+        select(func.count().label("count"))
+        .select_from(schema.research.prompt_log)
+        .join(
+            schema.research.log,
+            schema.research.prompt_log.c.log_id == schema.research.log.c.id,
+        )
+        .join(
+            schema.research.note,
+            schema.research.log.c.note_id == schema.research.note.c.id,
+        )
+        .where(
+            schema.research.prompt_log.c.prompt_id == Prompt.id,
+            schema.research.note.c.kind_slug == "OBSERVATION",
+        )
+        .correlate(Prompt)
+        .scalar_subquery()
+    ).label("observation_count")
+
+    # Create a subquery to get pending proposal count
+    pending_proposal_count = (
+        select(func.count().label("count"))
+        .select_from(schema.research.prompt_experimental_state_proposal)
+        .where(
+            schema.research.prompt_experimental_state_proposal.c.prompt_id == Prompt.id,
+            (
+                schema.research.prompt_experimental_state_proposal.c.accepted.is_(None)
+                | (
+                    schema.research.prompt_experimental_state_proposal.c.accepted
+                    == False
+                )
+            ),
+            (
+                schema.research.prompt_experimental_state_proposal.c.rejected.is_(None)
+                | (
+                    schema.research.prompt_experimental_state_proposal.c.rejected
+                    == False
+                )
+            ),
+        )
+        .correlate(Prompt)
+        .scalar_subquery()
+    ).label("proposal_count")
+
+    # Build the query with loaded relationships and the counts
     prompt_query = (
-        db.query(Prompt)
+        select(Prompt, observation_count, pending_proposal_count)
         .options(selectinload(Prompt.runs))
         .options(selectinload(Prompt.logs))
         .options(selectinload(Prompt.proposals))
@@ -242,9 +426,20 @@ def get_prompt(
     )
 
     if PERM.PROMPT.ADMIN in current_scopes or PERM.PROMPT.READ in current_scopes:
-        prompt = prompt_query.first()
+        result = db.execute(prompt_query).first()
     else:
-        prompt = prompt_query.where(Prompt.creator == user).first()
+        result = db.execute(prompt_query.where(Prompt.creator == user)).first()
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Prompt with external_id {external_id} not found",
+        )
+
+    prompt, note_count, proposal_count = result
+    # Cache the counts to avoid additional queries
+    prompt._observational_note_count = note_count
+    prompt._pending_proposal_count = proposal_count
 
     return prompt.to_dict(include_runs=False, include_logs=True, include_proposals=True)
 
@@ -266,7 +461,7 @@ def delete_prompt_tag(
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
     prompt = db.query(Prompt).filter(Prompt.external_id == external_id).first()
 
-    if prompt.creator != user and PERM.PROMPT.ADMIN not in current_scopes:
+    if prompt.author != user and PERM.PROMPT.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Prompt with external_id {external_id} is not editable by {user.username} without the prompt:admin permission",
@@ -304,7 +499,7 @@ def add_prompt_tag(
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
     prompt = db.query(Prompt).filter(Prompt.external_id == external_id).first()
 
-    if prompt.creator != user and PERM.PROMPT.ADMIN not in current_scopes:
+    if prompt.author != user and PERM.PROMPT.ADMIN not in current_scopes:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Prompt with external_id {external_id} is not editable by {user.username} without the prompt:admin permission",

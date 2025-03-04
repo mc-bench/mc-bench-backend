@@ -1,11 +1,12 @@
 import json
-from typing import List, Union
+from typing import List, Optional, Union
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.routing import APIRouter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+import mc_bench.schema.postgres as schema
 from mc_bench.apps.admin_api.config import settings
 from mc_bench.apps.admin_api.transport_types.generic import ListResponse
 from mc_bench.apps.admin_api.transport_types.requests import (
@@ -82,20 +83,138 @@ def get_models(
     db: Session = Depends(get_managed_session),
     user_uuid: str = Depends(am.get_current_user_uuid),
     current_scopes=Depends(am.current_scopes),
+    has_observations: Optional[bool] = None,
+    has_pending_proposals: Optional[bool] = None,
+    active: Optional[bool] = None,
+    experimental_states: Optional[List[str]] = Query(None),
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    models = list(db.scalars(select(Model)).all())
 
-    if PERM.MODEL.ADMIN in current_scopes or PERM.MODEL.READ in current_scopes:
-        models = list(db.scalars(select(Model).order_by(Model.created.desc())))
-    else:
-        models = list(
-            db.scalars(
-                select(Model)
-                .where(Model.creator == user)
-                .order_by(Model.created.desc())
-            )
+    # Create a subquery to get observation counts in bulk
+    observation_counts = (
+        select(
+            schema.research.model_log.c.model_id.label("model_id"),
+            func.count().label("observation_count"),
         )
+        .select_from(schema.research.model_log)
+        .join(
+            schema.research.log,
+            schema.research.model_log.c.log_id == schema.research.log.c.id,
+        )
+        .join(
+            schema.research.note,
+            schema.research.log.c.note_id == schema.research.note.c.id,
+        )
+        .where(schema.research.note.c.kind_slug == "OBSERVATION")
+        .group_by(schema.research.model_log.c.model_id)
+        .subquery()
+    )
+
+    # Create a subquery to get pending proposal counts in bulk
+    pending_proposal_counts = (
+        select(
+            schema.research.model_experimental_state_proposal.c.model_id.label(
+                "model_id"
+            ),
+            func.count().label("proposal_count"),
+        )
+        .select_from(schema.research.model_experimental_state_proposal)
+        .where(
+            (
+                schema.research.model_experimental_state_proposal.c.accepted.is_(None)
+                | (
+                    schema.research.model_experimental_state_proposal.c.accepted
+                    == False
+                )
+            ),
+            (
+                schema.research.model_experimental_state_proposal.c.rejected.is_(None)
+                | (
+                    schema.research.model_experimental_state_proposal.c.rejected
+                    == False
+                )
+            ),
+        )
+        .group_by(schema.research.model_experimental_state_proposal.c.model_id)
+        .subquery()
+    )
+
+    # Build the base query with the left joins to include models with zero counts
+    base_query = (
+        select(
+            Model,
+            func.coalesce(observation_counts.c.observation_count, 0).label(
+                "note_count"
+            ),
+            func.coalesce(pending_proposal_counts.c.proposal_count, 0).label(
+                "proposal_count"
+            ),
+        )
+        .outerjoin(observation_counts, Model.id == observation_counts.c.model_id)
+        .outerjoin(
+            pending_proposal_counts, Model.id == pending_proposal_counts.c.model_id
+        )
+    )
+
+    # Apply filters
+    if has_observations is not None:
+        if has_observations:
+            base_query = base_query.where(
+                func.coalesce(observation_counts.c.observation_count, 0) > 0
+            )
+        else:
+            base_query = base_query.where(
+                func.coalesce(observation_counts.c.observation_count, 0) == 0
+            )
+
+    # Apply filter for pending proposals if specified
+    if has_pending_proposals is not None:
+        if has_pending_proposals:
+            base_query = base_query.where(
+                func.coalesce(pending_proposal_counts.c.proposal_count, 0) > 0
+            )
+        else:
+            base_query = base_query.where(
+                func.coalesce(pending_proposal_counts.c.proposal_count, 0) == 0
+            )
+
+    if active is not None:
+        base_query = base_query.where(Model.active == active)
+
+    # Apply experimental states filter if specified
+    if experimental_states and len(experimental_states) > 0:
+        # Handle the case where EXPERIMENTAL is the default (null in database)
+        if "EXPERIMENTAL" in experimental_states:
+            base_query = base_query.where(
+                (Model.experimental_state_id == None)
+                | (
+                    Model.experimental_state.has(
+                        ExperimentalState.name.in_(experimental_states)
+                    )
+                )
+            )
+        else:
+            base_query = base_query.where(
+                Model.experimental_state.has(
+                    ExperimentalState.name.in_(experimental_states)
+                )
+            )
+
+    # Apply permission-based filters
+    if PERM.MODEL.ADMIN in current_scopes or PERM.MODEL.READ in current_scopes:
+        query_results = db.execute(base_query.order_by(Model.created.desc())).all()
+    else:
+        query_results = db.execute(
+            base_query.where(Model.creator == user).order_by(Model.created.desc())
+        ).all()
+
+    # Extract models from results and cache the counts
+    models = []
+    for model, note_count, proposal_count in query_results:
+        # Cache the counts to avoid additional queries
+        model._observational_note_count = note_count
+        model._pending_proposal_count = proposal_count
+        models.append(model)
 
     payload = {
         "data": [model.to_dict() for model in models],
@@ -271,16 +390,76 @@ def get_model(
     user_uuid: str = Depends(am.get_current_user_uuid),
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
+
+    # Create a subquery to get observation count
+    observation_count = (
+        select(func.count().label("count"))
+        .select_from(schema.research.model_log)
+        .join(
+            schema.research.log,
+            schema.research.model_log.c.log_id == schema.research.log.c.id,
+        )
+        .join(
+            schema.research.note,
+            schema.research.log.c.note_id == schema.research.note.c.id,
+        )
+        .where(
+            schema.research.model_log.c.model_id == Model.id,
+            schema.research.note.c.kind_slug == "OBSERVATION",
+        )
+        .correlate(Model)
+        .scalar_subquery()
+    ).label("observation_count")
+
+    # Create a subquery to get pending proposal count
+    pending_proposal_count = (
+        select(func.count().label("count"))
+        .select_from(schema.research.model_experimental_state_proposal)
+        .where(
+            schema.research.model_experimental_state_proposal.c.model_id == Model.id,
+            (
+                schema.research.model_experimental_state_proposal.c.accepted.is_(None)
+                | (
+                    schema.research.model_experimental_state_proposal.c.accepted
+                    == False
+                )
+            ),
+            (
+                schema.research.model_experimental_state_proposal.c.rejected.is_(None)
+                | (
+                    schema.research.model_experimental_state_proposal.c.rejected
+                    == False
+                )
+            ),
+        )
+        .correlate(Model)
+        .scalar_subquery()
+    ).label("proposal_count")
+
+    # Build the query with loaded relationships and the counts
     model_query = (
-        db.query(Model)
+        select(Model, observation_count, pending_proposal_count)
         .options(selectinload(Model.runs))
+        .options(selectinload(Model.logs))
+        .options(selectinload(Model.proposals))
         .filter(Model.external_id == external_id)
     )
 
     if PERM.MODEL.ADMIN in current_scopes or PERM.MODEL.READ in current_scopes:
-        model = model_query.first()
+        result = db.execute(model_query).first()
     else:
-        model = model_query.where(Model.creator == user).first()
+        result = db.execute(model_query.where(Model.creator == user)).first()
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model with external_id {external_id} not found",
+        )
+
+    model, note_count, proposal_count = result
+    # Cache the counts to avoid additional queries
+    model._observational_note_count = note_count
+    model._pending_proposal_count = proposal_count
 
     for provider in model.providers:
         logger.info("Provider Type", provider_type=type(provider))

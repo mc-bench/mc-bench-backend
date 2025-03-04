@@ -186,6 +186,8 @@ class PromptBaseResponse(Base):
     build_size: Optional[str] = None
     active: bool
     usage: int
+    observational_note_count: int
+    pending_proposal_count: int
     tags: List[TagResponse]
     experimental_state: Optional[str] = None
 
@@ -215,6 +217,8 @@ class ModelBaseResponse(Base):
     providers: List[ProviderResponse]
     active: bool
     usage: int
+    observational_note_count: int
+    pending_proposal_count: int
     experimental_state: Optional[str] = None
 
 
@@ -248,6 +252,8 @@ class TemplateBaseResponse(Base):
     active: bool
     frozen: bool
     usage: int
+    observational_note_count: int
+    pending_proposal_count: int
     experimental_state: Optional[str] = None
 
 

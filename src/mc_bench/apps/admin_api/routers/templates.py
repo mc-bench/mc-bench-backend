@@ -1,10 +1,11 @@
-from typing import List, Union
+from typing import List, Optional, Union
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.routing import APIRouter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+import mc_bench.schema.postgres as schema
 from mc_bench.apps.admin_api.config import settings
 from mc_bench.apps.admin_api.transport_types.generic import ListResponse
 from mc_bench.apps.admin_api.transport_types.requests import (
@@ -64,18 +65,143 @@ def get_templates(
     db: Session = Depends(get_managed_session),
     current_scopes: List[str] = Depends(am.current_scopes),
     user_uuid: str = Depends(am.get_current_user_uuid),
+    has_observations: Optional[bool] = None,
+    has_pending_proposals: Optional[bool] = None,
+    active: Optional[bool] = None,
+    experimental_states: Optional[List[str]] = Query(None),
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
-    if PERM.TEMPLATE.ADMIN in current_scopes or PERM.TEMPLATE.READ in current_scopes:
-        templates = list(db.scalars(select(Template).order_by(Template.created.desc())))
-    else:
-        templates = list(
-            db.scalars(
-                select(Template)
-                .where(Template.author == user)
-                .order_by(Template.created.desc())
-            )
+
+    # Create a subquery to get observation counts in bulk
+    observation_counts = (
+        select(
+            schema.research.template_log.c.template_id.label("template_id"),
+            func.count().label("observation_count"),
         )
+        .select_from(schema.research.template_log)
+        .join(
+            schema.research.log,
+            schema.research.template_log.c.log_id == schema.research.log.c.id,
+        )
+        .join(
+            schema.research.note,
+            schema.research.log.c.note_id == schema.research.note.c.id,
+        )
+        .where(schema.research.note.c.kind_slug == "OBSERVATION")
+        .group_by(schema.research.template_log.c.template_id)
+        .subquery()
+    )
+
+    # Create a subquery to get pending proposal counts in bulk
+    pending_proposal_counts = (
+        select(
+            schema.research.template_experimental_state_proposal.c.template_id.label(
+                "template_id"
+            ),
+            func.count().label("proposal_count"),
+        )
+        .select_from(schema.research.template_experimental_state_proposal)
+        .where(
+            (
+                schema.research.template_experimental_state_proposal.c.accepted.is_(
+                    None
+                )
+                | (
+                    schema.research.template_experimental_state_proposal.c.accepted
+                    == False
+                )
+            ),
+            (
+                schema.research.template_experimental_state_proposal.c.rejected.is_(
+                    None
+                )
+                | (
+                    schema.research.template_experimental_state_proposal.c.rejected
+                    == False
+                )
+            ),
+        )
+        .group_by(schema.research.template_experimental_state_proposal.c.template_id)
+        .subquery()
+    )
+
+    # Build the base query with the left joins to include templates with zero counts
+    base_query = (
+        select(
+            Template,
+            func.coalesce(observation_counts.c.observation_count, 0).label(
+                "note_count"
+            ),
+            func.coalesce(pending_proposal_counts.c.proposal_count, 0).label(
+                "proposal_count"
+            ),
+        )
+        .outerjoin(observation_counts, Template.id == observation_counts.c.template_id)
+        .outerjoin(
+            pending_proposal_counts,
+            Template.id == pending_proposal_counts.c.template_id,
+        )
+    )
+
+    # Apply filters
+    if has_observations is not None:
+        if has_observations:
+            base_query = base_query.where(
+                func.coalesce(observation_counts.c.observation_count, 0) > 0
+            )
+        else:
+            base_query = base_query.where(
+                func.coalesce(observation_counts.c.observation_count, 0) == 0
+            )
+
+    # Apply filter for pending proposals if specified
+    if has_pending_proposals is not None:
+        if has_pending_proposals:
+            base_query = base_query.where(
+                func.coalesce(pending_proposal_counts.c.proposal_count, 0) > 0
+            )
+        else:
+            base_query = base_query.where(
+                func.coalesce(pending_proposal_counts.c.proposal_count, 0) == 0
+            )
+
+    if active is not None:
+        base_query = base_query.where(Template.active == active)
+
+    # Apply experimental states filter if specified
+    if experimental_states and len(experimental_states) > 0:
+        # Handle the case where EXPERIMENTAL is the default (null in database)
+        if "EXPERIMENTAL" in experimental_states:
+            base_query = base_query.where(
+                (Template.experimental_state_id == None)
+                | (
+                    Template.experimental_state.has(
+                        ExperimentalState.name.in_(experimental_states)
+                    )
+                )
+            )
+        else:
+            base_query = base_query.where(
+                Template.experimental_state.has(
+                    ExperimentalState.name.in_(experimental_states)
+                )
+            )
+
+    # Apply permission-based filters
+    if PERM.TEMPLATE.ADMIN in current_scopes or PERM.TEMPLATE.READ in current_scopes:
+        query_results = db.execute(base_query.order_by(Template.created.desc())).all()
+    else:
+        query_results = db.execute(
+            base_query.where(Template.author == user).order_by(Template.created.desc())
+        ).all()
+
+    # Extract templates from results and cache the counts
+    templates = []
+    for template, note_count, proposal_count in query_results:
+        # Cache the counts to avoid additional queries
+        template._observational_note_count = note_count
+        template._pending_proposal_count = proposal_count
+        templates.append(template)
 
     payload = {
         "data": [template.to_dict() for template in templates],
@@ -216,22 +342,80 @@ def get_template(
 ):
     user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
 
-    template = (
-        db.query(Template)
+    # Create a subquery to get observation count
+    observation_count = (
+        select(func.count().label("count"))
+        .select_from(schema.research.template_log)
+        .join(
+            schema.research.log,
+            schema.research.template_log.c.log_id == schema.research.log.c.id,
+        )
+        .join(
+            schema.research.note,
+            schema.research.log.c.note_id == schema.research.note.c.id,
+        )
+        .where(
+            schema.research.template_log.c.template_id == Template.id,
+            schema.research.note.c.kind_slug == "OBSERVATION",
+        )
+        .correlate(Template)
+        .scalar_subquery()
+    ).label("observation_count")
+
+    # Create a subquery to get pending proposal count
+    pending_proposal_count = (
+        select(func.count().label("count"))
+        .select_from(schema.research.template_experimental_state_proposal)
+        .where(
+            schema.research.template_experimental_state_proposal.c.template_id
+            == Template.id,
+            (
+                schema.research.template_experimental_state_proposal.c.accepted.is_(
+                    None
+                )
+                | (
+                    schema.research.template_experimental_state_proposal.c.accepted
+                    == False
+                )
+            ),
+            (
+                schema.research.template_experimental_state_proposal.c.rejected.is_(
+                    None
+                )
+                | (
+                    schema.research.template_experimental_state_proposal.c.rejected
+                    == False
+                )
+            ),
+        )
+        .correlate(Template)
+        .scalar_subquery()
+    ).label("proposal_count")
+
+    # Build the query with loaded relationships and the counts
+    template_query = (
+        select(Template, observation_count, pending_proposal_count)
         .options(selectinload(Template.runs))
+        .options(selectinload(Template.logs))
+        .options(selectinload(Template.proposals))
         .filter(Template.external_id == external_id)
     )
 
     if PERM.TEMPLATE.ADMIN in current_scopes or PERM.TEMPLATE.READ in current_scopes:
-        template = template.first()
+        result = db.execute(template_query).first()
     else:
-        template = template.where(Template.author == user).first()
+        result = db.execute(template_query.where(Template.author == user)).first()
 
-    if not template:
+    if not result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Template with external_id {external_id} not found",
         )
+
+    template, note_count, proposal_count = result
+    # Cache the counts to avoid additional queries
+    template._observational_note_count = note_count
+    template._pending_proposal_count = proposal_count
 
     return template.to_dict(
         include_runs=False, include_logs=True, include_proposals=True
