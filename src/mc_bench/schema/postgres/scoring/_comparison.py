@@ -30,5 +30,6 @@ comparison = Table(
     Column(
         "winning_sample_id", Integer, ForeignKey("sample.sample.id"), nullable=False
     ),
+    Column("test_set_id", Integer, ForeignKey("sample.test_set.id"), nullable=False),
     schema="scoring",
 )
