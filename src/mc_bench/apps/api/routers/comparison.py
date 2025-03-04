@@ -1,4 +1,5 @@
 import uuid
+from functools import lru_cache
 from typing import List
 
 import sqlalchemy
@@ -61,7 +62,7 @@ def get_comparison_batch(
         )
 
     params = {"sample_count": request.batch_size}
-    
+
     sample_ids = db.execute(
         sqlalchemy.text("""\
         WITH approval_state AS (
@@ -264,14 +265,14 @@ def post_comparison(
 
     if PERM.VOTING.VOTE in user.scopes:
         # shadow ban ineligible voters
-        
+
         # Get test_set_id from one of the samples
         test_set_id = None
         if sample_1.test_set_id:
             test_set_id = sample_1.test_set_id
         elif sample_2.test_set_id:
             test_set_id = sample_2.test_set_id
-            
+
         comparison = Comparison(
             user_id=user.id,
             metric_id=metric.id,
@@ -303,6 +304,12 @@ def post_comparison(
     }
 
 
+@lru_cache(maxsize=1)
+def _cached_metrics(db: Session):
+    """Cache the metrics to avoid hitting the database repeatedly."""
+    return list(map(lambda x: x.to_dict(), db.scalars(select(Metric)).all()))
+
+
 @comparison_router.get(
     "/api/metric",
     response_model=List[MetricResponse],
@@ -310,4 +317,5 @@ def post_comparison(
 def get_metrics(
     db: Session = Depends(get_managed_session),
 ):
-    return map(lambda x: x.to_dict(), db.scalars(select(Metric)).all())
+    """List all metrics, cached in memory to avoid database hits."""
+    return _cached_metrics(db)

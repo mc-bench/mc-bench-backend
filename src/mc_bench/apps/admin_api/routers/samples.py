@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional
+from functools import lru_cache
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query, status
@@ -228,21 +229,19 @@ def approve_sample(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Sample with external_id {external_id} is experimental and cannot be approved",
         )
-        
+
     # Check if test_set_id is already set
     if sample.test_set_id is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Sample with external_id {external_id} already has a test set assigned",
         )
-    
+
     # Find the test set by its external_id
     test_set = db.scalar(
-        select(TestSet).where(
-            TestSet.external_id == request.test_set_id
-        )
+        select(TestSet).where(TestSet.external_id == request.test_set_id)
     )
-    
+
     if not test_set:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -254,11 +253,11 @@ def approve_sample(
     approved_state = db.scalar(
         select(SampleApprovalState).where(SampleApprovalState.name == "APPROVED")
     )
-    
+
     # Set approval state and test set
     sample.approval_state = approved_state
     sample.test_set_id = test_set.id
-    
+
     sample_approval = SampleApproval(
         sample=sample,
         user=user,
@@ -345,15 +344,19 @@ def observe_sample(
     )
 
 
+@lru_cache(maxsize=1)
+def _cached_test_sets(db: Session):
+    """Cache the test sets to avoid hitting the database repeatedly."""
+    test_sets = db.query(TestSet).order_by(TestSet.name).all()
+    return [test_set.to_dict() for test_set in test_sets]
+
+
 @sample_router.get(
     "/api/test-set",
-    dependencies=[
-        Depends(am.require_any_scopes([PERM.VOTING.ADMIN])),
-    ],
     response_model=List[TestSetResponse],
 )
 def list_test_sets(
     db: Session = Depends(get_managed_session),
 ):
-    test_sets = db.query(TestSet).order_by(TestSet.name).all()
-    return [test_set.to_dict() for test_set in test_sets]
+    """List all test sets, cached in memory to avoid database hits."""
+    return _cached_test_sets(db)

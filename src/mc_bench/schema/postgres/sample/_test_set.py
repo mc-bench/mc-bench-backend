@@ -1,6 +1,16 @@
 """A test set is a collection of samples that can be voted on."""
 
-from sqlalchemy import Column, Integer, String, Table, TIMESTAMP, UUID, func, text, ForeignKey
+from sqlalchemy import (
+    TIMESTAMP,
+    UUID,
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    func,
+    text,
+)
 
 from .._metadata import metadata
 

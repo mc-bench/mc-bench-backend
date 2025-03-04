@@ -272,7 +272,7 @@ class TestSet(Base):
             "created": self.created,
             "created_by": self.user.username,
         }
-    
+
     @declared_attr
     def user(cls):
         return relationship("User", foreign_keys=[schema.sample.test_set.c.created_by])
@@ -303,10 +303,8 @@ class Sample(Base):
     experimental_state: Mapped["ExperimentalState"] = relationship(
         "ExperimentalState", lazy="joined"
     )
-    
-    test_set: Mapped["TestSet"] = relationship(
-        "TestSet", lazy="joined"
-    )
+
+    test_set: Mapped["TestSet"] = relationship("TestSet", lazy="joined")
 
     def to_dict(
         self,
@@ -330,9 +328,7 @@ class Sample(Base):
             "experimental_state": self.experimental_state.name
             if self.experimental_state
             else None,
-            "test_set_id": self.test_set.external_id
-            if self.test_set
-            else None,
+            "test_set_id": self.test_set.external_id if self.test_set else None,
         }
 
         if include_logs:
