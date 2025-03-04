@@ -60,8 +60,10 @@ def get_comparison_batch(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    params = {"sample_count": request.batch_size}
+    
     sample_ids = db.execute(
-        sqlalchemy.text("""\
+        sqlalchemy.text(f"""\
         WITH approval_state AS (
             SELECT
                 id approved_state_id
@@ -120,9 +122,7 @@ def get_comparison_batch(
                     random()
                 LIMIT 1
             ) sample_2 ON sample_2.comparison_correlation_id = correlation_ids.id
-    """).bindparams(
-            sample_count=request.batch_size,
-        )
+    """).bindparams(**params)
     )
 
     comparison_tokens = []
@@ -264,12 +264,21 @@ def post_comparison(
 
     if PERM.VOTING.VOTE in user.scopes:
         # shadow ban ineligible voters
+        
+        # Get test_set_id from one of the samples
+        test_set_id = None
+        if sample_1.test_set_id:
+            test_set_id = sample_1.test_set_id
+        elif sample_2.test_set_id:
+            test_set_id = sample_2.test_set_id
+            
         comparison = Comparison(
             user_id=user.id,
             metric_id=metric.id,
             sample_1_id=sample_1.id,
             sample_2_id=sample_2.id,
             winning_sample_id=winning_sample.id,
+            test_set_id=test_set_id,
         )
         db.add(comparison)
         db.flush()

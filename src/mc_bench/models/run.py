@@ -261,6 +261,23 @@ class SampleApprovalState(Base):
     __table__ = schema.scoring.sample_approval_state
 
 
+class TestSet(Base):
+    __table__ = schema.sample.test_set
+
+    def to_dict(self):
+        return {
+            "id": self.external_id,
+            "name": self.name,
+            "description": self.description,
+            "created": self.created,
+            "created_by": self.user.username,
+        }
+    
+    @declared_attr
+    def user(cls):
+        return relationship("User", foreign_keys=[schema.sample.test_set.c.created_by])
+
+
 class Sample(Base):
     __table__ = schema.sample.sample
 
@@ -286,6 +303,10 @@ class Sample(Base):
     experimental_state: Mapped["ExperimentalState"] = relationship(
         "ExperimentalState", lazy="joined"
     )
+    
+    test_set: Mapped["TestSet"] = relationship(
+        "TestSet", lazy="joined"
+    )
 
     def to_dict(
         self,
@@ -308,6 +329,9 @@ class Sample(Base):
             "is_pending": self.is_pending,
             "experimental_state": self.experimental_state.name
             if self.experimental_state
+            else None,
+            "test_set_id": self.test_set.external_id
+            if self.test_set
             else None,
         }
 
@@ -936,3 +960,19 @@ class RenderingSample(RunStage):
             ]
 
         return app.signature("run.render_sample", **kwargs)
+
+
+__all__ = [
+    "Artifact",
+    "ArtifactKind",
+    "Generation",
+    "GenerationState",
+    "Run",
+    "RunState",
+    "RunStage",
+    "RunStageState",
+    "Sample",
+    "SampleApprovalState",
+    "Stage",
+    "TestSet",
+]

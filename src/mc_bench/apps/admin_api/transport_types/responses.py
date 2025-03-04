@@ -30,6 +30,14 @@ class TagResponse(Base):
     name: str
 
 
+class TestSetResponse(Base):
+    id: uuid.UUID
+    name: str
+    description: str
+    created: datetime.datetime
+    created_by: str
+
+
 class LogResponse(Base):
     id: uuid.UUID
     created: datetime.datetime
@@ -126,6 +134,7 @@ class SampleResponse(Base):
     approval_state: Optional[Literal["APPROVED", "REJECTED", None]] = None
     run: Optional[RunInfo] = None
     experimental_state: Optional[str] = None
+    test_set_id: Optional[uuid.UUID] = None
 
 
 class SampleDetailResponse(SampleResponse):
