@@ -63,7 +63,7 @@ def get_comparison_batch(
     params = {"sample_count": request.batch_size}
     
     sample_ids = db.execute(
-        sqlalchemy.text(f"""\
+        sqlalchemy.text("""\
         WITH approval_state AS (
             SELECT
                 id approved_state_id
