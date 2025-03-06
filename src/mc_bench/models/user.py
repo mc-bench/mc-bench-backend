@@ -68,6 +68,28 @@ class Permission(Base):
     )
 
 
+class UserIdentificationToken(Base):
+    __table__ = schema.auth.user_identification_token
+
+    # This can be associated with multiple users (many-to-many)
+    users = relationship(
+        "User",
+        primaryjoin=schema.auth.user_identification_token.c.user_id
+        == schema.auth.user.c.id,
+        backref="identification_tokens",
+        viewonly=False,
+    )
+
+    # Users who have this as their canonical token
+    canonical_users = relationship(
+        "User",
+        primaryjoin=schema.auth.user_identification_token.c.id
+        == schema.auth.user.c.canonical_identification_token_id,
+        backref="canonical_identification_token",
+        viewonly=False,
+    )
+
+
 class User(Base):
     __table__ = schema.auth.user
 

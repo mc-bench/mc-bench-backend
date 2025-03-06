@@ -104,6 +104,10 @@ class SampleActionRequest(Base):
     note: str
 
 
+class SampleApprovalRequest(SampleActionRequest):
+    test_set_id: uuid.UUID
+
+
 class AddPromptTagRequest(Base):
     tag_name: str
 

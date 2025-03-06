@@ -79,5 +79,11 @@ sample = Table(
         ForeignKey("research.experimental_state.id"),
         nullable=True,
     ),
+    Column(
+        "test_set_id",
+        Integer,
+        ForeignKey("sample.test_set.id"),
+        nullable=True,
+    ),
     schema="sample",
 )

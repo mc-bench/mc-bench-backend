@@ -28,5 +28,11 @@ user = Table(
     Column("username", String(64), nullable=True, unique=True, index=True),
     Column("username_normalized", String(64), nullable=True, unique=True, index=True),
     Column("display_username", String(64), nullable=True, unique=True, index=True),
+    Column(
+        "canonical_identification_token_id",
+        Integer,
+        ForeignKey("auth.user_identification_token.id"),
+        nullable=True,
+    ),
     schema="auth",
 )

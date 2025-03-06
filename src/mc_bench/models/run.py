@@ -29,6 +29,7 @@ from mc_bench.util.uuid import uuid_from_ints
 from ._base import Base
 from .experimental_state import ExperimentalState
 from .log import Log
+from .user import User
 
 _run_state_cache: Dict[RUN_STATE, int] = {}
 _generation_state_cache: Dict[RUN_STATE, int] = {}
@@ -83,8 +84,10 @@ class Run(Base):
         STAGE.PREPARING_SAMPLE.value,
     ]
 
-    creator = relationship("User", foreign_keys=[schema.specification.run.c.created_by])
-    most_recent_editor = relationship(
+    creator: Mapped["User"] = relationship(
+        "User", foreign_keys=[schema.specification.run.c.created_by]
+    )
+    most_recent_editor: Mapped["User"] = relationship(
         "User", foreign_keys=[schema.specification.run.c.last_modified_by]
     )
 
@@ -96,7 +99,9 @@ class Run(Base):
     )
     model: Mapped["Model"] = relationship("Model", uselist=False, back_populates="runs")  # noqa: F821
 
-    generation = relationship("Generation", uselist=False, back_populates="runs")
+    generation: Mapped["Generation"] = relationship(
+        "Generation", uselist=False, back_populates="runs"
+    )
 
     state: Mapped["RunState"] = relationship("RunState", uselist=False)
 
@@ -261,6 +266,17 @@ class SampleApprovalState(Base):
     __table__ = schema.scoring.sample_approval_state
 
 
+class TestSet(Base):
+    __table__ = schema.sample.test_set
+
+    def to_dict(self):
+        return {
+            "id": self.external_id,
+            "name": self.name,
+            "description": self.description,
+        }
+
+
 class Sample(Base):
     __table__ = schema.sample.sample
 
@@ -287,6 +303,8 @@ class Sample(Base):
         "ExperimentalState", lazy="joined"
     )
 
+    test_set: Mapped["TestSet"] = relationship("TestSet", lazy="joined")
+
     def to_dict(
         self,
         include_logs=False,
@@ -309,6 +327,7 @@ class Sample(Base):
             "experimental_state": self.experimental_state.name
             if self.experimental_state
             else None,
+            "test_set_id": self.test_set.external_id if self.test_set else None,
         }
 
         if include_logs:
@@ -936,3 +955,19 @@ class RenderingSample(RunStage):
             ]
 
         return app.signature("run.render_sample", **kwargs)
+
+
+__all__ = [
+    "Artifact",
+    "ArtifactKind",
+    "Generation",
+    "GenerationState",
+    "Run",
+    "RunState",
+    "RunStage",
+    "RunStageState",
+    "Sample",
+    "SampleApprovalState",
+    "Stage",
+    "TestSet",
+]

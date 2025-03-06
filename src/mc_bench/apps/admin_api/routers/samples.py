@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import List, Optional
 from uuid import UUID
 
@@ -12,7 +13,7 @@ from mc_bench.models.experimental_state import experimental_state_id_for
 from mc_bench.models.log import SampleApproval, SampleObservation, SampleRejection
 from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt, Tag
-from mc_bench.models.run import Run, Sample, SampleApprovalState
+from mc_bench.models.run import Run, Sample, SampleApprovalState, TestSet
 from mc_bench.models.template import Template
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
@@ -20,12 +21,13 @@ from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
 
 from ..config import settings
-from ..transport_types.requests import SampleActionRequest
+from ..transport_types.requests import SampleActionRequest, SampleApprovalRequest
 from ..transport_types.requests import SampleApprovalState as SampleApprovalStateEnum
 from ..transport_types.responses import (
     PagedListResponse,
     SampleDetailResponse,
     SampleResponse,
+    TestSetResponse,
 )
 
 logger = get_logger(__name__)
@@ -211,7 +213,7 @@ def get_sample(
 )
 def approve_sample(
     external_id: str,
-    request: SampleActionRequest,
+    request: SampleApprovalRequest,
     user_uuid: str = Depends(am.get_current_user_uuid),
     db: Session = Depends(get_managed_session),
 ):
@@ -228,12 +230,34 @@ def approve_sample(
             detail=f"Sample with external_id {external_id} is experimental and cannot be approved",
         )
 
+    # Check if test_set_id is already set
+    if sample.test_set_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Sample with external_id {external_id} already has a test set assigned",
+        )
+
+    # Find the test set by its external_id
+    test_set = db.scalar(
+        select(TestSet).where(TestSet.external_id == request.test_set_id)
+    )
+
+    if not test_set:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Test set with external_id {request.test_set_id} not found",
+        )
+
     user = db.scalar(select(User).where(User.external_id == user_uuid))
 
     approved_state = db.scalar(
         select(SampleApprovalState).where(SampleApprovalState.name == "APPROVED")
     )
+
+    # Set approval state and test set
     sample.approval_state = approved_state
+    sample.test_set_id = test_set.id
+
     sample_approval = SampleApproval(
         sample=sample,
         user=user,
@@ -318,3 +342,21 @@ def observe_sample(
     return sample.to_dict(
         include_run_detail=True, include_logs=True, include_artifacts=True
     )
+
+
+@lru_cache(maxsize=1)
+def _cached_test_sets(db: Session):
+    """Cache the test sets to avoid hitting the database repeatedly."""
+    test_sets = db.query(TestSet).order_by(TestSet.name).all()
+    return [test_set.to_dict() for test_set in test_sets]
+
+
+@sample_router.get(
+    "/api/test-set",
+    response_model=List[TestSetResponse],
+)
+def list_test_sets(
+    db: Session = Depends(get_managed_session),
+):
+    """List all test sets, cached in memory to avoid database hits."""
+    return _cached_test_sets(db)

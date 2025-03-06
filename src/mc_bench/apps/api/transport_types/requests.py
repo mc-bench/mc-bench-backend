@@ -17,8 +17,11 @@ class ComparisonDetailRequest(Base):
 
 class UserComparisonRequest(Base):
     comparison_details: ComparisonDetailRequest
-    # Best to worst
-    ordered_sample_ids: List[uuid.UUID]
+    # Best to worst, samples with the same index are considered tied
+    # Example: [A, B, C] means A is best, B is second, C is worst
+    # Example: [A, [B, C], D] means A is best, B and C are tied for second, D is worst
+    # The outer list structure can be flat or nested to represent ties
+    ordered_sample_ids: List[uuid.UUID | List[uuid.UUID]]
 
 
 class SignupRequest(Base):

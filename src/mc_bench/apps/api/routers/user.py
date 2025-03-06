@@ -4,13 +4,19 @@ from typing import List
 import regex
 import sqlalchemy
 import valx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mc_bench.apps.api.config import settings
 from mc_bench.auth.emails import hash_email
-from mc_bench.models.user import AuthProvider, AuthProviderEmailHash, Role, User
+from mc_bench.models.user import (
+    AuthProvider,
+    AuthProviderEmailHash,
+    Role,
+    User,
+    UserIdentificationToken,
+)
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
@@ -404,17 +410,39 @@ def login(request: LoginRequest, db: Session = Depends(get_managed_session)):
 
 @user_router.get("/api/me")
 def read_users_me(
+    request: Request,
+    response: Response,
     current_user_uuid: str = Depends(am.get_current_user_uuid),
     db: Session = Depends(get_managed_session),
     current_scopes: List[str] = Depends(am.current_scopes),
 ):
+    # Find the user
     user_stmt = select(User).where(User.external_id == current_user_uuid)
     user = db.scalar(user_stmt)
+
+    # Process session and identification headers
+    session_id, identification_token_id = am.process_session_headers(
+        request, response, db, user=user
+    )
 
     if user is None:
         raise HTTPException(
             status_code=404,
         )
+
+    # Link identification token to user if it's not already linked
+    if identification_token_id:
+        identification_token = db.query(UserIdentificationToken).get(
+            identification_token_id
+        )
+        if identification_token and identification_token.user_id is None:
+            identification_token.user_id = user.id
+
+            # If user doesn't have a canonical token yet, set this one
+            if user.canonical_identification_token_id is None:
+                user.canonical_identification_token_id = identification_token.id
+
+            db.flush()
 
     return {"username": user.username, "scopes": current_scopes}
 

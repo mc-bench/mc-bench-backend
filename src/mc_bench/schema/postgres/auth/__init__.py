@@ -4,6 +4,7 @@ from ._permission import permission
 from ._role import role
 from ._role_permission import role_permission
 from ._user import user
+from ._user_identification_token import user_identification_token
 from ._user_role import user_role
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "role",
     "role_permission",
     "user_role",
+    "user_identification_token",
 ]

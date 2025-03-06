@@ -271,3 +271,6 @@ notebooks
 
 backups/
 backup/
+
+# Claude helper file 
+CLAUDE.md

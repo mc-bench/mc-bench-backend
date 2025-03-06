@@ -29,6 +29,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-MCBench-Session", "X-MCBench-Identification"],
 )
 
 app.include_router(template_router)
