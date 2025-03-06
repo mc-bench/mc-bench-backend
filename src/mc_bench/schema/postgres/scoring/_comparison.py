@@ -5,6 +5,7 @@ from sqlalchemy import (
     UUID,
     Column,
     ForeignKey,
+    Index,
     Integer,
     Table,
     func,
@@ -33,5 +34,8 @@ comparison = Table(
         ForeignKey("auth.user_identification_token.id"),
         nullable=True,
     ),
+    # Add indexes for comparison table
+    Index("ix_comparison_comparison_id", "comparison_id"),
+    Index("ix_comparison_metric_test_set", "metric_id", "test_set_id"),
     schema="scoring",
 )

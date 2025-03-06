@@ -133,7 +133,21 @@ class PromptLeaderboardResponse(Base):
     test_set_name: str
     model_id: uuid.UUID
     model_name: str
+    model_slug: str
     entries: List[PromptLeaderboardEntryResponse]
+    paging: PagingResponse
+
+
+class ModelSamplesResponse(Base):
+    """Paged samples for a specific model, metric and test set."""
+
+    metric: MetricResponse
+    test_set_id: uuid.UUID
+    test_set_name: str
+    model_id: uuid.UUID
+    model_name: str
+    model_slug: str
+    samples: List["ModelSampleResponse"]
     paging: PagingResponse
 
 
@@ -184,6 +198,56 @@ class TopSampleResponse(Base):
     vote_count: int
     prompt_id: uuid.UUID
     prompt_name: str
+
+
+class BucketStatsResponse(Base):
+    """Statistics for a bucket of samples."""
+
+    bucket: int
+    sample_count: int
+    avg_elo: float
+    win_rate: float
+    total_votes: int
+    total_wins: int
+    total_losses: int
+    total_ties: int
+    model_name: str
+
+
+class GlobalStatsResponse(Base):
+    """Global statistics for a model's samples."""
+
+    avg_elo: float
+    total_votes: int
+    total_wins: int
+    total_losses: int
+    total_ties: int
+    win_rate: float
+
+
+class ModelSampleStatsResponse(Base):
+    """Complete statistics for a model's samples."""
+
+    model: ModelResponse
+    sample_count: int
+    global_stats: Optional[GlobalStatsResponse] = None
+    bucket_stats: Optional[List[BucketStatsResponse]] = None
+    top_samples: Optional[List[TopSampleResponse]] = None
+    statistics: Optional[dict] = None  # For error cases
+
+
+class ModelSampleResponse(Base):
+    """Sample statistics for leaderboard."""
+
+    id: uuid.UUID
+    elo_score: float
+    win_rate: float
+    vote_count: int
+    win_count: int
+    loss_count: int
+    tie_count: int
+    last_updated: Optional[str] = None  # ISO format timestamp
+    prompt_name: Optional[str] = None
 
 
 class SampleResponse(Base):

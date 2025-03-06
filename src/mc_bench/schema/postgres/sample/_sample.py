@@ -85,5 +85,16 @@ sample = Table(
         ForeignKey("sample.test_set.id"),
         nullable=True,
     ),
+    # Add various indexes for sample table
+    Index("ix_sample_external_id", "external_id"),
+    Index("ix_sample_comparison_correlation_id", "comparison_correlation_id"),
+    Index("ix_sample_comparison_sample_id", "comparison_sample_id"),
+    Index("ix_sample_test_set_approval_state", "test_set_id", "approval_state_id"),
+    # Add conditional index for active approved samples
+    Index(
+        "ix_sample_active_approved",
+        "comparison_correlation_id",
+        postgresql_where="active = true AND approval_state_id = (SELECT id FROM scoring.sample_approval_state WHERE name = 'APPROVED')",
+    ),
     schema="sample",
 )

@@ -6,6 +6,7 @@ from sqlalchemy import (
     BigInteger,
     Column,
     ForeignKey,
+    Index,
     Integer,
     Table,
     func,
@@ -40,5 +41,7 @@ run = Table(
         ForeignKey("specification.generation.id"),
         nullable=True,
     ),
+    # Add index for model_id and prompt_id to speed up queries
+    Index("ix_run_model_id_prompt_id", "model_id", "prompt_id"),
     schema="specification",
 )

@@ -7,6 +7,7 @@ from sqlalchemy import (
     TIMESTAMP,
     Column,
     ForeignKey,
+    Index,
     Integer,
     Table,
     UniqueConstraint,
@@ -33,5 +34,7 @@ comparison_rank = Table(
     UniqueConstraint(
         "comparison_id", "sample_id", name="unique_sample_rank_per_comparison"
     ),
+    # Add index for sample_id to speed up lookups
+    Index("ix_comparison_rank_sample_id", "sample_id"),
     schema="scoring",
 )

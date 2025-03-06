@@ -5,6 +5,7 @@ from sqlalchemy import (
     UUID,
     Column,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -44,5 +45,7 @@ artifact = Table(
     Column(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")
     ),
+    # Add index for (sample_id, artifact_kind_id)
+    Index("ix_artifact_sample_id_kind_id", "sample_id", "artifact_kind_id"),
     schema="sample",
 )

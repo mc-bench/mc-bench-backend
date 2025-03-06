@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Table,
     UniqueConstraint,
@@ -46,6 +47,15 @@ model_leaderboard = Table(
         "test_set_id",
         "tag_id",
         name="unique_model_leaderboard_entry",
+    ),
+    # Add indexes for leaderboard queries
+    Index("ix_model_leaderboard_elo_score", "elo_score"),
+    Index(
+        "ix_model_leaderboard_metric_test_set_tag_vote",
+        "metric_id",
+        "test_set_id",
+        "tag_id",
+        "vote_count",
     ),
     schema="scoring",
 )

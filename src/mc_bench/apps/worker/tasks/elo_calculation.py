@@ -53,12 +53,16 @@ def get_or_create_model_leaderboard(db, model_id, metric_id, test_set_id, tag_id
 
 
 def get_or_create_prompt_leaderboard(
-    db, prompt_id, metric_id, test_set_id, tag_id=None
+    db, prompt_id, model_id, metric_id, test_set_id, tag_id=None
 ):
-    """Get or create a prompt leaderboard entry."""
+    """Get or create a prompt leaderboard entry.
+
+    This tracks how well each prompt performs for a specific model.
+    """
     entry = db.execute(
         select(PromptLeaderboard).where(
             PromptLeaderboard.prompt_id == prompt_id,
+            PromptLeaderboard.model_id == model_id,
             PromptLeaderboard.metric_id == metric_id,
             PromptLeaderboard.test_set_id == test_set_id,
             PromptLeaderboard.tag_id == tag_id,
@@ -68,6 +72,7 @@ def get_or_create_prompt_leaderboard(
     if entry is None:
         entry = PromptLeaderboard(
             prompt_id=prompt_id,
+            model_id=model_id,
             metric_id=metric_id,
             test_set_id=test_set_id,
             tag_id=tag_id,
@@ -111,8 +116,11 @@ def get_or_create_sample_leaderboard(db, sample_id, metric_id, test_set_id):
 
 
 def process_comparison_for_elo(db, comparison_id):
-    """Process a single comparison to update ELO scores."""
-    # Get the comparison with all its ranks
+    """Process a single comparison to update ELO scores.
+
+    Simplified to handle only binary comparisons (one winner, one loser) or ties.
+    """
+    # Get the comparison
     comparison = db.scalar(select(Comparison).where(Comparison.id == comparison_id))
     if not comparison:
         logger.warning(f"Comparison {comparison_id} not found")
@@ -141,55 +149,64 @@ def process_comparison_for_elo(db, comparison_id):
     # Get all unique ranks sorted
     sorted_ranks = sorted(samples_by_rank.keys())
 
-    # Get info about the samples and their associated tags
-    sample_info = {}
-    prompt_tags = {}  # Cache to avoid duplicate queries
+    # SIMPLIFIED: Ensure we have either 2 different ranks or 1 rank with multiple samples
+    if len(sorted_ranks) > 2:
+        logger.warning(
+            f"Simplified ELO calculation only supports binary (win/lose) or tie comparisons. Skipping complex comparison {comparison_id}"
+        )
+        return
 
-    for rank_entry in ranks:
-        sample = db.scalar(select(Sample).where(Sample.id == rank_entry.sample_id))
-        if not sample:
-            continue
+    # Fetch samples data and prepare for ELO calculation
+    sample_data = {}
+    for rank in sorted_ranks:
+        for sample_id in samples_by_rank[rank]:
+            sample = db.scalar(select(Sample).where(Sample.id == sample_id))
+            if not sample:
+                continue
 
-        # Get or cache the prompt's tags
-        prompt_id = sample.run.prompt_id
-        if prompt_id not in prompt_tags:
-            # Get all tags for this prompt
+            # Fetch prompt tags
+            prompt_id = sample.run.prompt_id
             prompt_tag_query = text("""
                 SELECT pt.tag_id 
                 FROM specification.prompt_tag pt
                 WHERE pt.prompt_id = :prompt_id
             """).bindparams(prompt_id=prompt_id)
-
             tag_ids = db.execute(prompt_tag_query).scalars().all()
-            prompt_tags[prompt_id] = tag_ids
 
-        sample_info[rank_entry.sample_id] = {
-            "model_id": sample.run.model_id,
-            "test_set_id": comparison.test_set_id,
-            "sample_id": sample.id,
-            "rank": rank_entry.rank,
-            "prompt_id": prompt_id,
-            "tag_ids": prompt_tags[prompt_id],
-        }
+            sample_data[sample_id] = {
+                "model_id": sample.run.model_id,
+                "prompt_id": prompt_id,
+                "rank": rank,
+                "tag_ids": tag_ids,
+            }
 
-    # Dictionary to track leaderboard entries to update
-    model_entries = {}
-    prompt_entries = {}
-    sample_entries = {}
+    # If we have two different ranks, it's a win/loss situation
+    is_tie = len(sorted_ranks) == 1
 
-    # Get sample, model, and prompt leaderboard entries for each sample
-    for sample_id, info in sample_info.items():
+    # Setup leaderboard entries
+    model_entries = {}  # (model_id, metric_id, test_set_id, tag_id) -> entry
+    prompt_entries = {}  # (prompt_id, metric_id, test_set_id, tag_id) -> entry
+    sample_entries = {}  # (sample_id, metric_id, test_set_id) -> entry
+
+    # Get sample leaderboard entries
+    for sample_id in sample_data.keys():
+        sample_key = (sample_id, comparison.metric_id, comparison.test_set_id)
+        sample_entries[sample_key] = get_or_create_sample_leaderboard(
+            db, sample_id, comparison.metric_id, comparison.test_set_id
+        )
+
+    # Get model leaderboard entries (both global and tag-specific)
+    for sample_id, info in sample_data.items():
         model_id = info["model_id"]
-        prompt_id = info["prompt_id"]
 
-        # First, get or create the global model leaderboard entry (tag_id=None)
+        # Global model entry (no tag)
         model_key = (model_id, comparison.metric_id, comparison.test_set_id, None)
         if model_key not in model_entries:
             model_entries[model_key] = get_or_create_model_leaderboard(
                 db, model_id, comparison.metric_id, comparison.test_set_id, None
             )
 
-        # Then get or create model entries for each tag
+        # Tag-specific model entries
         for tag_id in info["tag_ids"]:
             tag_model_key = (
                 model_id,
@@ -202,355 +219,665 @@ def process_comparison_for_elo(db, comparison_id):
                     db, model_id, comparison.metric_id, comparison.test_set_id, tag_id
                 )
 
-        # First, get or create the global prompt leaderboard entry (tag_id=None)
-        prompt_key = (prompt_id, comparison.metric_id, comparison.test_set_id, None)
+    # Get prompt leaderboard entries (both global and tag-specific)
+    for sample_id, info in sample_data.items():
+        prompt_id = info["prompt_id"]
+
+        # Global prompt entry (no tag)
+        model_id = info["model_id"]
+        prompt_key = (
+            prompt_id,
+            model_id,
+            comparison.metric_id,
+            comparison.test_set_id,
+            None,
+        )
         if prompt_key not in prompt_entries:
             prompt_entries[prompt_key] = get_or_create_prompt_leaderboard(
-                db, prompt_id, comparison.metric_id, comparison.test_set_id, None
+                db,
+                prompt_id,
+                model_id,
+                comparison.metric_id,
+                comparison.test_set_id,
+                None,
             )
 
-        # Then get or create prompt entries for each tag
+        # Tag-specific prompt entries
         for tag_id in info["tag_ids"]:
             tag_prompt_key = (
                 prompt_id,
+                model_id,
                 comparison.metric_id,
                 comparison.test_set_id,
                 tag_id,
             )
             if tag_prompt_key not in prompt_entries:
                 prompt_entries[tag_prompt_key] = get_or_create_prompt_leaderboard(
-                    db, prompt_id, comparison.metric_id, comparison.test_set_id, tag_id
+                    db,
+                    prompt_id,
+                    model_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    tag_id,
                 )
 
-        # Get or create sample leaderboard entry
-        sample_key = (sample_id, comparison.metric_id, comparison.test_set_id)
-        if sample_key not in sample_entries:
-            sample_entries[sample_key] = get_or_create_sample_leaderboard(
-                db, sample_id, comparison.metric_id, comparison.test_set_id
-            )
+    # SIMPLIFIED PROCESSING OF WIN/LOSS OR TIE
 
-    # Calculate new ELO scores based on pairwise comparisons
-    model_elo_updates = defaultdict(lambda: {"score": 0, "count": 0})
-    prompt_elo_updates = defaultdict(lambda: {"score": 0, "count": 0})
-    sample_elo_updates = defaultdict(lambda: {"score": 0, "count": 0})
+    # Handle tie case
+    if is_tie:
+        # Get the samples that tied (all samples have the same rank)
+        tied_samples = list(sample_data.keys())
 
-    # Update vote counts for all entries involved
-    for model_key, entry in model_entries.items():
-        entry.vote_count += 1
+        # Process each pair of tied samples
+        for i, sample_a_id in enumerate(tied_samples):
+            for sample_b_id in tied_samples[i + 1 :]:
+                # Skip if either sample is missing data
+                if sample_a_id not in sample_data or sample_b_id not in sample_data:
+                    continue
 
-    for prompt_key, entry in prompt_entries.items():
-        entry.vote_count += 1
+                # Get sample data
+                sample_a = sample_data[sample_a_id]
+                sample_b = sample_data[sample_b_id]
 
-    for sample_key, entry in sample_entries.items():
-        entry.vote_count += 1
+                # SAMPLE ELO UPDATE - TIE
+                sample_a_key = (
+                    sample_a_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                )
+                sample_b_key = (
+                    sample_b_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                )
 
-    # Process each pair of ranks (1 vs 2, 1 vs 3, 2 vs 3, etc.)
-    # This handles all pairwise comparisons
-    for i, rank_i in enumerate(sorted_ranks):
-        for rank_j in sorted_ranks[i + 1 :]:
-            # For all samples with rank_i vs all samples with rank_j
-            for sample_i_id in samples_by_rank[rank_i]:
-                for sample_j_id in samples_by_rank[rank_j]:
-                    if sample_i_id not in sample_info or sample_j_id not in sample_info:
-                        continue
+                # Update vote count
+                sample_entries[sample_a_key].vote_count += 1
+                sample_entries[sample_b_key].vote_count += 1
 
-                    # Get model and prompt information
-                    model_i_id = sample_info[sample_i_id]["model_id"]
-                    model_j_id = sample_info[sample_j_id]["model_id"]
-                    prompt_i_id = sample_info[sample_i_id]["prompt_id"]
-                    prompt_j_id = sample_info[sample_j_id]["prompt_id"]
+                # Update tie count
+                sample_entries[sample_a_key].tie_count += 1
+                sample_entries[sample_b_key].tie_count += 1
 
-                    # Define a function to process model ELO updates for a specific model pair and tag
-                    def process_model_elo(model_i_id, model_j_id, tag_id=None):
-                        # Model keys for this tag (or global if tag_id is None)
-                        model_i_key = (
-                            model_i_id,
-                            comparison.metric_id,
-                            comparison.test_set_id,
-                            tag_id,
-                        )
-                        model_j_key = (
-                            model_j_id,
-                            comparison.metric_id,
-                            comparison.test_set_id,
-                            tag_id,
-                        )
+                # Calculate ELO
+                sample_a_rating = sample_entries[sample_a_key].elo_score
+                sample_b_rating = sample_entries[sample_b_key].elo_score
 
-                        # If we don't have entries for these keys (could happen for tag-specific entries),
-                        # create them now
-                        if model_i_key not in model_entries:
-                            model_entries[model_i_key] = (
-                                get_or_create_model_leaderboard(
-                                    db,
-                                    model_i_id,
-                                    comparison.metric_id,
-                                    comparison.test_set_id,
-                                    tag_id,
-                                )
-                            )
-                            model_entries[model_i_key].vote_count += 1
+                sample_a_expected = expected_score(sample_a_rating, sample_b_rating)
+                sample_b_expected = expected_score(sample_b_rating, sample_a_rating)
 
-                        if model_j_key not in model_entries:
-                            model_entries[model_j_key] = (
-                                get_or_create_model_leaderboard(
-                                    db,
-                                    model_j_id,
-                                    comparison.metric_id,
-                                    comparison.test_set_id,
-                                    tag_id,
-                                )
-                            )
-                            model_entries[model_j_key].vote_count += 1
+                # Tie scores
+                sample_a_actual = 0.5
+                sample_b_actual = 0.5
 
-                        # Get current ELO ratings for this tag
-                        model_i_rating = model_entries[model_i_key].elo_score
-                        model_j_rating = model_entries[model_j_key].elo_score
+                # Update ELO scores
+                sample_a_new_rating = update_elo(
+                    sample_a_rating,
+                    sample_a_expected,
+                    sample_a_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+                sample_b_new_rating = update_elo(
+                    sample_b_rating,
+                    sample_b_expected,
+                    sample_b_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
 
-                        # Expected scores
-                        model_i_expected = expected_score(
-                            model_i_rating, model_j_rating
-                        )
-                        model_j_expected = expected_score(
-                            model_j_rating, model_i_rating
-                        )
+                sample_entries[sample_a_key].elo_score = sample_a_new_rating
+                sample_entries[sample_b_key].elo_score = sample_b_new_rating
 
-                        # Actual scores determined by rank
-                        if rank_i < rank_j:  # i wins
-                            model_i_actual = 1.0
-                            model_j_actual = 0.0
+                # MODEL ELO UPDATE - TIE
+                model_a_id = sample_a["model_id"]
+                model_b_id = sample_b["model_id"]
 
-                            # Update win/loss counts
-                            model_entries[model_i_key].win_count += 1
-                            model_entries[model_j_key].loss_count += 1
-                        elif rank_i > rank_j:  # j wins
-                            model_i_actual = 0.0
-                            model_j_actual = 1.0
+                # Update global model entries (no tag)
+                model_a_key = (
+                    model_a_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
+                model_b_key = (
+                    model_b_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
 
-                            # Update win/loss counts
-                            model_entries[model_i_key].loss_count += 1
-                            model_entries[model_j_key].win_count += 1
-                        else:  # tie
-                            model_i_actual = 0.5
-                            model_j_actual = 0.5
+                # Update vote count
+                model_entries[model_a_key].vote_count += 1
+                model_entries[model_b_key].vote_count += 1
 
-                            # Update tie counts
-                            model_entries[model_i_key].tie_count += 1
-                            model_entries[model_j_key].tie_count += 1
+                # Update tie count
+                model_entries[model_a_key].tie_count += 1
+                model_entries[model_b_key].tie_count += 1
 
-                        # Calculate new ELO ratings
-                        model_i_new_rating = update_elo(
-                            model_i_rating,
-                            model_i_expected,
-                            model_i_actual,
-                            settings.ELO_K_FACTOR,
-                            settings.ELO_MIN_SCORE,
-                        )
-                        model_j_new_rating = update_elo(
-                            model_j_rating,
-                            model_j_expected,
-                            model_j_actual,
-                            settings.ELO_K_FACTOR,
-                            settings.ELO_MIN_SCORE,
-                        )
+                # Calculate ELO
+                model_a_rating = model_entries[model_a_key].elo_score
+                model_b_rating = model_entries[model_b_key].elo_score
 
-                        # Accumulate ELO updates
-                        model_elo_updates[model_i_key]["score"] += model_i_new_rating
-                        model_elo_updates[model_i_key]["count"] += 1
-                        model_elo_updates[model_j_key]["score"] += model_j_new_rating
-                        model_elo_updates[model_j_key]["count"] += 1
+                model_a_expected = expected_score(model_a_rating, model_b_rating)
+                model_b_expected = expected_score(model_b_rating, model_a_rating)
 
-                    # Define a function to process prompt ELO updates for a specific prompt pair and tag
-                    def process_prompt_elo(prompt_i_id, prompt_j_id, tag_id=None):
-                        # Prompt keys for this tag (or global if tag_id is None)
-                        prompt_i_key = (
-                            prompt_i_id,
-                            comparison.metric_id,
-                            comparison.test_set_id,
-                            tag_id,
-                        )
-                        prompt_j_key = (
-                            prompt_j_id,
-                            comparison.metric_id,
-                            comparison.test_set_id,
-                            tag_id,
-                        )
+                # Tie scores
+                model_a_actual = 0.5
+                model_b_actual = 0.5
 
-                        # If we don't have entries for these keys (could happen for tag-specific entries),
-                        # create them now
-                        if prompt_i_key not in prompt_entries:
-                            prompt_entries[prompt_i_key] = (
-                                get_or_create_prompt_leaderboard(
-                                    db,
-                                    prompt_i_id,
-                                    comparison.metric_id,
-                                    comparison.test_set_id,
-                                    tag_id,
-                                )
-                            )
-                            prompt_entries[prompt_i_key].vote_count += 1
+                # Update ELO scores
+                model_a_new_rating = update_elo(
+                    model_a_rating,
+                    model_a_expected,
+                    model_a_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+                model_b_new_rating = update_elo(
+                    model_b_rating,
+                    model_b_expected,
+                    model_b_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
 
-                        if prompt_j_key not in prompt_entries:
-                            prompt_entries[prompt_j_key] = (
-                                get_or_create_prompt_leaderboard(
-                                    db,
-                                    prompt_j_id,
-                                    comparison.metric_id,
-                                    comparison.test_set_id,
-                                    tag_id,
-                                )
-                            )
-                            prompt_entries[prompt_j_key].vote_count += 1
+                model_entries[model_a_key].elo_score = model_a_new_rating
+                model_entries[model_b_key].elo_score = model_b_new_rating
 
-                        # Get current ELO ratings for this tag
-                        prompt_i_rating = prompt_entries[prompt_i_key].elo_score
-                        prompt_j_rating = prompt_entries[prompt_j_key].elo_score
+                # PROMPT ELO UPDATE - TIE
+                prompt_a_id = sample_a["prompt_id"]
+                prompt_b_id = sample_b["prompt_id"]
 
-                        # Expected scores
-                        prompt_i_expected = expected_score(
-                            prompt_i_rating, prompt_j_rating
-                        )
-                        prompt_j_expected = expected_score(
-                            prompt_j_rating, prompt_i_rating
-                        )
+                # Update global prompt entries (no tag)
+                # Include model_id in the key
+                prompt_a_key = (
+                    prompt_a_id,
+                    model_a_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
+                prompt_b_key = (
+                    prompt_b_id,
+                    model_b_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
 
-                        # Actual scores determined by rank
-                        if rank_i < rank_j:  # i wins
-                            prompt_i_actual = 1.0
-                            prompt_j_actual = 0.0
+                # Update vote count
+                prompt_entries[prompt_a_key].vote_count += 1
+                prompt_entries[prompt_b_key].vote_count += 1
 
-                            # Update win/loss counts
-                            prompt_entries[prompt_i_key].win_count += 1
-                            prompt_entries[prompt_j_key].loss_count += 1
-                        elif rank_i > rank_j:  # j wins
-                            prompt_i_actual = 0.0
-                            prompt_j_actual = 1.0
+                # Update tie count
+                prompt_entries[prompt_a_key].tie_count += 1
+                prompt_entries[prompt_b_key].tie_count += 1
 
-                            # Update win/loss counts
-                            prompt_entries[prompt_i_key].loss_count += 1
-                            prompt_entries[prompt_j_key].win_count += 1
-                        else:  # tie
-                            prompt_i_actual = 0.5
-                            prompt_j_actual = 0.5
+                # Calculate ELO
+                prompt_a_rating = prompt_entries[prompt_a_key].elo_score
+                prompt_b_rating = prompt_entries[prompt_b_key].elo_score
 
-                            # Update tie counts
-                            prompt_entries[prompt_i_key].tie_count += 1
-                            prompt_entries[prompt_j_key].tie_count += 1
+                prompt_a_expected = expected_score(prompt_a_rating, prompt_b_rating)
+                prompt_b_expected = expected_score(prompt_b_rating, prompt_a_rating)
 
-                        # Calculate new ELO ratings
-                        prompt_i_new_rating = update_elo(
-                            prompt_i_rating,
-                            prompt_i_expected,
-                            prompt_i_actual,
-                            settings.ELO_K_FACTOR,
-                            settings.ELO_MIN_SCORE,
-                        )
-                        prompt_j_new_rating = update_elo(
-                            prompt_j_rating,
-                            prompt_j_expected,
-                            prompt_j_actual,
-                            settings.ELO_K_FACTOR,
-                            settings.ELO_MIN_SCORE,
-                        )
+                # Tie scores
+                prompt_a_actual = 0.5
+                prompt_b_actual = 0.5
 
-                        # Accumulate ELO updates
-                        prompt_elo_updates[prompt_i_key]["score"] += prompt_i_new_rating
-                        prompt_elo_updates[prompt_i_key]["count"] += 1
-                        prompt_elo_updates[prompt_j_key]["score"] += prompt_j_new_rating
-                        prompt_elo_updates[prompt_j_key]["count"] += 1
+                # Update ELO scores
+                prompt_a_new_rating = update_elo(
+                    prompt_a_rating,
+                    prompt_a_expected,
+                    prompt_a_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+                prompt_b_new_rating = update_elo(
+                    prompt_b_rating,
+                    prompt_b_expected,
+                    prompt_b_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
 
-                    # Process sample ELO updates
-                    sample_i_key = (
-                        sample_i_id,
+                prompt_entries[prompt_a_key].elo_score = prompt_a_new_rating
+                prompt_entries[prompt_b_key].elo_score = prompt_b_new_rating
+
+                # Update tag-specific entries
+                # Get the intersection of tags for both samples
+                tags_a = set(sample_a["tag_ids"])
+                tags_b = set(sample_b["tag_ids"])
+                common_tags = tags_a.intersection(tags_b)
+
+                for tag_id in common_tags:
+                    # MODEL TAG UPDATE
+                    tag_model_a_key = (
+                        model_a_id,
                         comparison.metric_id,
                         comparison.test_set_id,
+                        tag_id,
                     )
-                    sample_j_key = (
-                        sample_j_id,
+                    tag_model_b_key = (
+                        model_b_id,
                         comparison.metric_id,
                         comparison.test_set_id,
+                        tag_id,
                     )
 
-                    sample_i_rating = sample_entries[sample_i_key].elo_score
-                    sample_j_rating = sample_entries[sample_j_key].elo_score
+                    # Update vote count
+                    model_entries[tag_model_a_key].vote_count += 1
+                    model_entries[tag_model_b_key].vote_count += 1
 
-                    sample_i_expected = expected_score(sample_i_rating, sample_j_rating)
-                    sample_j_expected = expected_score(sample_j_rating, sample_i_rating)
+                    # Update tie count
+                    model_entries[tag_model_a_key].tie_count += 1
+                    model_entries[tag_model_b_key].tie_count += 1
 
-                    # Determine actual scores based on rank
-                    if rank_i < rank_j:  # i wins
-                        sample_i_actual = 1.0
-                        sample_j_actual = 0.0
+                    # Calculate ELO
+                    tag_model_a_rating = model_entries[tag_model_a_key].elo_score
+                    tag_model_b_rating = model_entries[tag_model_b_key].elo_score
 
-                        # Update win/loss counts
-                        sample_entries[sample_i_key].win_count += 1
-                        sample_entries[sample_j_key].loss_count += 1
-                    elif rank_i > rank_j:  # j wins
-                        sample_i_actual = 0.0
-                        sample_j_actual = 1.0
+                    tag_model_a_expected = expected_score(
+                        tag_model_a_rating, tag_model_b_rating
+                    )
+                    tag_model_b_expected = expected_score(
+                        tag_model_b_rating, tag_model_a_rating
+                    )
 
-                        # Update win/loss counts
-                        sample_entries[sample_i_key].loss_count += 1
-                        sample_entries[sample_j_key].win_count += 1
-                    else:  # tie
-                        sample_i_actual = 0.5
-                        sample_j_actual = 0.5
-
-                        # Update tie counts
-                        sample_entries[sample_i_key].tie_count += 1
-                        sample_entries[sample_j_key].tie_count += 1
-
-                    # Calculate new sample ELO ratings
-                    sample_i_new_rating = update_elo(
-                        sample_i_rating,
-                        sample_i_expected,
-                        sample_i_actual,
+                    # Update ELO scores
+                    tag_model_a_new_rating = update_elo(
+                        tag_model_a_rating,
+                        tag_model_a_expected,
+                        0.5,  # tie
                         settings.ELO_K_FACTOR,
                         settings.ELO_MIN_SCORE,
                     )
-                    sample_j_new_rating = update_elo(
-                        sample_j_rating,
-                        sample_j_expected,
-                        sample_j_actual,
+                    tag_model_b_new_rating = update_elo(
+                        tag_model_b_rating,
+                        tag_model_b_expected,
+                        0.5,  # tie
                         settings.ELO_K_FACTOR,
                         settings.ELO_MIN_SCORE,
                     )
 
-                    # Accumulate sample ELO updates
-                    sample_elo_updates[sample_i_key]["score"] += sample_i_new_rating
-                    sample_elo_updates[sample_i_key]["count"] += 1
-                    sample_elo_updates[sample_j_key]["score"] += sample_j_new_rating
-                    sample_elo_updates[sample_j_key]["count"] += 1
+                    model_entries[tag_model_a_key].elo_score = tag_model_a_new_rating
+                    model_entries[tag_model_b_key].elo_score = tag_model_b_new_rating
 
-                    # First, process the global ELO updates (tag_id=None)
-                    process_model_elo(model_i_id, model_j_id, None)
-                    process_prompt_elo(prompt_i_id, prompt_j_id, None)
+                    # PROMPT TAG UPDATE
+                    tag_prompt_a_key = (
+                        prompt_a_id,
+                        model_a_id,
+                        comparison.metric_id,
+                        comparison.test_set_id,
+                        tag_id,
+                    )
+                    tag_prompt_b_key = (
+                        prompt_b_id,
+                        model_b_id,
+                        comparison.metric_id,
+                        comparison.test_set_id,
+                        tag_id,
+                    )
 
-                    # Then process tag-specific ELO updates
-                    # We need to find the intersection of tags from both samples
-                    tag_ids_i = set(sample_info[sample_i_id]["tag_ids"])
-                    tag_ids_j = set(sample_info[sample_j_id]["tag_ids"])
+                    # Update vote count
+                    prompt_entries[tag_prompt_a_key].vote_count += 1
+                    prompt_entries[tag_prompt_b_key].vote_count += 1
 
-                    # Process shared tags
-                    for tag_id in tag_ids_i.intersection(tag_ids_j):
-                        process_model_elo(model_i_id, model_j_id, tag_id)
-                        process_prompt_elo(prompt_i_id, prompt_j_id, tag_id)
+                    # Update tie count
+                    prompt_entries[tag_prompt_a_key].tie_count += 1
+                    prompt_entries[tag_prompt_b_key].tie_count += 1
 
-    # Apply accumulated ELO updates (averaging all pairwise comparisons)
+                    # Calculate ELO
+                    tag_prompt_a_rating = prompt_entries[tag_prompt_a_key].elo_score
+                    tag_prompt_b_rating = prompt_entries[tag_prompt_b_key].elo_score
+
+                    tag_prompt_a_expected = expected_score(
+                        tag_prompt_a_rating, tag_prompt_b_rating
+                    )
+                    tag_prompt_b_expected = expected_score(
+                        tag_prompt_b_rating, tag_prompt_a_rating
+                    )
+
+                    # Update ELO scores
+                    tag_prompt_a_new_rating = update_elo(
+                        tag_prompt_a_rating,
+                        tag_prompt_a_expected,
+                        0.5,  # tie
+                        settings.ELO_K_FACTOR,
+                        settings.ELO_MIN_SCORE,
+                    )
+                    tag_prompt_b_new_rating = update_elo(
+                        tag_prompt_b_rating,
+                        tag_prompt_b_expected,
+                        0.5,  # tie
+                        settings.ELO_K_FACTOR,
+                        settings.ELO_MIN_SCORE,
+                    )
+
+                    prompt_entries[tag_prompt_a_key].elo_score = tag_prompt_a_new_rating
+                    prompt_entries[tag_prompt_b_key].elo_score = tag_prompt_b_new_rating
+
+    else:
+        # Win/loss case - we have two different ranks
+        # First rank has the winners, second rank has the losers
+        winners = samples_by_rank[sorted_ranks[0]]
+        losers = samples_by_rank[sorted_ranks[1]]
+
+        # Process all winner/loser pairs
+        for winner_id in winners:
+            for loser_id in losers:
+                # Skip if either sample is missing data
+                if winner_id not in sample_data or loser_id not in sample_data:
+                    continue
+
+                # Get sample data
+                winner = sample_data[winner_id]
+                loser = sample_data[loser_id]
+
+                # SAMPLE ELO UPDATE - WIN/LOSS
+                winner_key = (winner_id, comparison.metric_id, comparison.test_set_id)
+                loser_key = (loser_id, comparison.metric_id, comparison.test_set_id)
+
+                # Update vote count
+                sample_entries[winner_key].vote_count += 1
+                sample_entries[loser_key].vote_count += 1
+
+                # Update win/loss count
+                sample_entries[winner_key].win_count += 1
+                sample_entries[loser_key].loss_count += 1
+
+                # Calculate ELO
+                winner_rating = sample_entries[winner_key].elo_score
+                loser_rating = sample_entries[loser_key].elo_score
+
+                winner_expected = expected_score(winner_rating, loser_rating)
+                loser_expected = expected_score(loser_rating, winner_rating)
+
+                # Win/loss scores
+                winner_actual = 1.0
+                loser_actual = 0.0
+
+                # Update ELO scores
+                winner_new_rating = update_elo(
+                    winner_rating,
+                    winner_expected,
+                    winner_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+                loser_new_rating = update_elo(
+                    loser_rating,
+                    loser_expected,
+                    loser_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+
+                sample_entries[winner_key].elo_score = winner_new_rating
+                sample_entries[loser_key].elo_score = loser_new_rating
+
+                # MODEL ELO UPDATE - WIN/LOSS
+                winner_model_id = winner["model_id"]
+                loser_model_id = loser["model_id"]
+
+                # Update global model entries (no tag)
+                winner_model_key = (
+                    winner_model_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
+                loser_model_key = (
+                    loser_model_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
+
+                # Update vote count
+                model_entries[winner_model_key].vote_count += 1
+                model_entries[loser_model_key].vote_count += 1
+
+                # Update win/loss count
+                model_entries[winner_model_key].win_count += 1
+                model_entries[loser_model_key].loss_count += 1
+
+                # Calculate ELO
+                winner_model_rating = model_entries[winner_model_key].elo_score
+                loser_model_rating = model_entries[loser_model_key].elo_score
+
+                winner_model_expected = expected_score(
+                    winner_model_rating, loser_model_rating
+                )
+                loser_model_expected = expected_score(
+                    loser_model_rating, winner_model_rating
+                )
+
+                # Win/loss scores
+                winner_model_actual = 1.0
+                loser_model_actual = 0.0
+
+                # Update ELO scores
+                winner_model_new_rating = update_elo(
+                    winner_model_rating,
+                    winner_model_expected,
+                    winner_model_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+                loser_model_new_rating = update_elo(
+                    loser_model_rating,
+                    loser_model_expected,
+                    loser_model_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+
+                model_entries[winner_model_key].elo_score = winner_model_new_rating
+                model_entries[loser_model_key].elo_score = loser_model_new_rating
+
+                # PROMPT ELO UPDATE - WIN/LOSS
+                winner_prompt_id = winner["prompt_id"]
+                loser_prompt_id = loser["prompt_id"]
+
+                # Update global prompt entries (no tag)
+                winner_prompt_key = (
+                    winner_prompt_id,
+                    winner_model_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
+                loser_prompt_key = (
+                    loser_prompt_id,
+                    loser_model_id,
+                    comparison.metric_id,
+                    comparison.test_set_id,
+                    None,
+                )
+
+                # Update vote count
+                prompt_entries[winner_prompt_key].vote_count += 1
+                prompt_entries[loser_prompt_key].vote_count += 1
+
+                # Update win/loss count
+                prompt_entries[winner_prompt_key].win_count += 1
+                prompt_entries[loser_prompt_key].loss_count += 1
+
+                # Calculate ELO
+                winner_prompt_rating = prompt_entries[winner_prompt_key].elo_score
+                loser_prompt_rating = prompt_entries[loser_prompt_key].elo_score
+
+                winner_prompt_expected = expected_score(
+                    winner_prompt_rating, loser_prompt_rating
+                )
+                loser_prompt_expected = expected_score(
+                    loser_prompt_rating, winner_prompt_rating
+                )
+
+                # Win/loss scores
+                winner_prompt_actual = 1.0
+                loser_prompt_actual = 0.0
+
+                # Update ELO scores
+                winner_prompt_new_rating = update_elo(
+                    winner_prompt_rating,
+                    winner_prompt_expected,
+                    winner_prompt_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+                loser_prompt_new_rating = update_elo(
+                    loser_prompt_rating,
+                    loser_prompt_expected,
+                    loser_prompt_actual,
+                    settings.ELO_K_FACTOR,
+                    settings.ELO_MIN_SCORE,
+                )
+
+                prompt_entries[winner_prompt_key].elo_score = winner_prompt_new_rating
+                prompt_entries[loser_prompt_key].elo_score = loser_prompt_new_rating
+
+                # Update tag-specific entries
+                # Get the intersection of tags for both samples
+                winner_tags = set(winner["tag_ids"])
+                loser_tags = set(loser["tag_ids"])
+                common_tags = winner_tags.intersection(loser_tags)
+
+                for tag_id in common_tags:
+                    # MODEL TAG UPDATE
+                    tag_winner_model_key = (
+                        winner_model_id,
+                        comparison.metric_id,
+                        comparison.test_set_id,
+                        tag_id,
+                    )
+                    tag_loser_model_key = (
+                        loser_model_id,
+                        comparison.metric_id,
+                        comparison.test_set_id,
+                        tag_id,
+                    )
+
+                    # Update vote count
+                    model_entries[tag_winner_model_key].vote_count += 1
+                    model_entries[tag_loser_model_key].vote_count += 1
+
+                    # Update win/loss count
+                    model_entries[tag_winner_model_key].win_count += 1
+                    model_entries[tag_loser_model_key].loss_count += 1
+
+                    # Calculate ELO
+                    tag_winner_model_rating = model_entries[
+                        tag_winner_model_key
+                    ].elo_score
+                    tag_loser_model_rating = model_entries[
+                        tag_loser_model_key
+                    ].elo_score
+
+                    tag_winner_model_expected = expected_score(
+                        tag_winner_model_rating, tag_loser_model_rating
+                    )
+                    tag_loser_model_expected = expected_score(
+                        tag_loser_model_rating, tag_winner_model_rating
+                    )
+
+                    # Update ELO scores
+                    tag_winner_model_new_rating = update_elo(
+                        tag_winner_model_rating,
+                        tag_winner_model_expected,
+                        1.0,  # win
+                        settings.ELO_K_FACTOR,
+                        settings.ELO_MIN_SCORE,
+                    )
+                    tag_loser_model_new_rating = update_elo(
+                        tag_loser_model_rating,
+                        tag_loser_model_expected,
+                        0.0,  # loss
+                        settings.ELO_K_FACTOR,
+                        settings.ELO_MIN_SCORE,
+                    )
+
+                    model_entries[
+                        tag_winner_model_key
+                    ].elo_score = tag_winner_model_new_rating
+                    model_entries[
+                        tag_loser_model_key
+                    ].elo_score = tag_loser_model_new_rating
+
+                    # PROMPT TAG UPDATE
+                    tag_winner_prompt_key = (
+                        winner_prompt_id,
+                        winner_model_id,
+                        comparison.metric_id,
+                        comparison.test_set_id,
+                        tag_id,
+                    )
+                    tag_loser_prompt_key = (
+                        loser_prompt_id,
+                        loser_model_id,
+                        comparison.metric_id,
+                        comparison.test_set_id,
+                        tag_id,
+                    )
+
+                    # Update vote count
+                    prompt_entries[tag_winner_prompt_key].vote_count += 1
+                    prompt_entries[tag_loser_prompt_key].vote_count += 1
+
+                    # Update win/loss count
+                    prompt_entries[tag_winner_prompt_key].win_count += 1
+                    prompt_entries[tag_loser_prompt_key].loss_count += 1
+
+                    # Calculate ELO
+                    tag_winner_prompt_rating = prompt_entries[
+                        tag_winner_prompt_key
+                    ].elo_score
+                    tag_loser_prompt_rating = prompt_entries[
+                        tag_loser_prompt_key
+                    ].elo_score
+
+                    tag_winner_prompt_expected = expected_score(
+                        tag_winner_prompt_rating, tag_loser_prompt_rating
+                    )
+                    tag_loser_prompt_expected = expected_score(
+                        tag_loser_prompt_rating, tag_winner_prompt_rating
+                    )
+
+                    # Update ELO scores
+                    tag_winner_prompt_new_rating = update_elo(
+                        tag_winner_prompt_rating,
+                        tag_winner_prompt_expected,
+                        1.0,  # win
+                        settings.ELO_K_FACTOR,
+                        settings.ELO_MIN_SCORE,
+                    )
+                    tag_loser_prompt_new_rating = update_elo(
+                        tag_loser_prompt_rating,
+                        tag_loser_prompt_expected,
+                        0.0,  # loss
+                        settings.ELO_K_FACTOR,
+                        settings.ELO_MIN_SCORE,
+                    )
+
+                    prompt_entries[
+                        tag_winner_prompt_key
+                    ].elo_score = tag_winner_prompt_new_rating
+                    prompt_entries[
+                        tag_loser_prompt_key
+                    ].elo_score = tag_loser_prompt_new_rating
+
+    # Update the last_updated timestamp for all modified entries
     now = datetime.datetime.now()
-    for model_key, updates in model_elo_updates.items():
-        if updates["count"] > 0:
-            model_entries[model_key].elo_score = updates["score"] / updates["count"]
-            model_entries[model_key].last_updated = now
 
-    for prompt_key, updates in prompt_elo_updates.items():
-        if updates["count"] > 0:
-            prompt_entries[prompt_key].elo_score = updates["score"] / updates["count"]
-            prompt_entries[prompt_key].last_updated = now
+    for entry in model_entries.values():
+        entry.last_updated = now
 
-    for sample_key, updates in sample_elo_updates.items():
-        if updates["count"] > 0:
-            sample_entries[sample_key].elo_score = updates["score"] / updates["count"]
-            sample_entries[sample_key].last_updated = now
+    for entry in prompt_entries.values():
+        entry.last_updated = now
+
+    for entry in sample_entries.values():
+        entry.last_updated = now
 
     # Commit all changes
     db.commit()

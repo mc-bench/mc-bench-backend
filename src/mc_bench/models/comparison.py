@@ -75,6 +75,7 @@ class PromptLeaderboard(Base):
     __table__ = schema.scoring.prompt_leaderboard
 
     prompt: Mapped["Prompt"] = relationship("Prompt", uselist=False)
+    model: Mapped["Model"] = relationship("Model", uselist=False)
     metric: Mapped["Metric"] = relationship("Metric", uselist=False)
     test_set: Mapped["TestSet"] = relationship("TestSet", uselist=False)
     tag: Mapped["Tag"] = relationship("Tag", uselist=False)  # type: ignore
@@ -93,6 +94,7 @@ class PromptLeaderboard(Base):
             result.update(
                 {
                     "prompt": self.prompt.to_dict() if self.prompt else None,
+                    "model": self.model.to_dict() if self.model else None,
                     "metric": self.metric.to_dict() if self.metric else None,
                     "test_set": self.test_set.to_dict() if self.test_set else None,
                     "tag": self.tag.to_dict() if self.tag else None,
@@ -102,6 +104,7 @@ class PromptLeaderboard(Base):
             result.update(
                 {
                     "prompt_id": self.prompt_id,
+                    "model_id": self.model_id,
                     "metric_id": self.metric_id,
                     "test_set_id": self.test_set_id,
                     "tag_id": self.tag_id,
