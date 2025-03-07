@@ -34,5 +34,8 @@ generation = Table(
         ForeignKey("specification.generation_state.id"),
         nullable=False,
     ),
+    Column(
+        "default_test_set_id", UUID, ForeignKey("sample.test_set.id"), nullable=True
+    ),
     schema="specification",
 )

@@ -79,6 +79,9 @@ def execute_prompt(stage_context: StageContext):
             stage_context.db, EXPERIMENTAL_STATE.EXPERIMENTAL
         )
 
+    if stage_context.generation.default_test_set_id is not None:
+        sample_kwargs["test_set_id"] = stage_context.generation.default_test_set_id
+
     sample = Sample(**sample_kwargs)
     stage_context.db.add(sample)
     stage_context.db.commit()

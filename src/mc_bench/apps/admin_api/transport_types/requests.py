@@ -41,6 +41,7 @@ class GenerationRequest(Base):
     template_ids: List[uuid.UUID]
     model_ids: List[uuid.UUID]
     num_samples: int = 1
+    default_test_set_id: Optional[uuid.UUID] = None
 
 
 class CreateTemplateRequest(BaseModel):

@@ -280,6 +280,10 @@ class StageContext:
         return self.run_stage.run
 
     @property
+    def generation(self):
+        return self.run.generation
+
+    @property
     def sample(self):
         if self.sample_id is None:
             return None

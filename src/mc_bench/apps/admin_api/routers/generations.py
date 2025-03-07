@@ -13,6 +13,7 @@ from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt
 from mc_bench.models.run import (
     Generation,
+    TestSet,
     generation_state_id_for,
 )
 from mc_bench.models.template import Template
@@ -66,11 +67,21 @@ def generate_runs(
         )
     ).all()
 
+    default_test_set_id = None
+
+    if generation_request.default_test_set_id is not None:
+        default_test_set_id = (
+            db.scalar(TestSet.id)
+            .filter(TestSet.external_id == generation_request.default_test_set_id)
+            .one()
+        )
+
     generation = Generation(
         name=generation_request.name,
         description=generation_request.description,
         created_by=user.id,
         state_id=generation_state_id_for(db, GENERATION_STATE.CREATED),
+        default_test_set_id=default_test_set_id,
     )
     db.add(generation)
     db.commit()  # required to ensure generation_id is present in db for runs to be created
