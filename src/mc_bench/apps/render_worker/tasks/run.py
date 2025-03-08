@@ -96,6 +96,8 @@ def render_sample(stage_context: StageContext):
                 note=msg,
             ),
             cores_enabled=settings.BLENDER_RENDER_CORES,
+            log_interval_blocks=settings.LOG_INTERVAL_BLOCKS,
+            log_interval_materials=settings.LOG_INTERVAL_MATERIALS,
         )
         logger.info(
             "Rendering blocks",

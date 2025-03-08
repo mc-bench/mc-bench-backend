@@ -580,7 +580,8 @@ class BlockData:
                 states=self.states,
                 transparent=self.transparent,
             )
-            liquid_block.add_tint_lookup(self.tint_lookup)
+            if self.canonical_name.split("[")[0] in {"water"}:
+                liquid_block.add_tint_lookup(self.tint_lookup)
             return liquid_block
 
         return MinecraftBlock(

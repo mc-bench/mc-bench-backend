@@ -55,7 +55,6 @@ import time
 
 from mathutils import Vector
 
-from mc_bench.apps.render_worker.config import settings
 from mc_bench.util.logging import get_logger
 
 logger = get_logger(__name__)
@@ -269,6 +268,10 @@ def hex_to_srgb(hex_color: str) -> tuple[float, float, float]:
     Returns:
         Tuple of (red, green, blue) values normalized between 0 and 1
 
+    Note:
+        For dark colors like biome tints, we don't apply additional gamma
+        correction to avoid making them too dark. See technical docs for details.
+
     Example:
         >>> hex_to_rgb('#79c05f')
         (0.4745098039215686, 0.7529411764705882, 0.37254901960784315)
@@ -282,9 +285,9 @@ def hex_to_srgb(hex_color: str) -> tuple[float, float, float]:
     b = int(hex_color[4:6], 16)
 
     # Normalize to 0-1 range
-    color = (r / 255.0, g / 255.0, b / 255.0)
-    srgb = tuple(pow(c, 2.2) for c in color)
-    return srgb
+    # Note: We don't apply pow(c, 2.2) gamma correction here to avoid making
+    # colors too dark, especially for biome tints which are often dark already
+    return (r / 255.0, g / 255.0, b / 255.0)
 
 
 def _apply_contrast(value: float, contrast: float) -> float:
@@ -310,7 +313,7 @@ def _modify_texture_pixels(
 
     Args:
         pixels: List of pixel values in RGBA format (values between 0 and 1)
-        tint: Optional RGB tint color to multiply with pixel colors
+        tint: Optional RGB tint color to apply to pixel colors
         contrast: Contrast adjustment value
 
     Returns:
@@ -322,9 +325,34 @@ def _modify_texture_pixels(
     for i in range(0, len(modified), 4):
         # Apply tint if specified
         if tint:
-            modified[i] *= tint[0]  # R
-            modified[i + 1] *= tint[1]  # G
-            modified[i + 2] *= tint[2]  # B
+            # Get texture color
+            r = modified[i]
+            g = modified[i + 1]
+            b = modified[i + 2]
+
+            # Calculate luminance of the texture pixel
+            luminance = 0.299 * r + 0.587 * g + 0.114 * b
+
+            # Set minimum brightness for very dark tints
+            min_brightness = 0.2
+            tint_brightness = 0.299 * tint[0] + 0.587 * tint[1] + 0.114 * tint[2]
+
+            if tint_brightness < min_brightness:
+                # Scale the tint to maintain color ratios but increase brightness
+                scale = min_brightness / max(0.01, tint_brightness)
+                effective_tint = [
+                    min(1.0, tint[0] * scale),
+                    min(1.0, tint[1] * scale),
+                    min(1.0, tint[2] * scale),
+                ]
+            else:
+                effective_tint = tint
+
+            # Apply tint using luminance to preserve texture detail
+            # This simulates the approach used in the reference JS code
+            modified[i] = effective_tint[0] * luminance
+            modified[i + 1] = effective_tint[1] * luminance
+            modified[i + 2] = effective_tint[2] * luminance
 
         # Apply contrast if specified
         if contrast != 0.0:
@@ -346,6 +374,8 @@ class Renderer:
         texture_cache: AbstractTextureCache = None,
         progress_callback: Callable[[str], None] = None,
         cores_enabled: int = 1,
+        log_interval_blocks: int = 100,
+        log_interval_materials: int = 10,
     ):
         self.cores_enabled = cores_enabled
         self.setup_blender_env()
@@ -358,6 +388,8 @@ class Renderer:
         self.element_cache = {}  # Cache for instanced elements
         self.texture_cache = texture_cache
         self.progress_callback = progress_callback or (lambda *args, **kwargs: None)
+        self.log_interval_blocks = log_interval_blocks
+        self.log_interval_materials = log_interval_materials
 
     def get_next_index(self):
         index = self._next_index
@@ -1066,7 +1098,7 @@ class Renderer:
         # Place all blocks first
         for i, placed_block in enumerate(placed_blocks):
             self.place_block(placed_block, fast_render=fast_render)
-            if i % settings.LOG_INTERVAL_BLOCKS == 0:
+            if i % self.log_interval_blocks == 0:
                 msg = f"{i+1} / {len(placed_blocks)} blocks placed in the scene"
                 logger.info(msg)  # Keeping at INFO level with configurable interval
                 self.progress_callback(
@@ -1099,7 +1131,7 @@ class Renderer:
         # Stage 1: Bake all materials
         for i, material in enumerate(bpy.data.materials):
             self.bake_material(material, time_of_day)
-            if i % settings.LOG_INTERVAL_MATERIALS == 0:
+            if i % self.log_interval_materials == 0:
                 logger.info(
                     f"{i+1} / {len(bpy.data.materials)} materials baked"
                 )  # Keeping at INFO with configurable interval
