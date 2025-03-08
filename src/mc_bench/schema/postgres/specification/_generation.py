@@ -35,7 +35,10 @@ generation = Table(
         nullable=False,
     ),
     Column(
-        "default_test_set_id", UUID, ForeignKey("sample.test_set.id"), nullable=True
+        "default_test_set_id",
+        BigInteger,
+        ForeignKey("sample.test_set.id"),
+        nullable=True,
     ),
     schema="specification",
 )

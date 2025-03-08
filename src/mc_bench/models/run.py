@@ -670,6 +670,10 @@ class Generation(Base):
 
     state: Mapped["GenerationState"] = relationship("GenerationState")
 
+    default_test_set: Mapped["TestSet"] = relationship(
+        "TestSet", uselist=False, lazy="joined"
+    )
+
     @property
     def _run_count_expression(self):
         return select(func.count(1)).where(
@@ -690,6 +694,9 @@ class Generation(Base):
             "description": self.description,
             "run_count": self.run_count,
             "status": self.state.slug,
+            "default_test_set": self.default_test_set.to_dict()
+            if self.default_test_set
+            else None,
         }
 
         if include_runs:

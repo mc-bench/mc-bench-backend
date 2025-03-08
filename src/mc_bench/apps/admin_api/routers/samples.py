@@ -230,13 +230,6 @@ def approve_sample(
             detail=f"Sample with external_id {external_id} is experimental and cannot be approved",
         )
 
-    # Check if test_set_id is already set
-    if sample.test_set_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Sample with external_id {external_id} already has a test set assigned",
-        )
-
     # Find the test set by its external_id
     test_set = db.scalar(
         select(TestSet).where(TestSet.external_id == request.test_set_id)
@@ -246,6 +239,13 @@ def approve_sample(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Test set with external_id {request.test_set_id} not found",
+        )
+
+    # Check if test_set_id is already set
+    if sample.test_set_id is not None and sample.test_set_id != test_set.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Sample with external_id {external_id} already has a test set assigned",
         )
 
     user = db.scalar(select(User).where(User.external_id == user_uuid))

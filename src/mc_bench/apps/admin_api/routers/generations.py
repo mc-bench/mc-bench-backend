@@ -70,11 +70,12 @@ def generate_runs(
     default_test_set_id = None
 
     if generation_request.default_test_set_id is not None:
-        default_test_set_id = (
-            db.scalar(TestSet.id)
-            .filter(TestSet.external_id == generation_request.default_test_set_id)
-            .one()
-        )
+        default_test_set = db.scalars(
+            select(TestSet).where(
+                TestSet.external_id == generation_request.default_test_set_id
+            )
+        ).one()
+        default_test_set_id = default_test_set.id
 
     generation = Generation(
         name=generation_request.name,

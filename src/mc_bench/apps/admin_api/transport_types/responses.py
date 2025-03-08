@@ -149,6 +149,7 @@ class GenerationBaseResponse(Base):
     description: str
     run_count: int
     status: str
+    defaultTestSet: Optional[TestSetResponse] = None
 
 
 class GenerationResponse(GenerationBaseResponse):
