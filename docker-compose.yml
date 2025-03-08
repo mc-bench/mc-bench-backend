@@ -47,8 +47,8 @@ services:
       POSTGRES_HOST: "postgres"
       POSTGRES_PORT: "5432"
       POSTGRES_DB: "mc-bench"
-      POSTGRES_USER: "mc-bench-admin"
-      POSTGRES_PASSWORD: "mc-bench"
+      POSTGRES_USER: "service-admin-api"  # Use service account instead of admin
+      POSTGRES_PASSWORD: "service-admin-api"
       POSTGRES_SSLMODE: "disable"
       REDIS_USE_AUTH: "false"
       REDIS_HOST: "redis"
