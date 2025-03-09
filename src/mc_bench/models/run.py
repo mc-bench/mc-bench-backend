@@ -818,7 +818,7 @@ class PromptExecution(RunStage):
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
-        kwargs["queue"] = "admin"
+        kwargs["queue"] = "prompt"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             kwargs["args"] = [
@@ -836,7 +836,7 @@ class ResponseParsing(RunStage):
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
-        kwargs["queue"] = "admin"
+        kwargs["queue"] = "parse"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
@@ -855,7 +855,7 @@ class CodeValidation(RunStage):
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
-        kwargs["queue"] = "admin"
+        kwargs["queue"] = "validate"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
@@ -912,7 +912,7 @@ class PostProcessing(RunStage):
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
-        kwargs["queue"] = "admin"
+        kwargs["queue"] = "post_process"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id
@@ -931,7 +931,7 @@ class PreparingSample(RunStage):
 
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
-        kwargs["queue"] = "admin"
+        kwargs["queue"] = "prepare"
         kwargs["headers"] = {"token": progress_token}
         if pass_args:
             sample_id = self.run.samples[-1].id

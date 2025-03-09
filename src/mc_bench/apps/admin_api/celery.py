@@ -13,6 +13,7 @@ def create_runs(
 ):
     return send_task(
         "generation.create_runs",
+        queue="generation",
         kwargs=dict(
             generation_id=generation_id,
             prompt_ids=prompt_ids,

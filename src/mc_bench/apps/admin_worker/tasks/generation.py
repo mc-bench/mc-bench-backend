@@ -77,19 +77,21 @@ def create_runs(
                             "sample_id": None,
                         }
                     ],
-                    queue="admin",
+                    queue="prompt",
                     headers=headers,
                 ),
-                app.signature("run.parse_prompt", queue="admin", headers=headers),
-                app.signature("run.code_validation", queue="admin", headers=headers),
+                app.signature("run.parse_prompt", queue="parse", headers=headers),
+                app.signature("run.code_validation", queue="validate", headers=headers),
                 app.signature("run.build_structure", queue="server", headers=headers),
                 app.signature("run.render_sample", queue="render", headers=headers),
                 # TODO: Add exporting content back in once implemented in blender
                 # app.signature(
                 #     "run.export_structure_views", queue="server", headers=headers
                 # ),
-                app.signature("run.post_processing", queue="admin", headers=headers),
-                app.signature("run.prepare_sample", queue="admin", headers=headers),
+                app.signature(
+                    "run.post_processing", queue="post_process", headers=headers
+                ),
+                app.signature("run.prepare_sample", queue="prepare", headers=headers),
             )
             for run_id in run_ids
         )

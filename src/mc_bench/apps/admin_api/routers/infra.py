@@ -44,6 +44,12 @@ BASE_QUEUE_NAMES = [
     "render",
     "server",
     "admin",
+    "generation",
+    "prompt",
+    "parse",
+    "validate",
+    "post_process",
+    "prepare",
 ]
 
 

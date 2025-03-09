@@ -234,7 +234,7 @@ def run_stage_task(
                         app.signature(
                             "generation.finalize_generation",
                             args=[generation_id],
-                            queue="admin",
+                            queue="generation",
                         ).apply_async()
 
         return wrapped

@@ -47,7 +47,6 @@ def upgrade() -> None:
         """)
     )
 
-
     # Grant DELETE permissions to admin-api role for template management
     op.execute(
         sa.text("""\
