@@ -2,11 +2,15 @@ import json
 import os
 import tempfile
 
+import sqlalchemy
+
 from mc_bench.minecraft.biome_lookup import BiomeLookup
 from mc_bench.minecraft.rendering import Renderer, TimeOfDay
 from mc_bench.minecraft.resources import ResourceLoader
 from mc_bench.minecraft.schematic import load_schematic, to_minecraft_world
+from mc_bench.models.log import SampleObservation
 from mc_bench.models.run import Artifact, RenderingSample
+from mc_bench.models.user import User
 from mc_bench.util.logging import get_logger
 from mc_bench.util.object_store import get_client as get_object_store_client
 from mc_bench.worker.run_stage import StageContext, run_stage_task
@@ -76,6 +80,20 @@ def render_sample(stage_context: StageContext):
             sample_id=stage_context.sample.id,
         )
         loaded_schematic = load_schematic(schematic_filepath, biome_lookup)
+        if len(loaded_schematic.blocks) > 30_000:
+            sample_observation = SampleObservation(
+                sample=stage_context.sample,
+                user=stage_context.db.scalar(
+                    sqlalchemy.select(User).where(User.username == "SYSTEM")
+                ),
+                note="The build exceeded the maximum allowed size of 30,000 blocks.",
+            )
+            stage_context.db.add(sample_observation)
+            stage_context.db.commit()
+            raise RuntimeError(
+                "The build exceeded the maximum allowed size of 30,000 blocks."
+            )
+
         logger.info(
             "Converting schematic to minecraft world",
             run_id=stage_context.run.id,
