@@ -80,12 +80,12 @@ def render_sample(stage_context: StageContext):
             sample_id=stage_context.sample.id,
         )
         loaded_schematic = load_schematic(schematic_filepath, biome_lookup)
-        if len(loaded_schematic.blocks) > 30_000:
+        if len(loaded_schematic) > 30_000:
             sample_observation = SampleObservation(
                 sample=stage_context.sample,
-                user=stage_context.db.scalar(
+                user=stage_context.db.scalars(
                     sqlalchemy.select(User).where(User.username == "SYSTEM")
-                ),
+                ).one(),
                 note="The build exceeded the maximum allowed size of 30,000 blocks.",
             )
             stage_context.db.add(sample_observation)
