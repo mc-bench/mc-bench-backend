@@ -79,7 +79,6 @@ class Run(Base):
         STAGE.CODE_VALIDATION.value,
         STAGE.BUILDING.value,
         STAGE.RENDERING_SAMPLE.value,
-        STAGE.EXPORTING_CONTENT.value,
         STAGE.POST_PROCESSING.value,
         STAGE.PREPARING_SAMPLE.value,
     ]
@@ -145,6 +144,19 @@ class Run(Base):
         in_progress_stages = self.in_progress_stages()
         if in_progress_stages:
             return in_progress_stages[0].stage.slug
+        return None
+
+    @property
+    def ready_stage(self):
+        for stage in self.sorted_stages(self.STAGE_SORT_ORDER):
+            if stage.state.slug in (
+                RUN_STAGE_STATE.ENQUEUED.value,
+                RUN_STAGE_STATE.IN_PROGRESS.value,
+                RUN_STAGE_STATE.IN_RETRY.value,
+            ):
+                return None
+            elif stage.state.slug == RUN_STAGE_STATE.PENDING.value:
+                return stage
         return None
 
     def to_dict(
@@ -241,6 +253,8 @@ class Run(Base):
 
     @classmethod
     def state_change_handler(cls, event: RunStateChanged):
+        from sqlalchemy import func
+
         import mc_bench.util.postgres as postgres
 
         table = cls.__table__
@@ -250,7 +264,11 @@ class Run(Base):
             db.execute(
                 table.update()
                 .where(table.c.id == event.run_id)
-                .values(state_id=run_state_id)
+                .values(
+                    state_id=run_state_id,
+                    # Use database time for last_modified
+                    last_modified=func.now(),
+                )
             )
 
     def generate_correlation_id(self) -> str:
@@ -723,7 +741,10 @@ class Generation(Base):
             db.execute(
                 table.update()
                 .where(table.c.id == event.generation_id)
-                .values(state_id=generation_state_id)
+                .values(
+                    state_id=generation_state_id,
+                    # No last_modified column in generation table
+                )
             )
 
 
@@ -778,6 +799,8 @@ class RunStage(Base):
             "state": state.slug,
             "progress": progress,
             "note": progress_note,
+            "task_id": self.task_id,
+            "heartbeat": self.heartbeat,
         }
 
     def get_stage_progress(self, redis) -> float:
@@ -795,11 +818,75 @@ class RunStage(Base):
             except Exception:
                 pass
 
+    def update_heartbeat(self, db=None):
+        """
+        Update the heartbeat timestamp to the current time.
+        This should be called regularly by the worker process.
+        """
+        if db is None:
+            db = object_session(self)
+            if db is None:
+                import mc_bench.util.postgres as postgres
+
+                with postgres.managed_session() as new_db:
+                    self._update_heartbeat_in_db(new_db)
+                return
+
+        self._update_heartbeat_in_db(db)
+
+    def _update_heartbeat_in_db(self, db):
+        """Internal method to update the heartbeat in the database.
+        Uses the database server clock to set the timestamp to avoid clock mismatches."""
+        from sqlalchemy import func
+
+        # The RunStage table uses timestamp without timezone (timezone=False)
+        # So we need to ensure we're consistent with that
+        db.execute(
+            self.__table__.update()
+            .where(self.__table__.c.id == self.id)
+            .values(heartbeat=func.now())
+        )
+        db.commit()
+        # Refresh the instance heartbeat from the database to get the server timestamp
+        self.heartbeat = db.scalar(
+            select(self.__table__.c.heartbeat).where(self.__table__.c.id == self.id)
+        )
+
+    def register_task_id(self, task_id, db=None):
+        """
+        Register a Celery task ID with this stage.
+        This should be called when a task is created.
+        """
+        if db is None:
+            db = object_session(self)
+            if db is None:
+                import mc_bench.util.postgres as postgres
+
+                with postgres.managed_session() as new_db:
+                    self._register_task_id_in_db(new_db, task_id)
+                return
+
+        self._register_task_id_in_db(db, task_id)
+
+    def _register_task_id_in_db(self, db, task_id):
+        """Internal method to register the task ID in the database."""
+        from sqlalchemy import func
+
+        db.execute(
+            self.__table__.update()
+            .where(self.__table__.c.id == self.id)
+            .values(task_id=task_id, last_modified=func.now())
+        )
+        db.commit()
+        self.task_id = task_id
+
     def get_task_signature(self, app, progress_token, pass_args=True):
         pass
 
     @classmethod
     def state_change_handler(cls, event: RunStageStateChanged):
+        from sqlalchemy import func
+
         import mc_bench.util.postgres as postgres
 
         table = cls.__table__
@@ -809,7 +896,11 @@ class RunStage(Base):
             db.execute(
                 table.update()
                 .where(table.c.id == event.stage_id)
-                .values(state_id=run_stage_state_id)
+                .values(
+                    state_id=run_stage_state_id,
+                    # Use database time for consistency
+                    last_modified=func.now(),
+                )
             )
 
 
@@ -819,7 +910,12 @@ class PromptExecution(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "prompt"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             kwargs["args"] = [
                 {
@@ -837,7 +933,12 @@ class ResponseParsing(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "parse"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             sample_id = self.run.samples[-1].id
             kwargs["args"] = [
@@ -856,7 +957,12 @@ class CodeValidation(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "validate"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             sample_id = self.run.samples[-1].id
             kwargs["args"] = [
@@ -875,7 +981,12 @@ class Building(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "server"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             sample_id = self.run.samples[-1].id
             kwargs["args"] = [
@@ -894,7 +1005,12 @@ class ExportingContent(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "server"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             sample_id = self.run.samples[-1].id
             kwargs["args"] = [
@@ -913,7 +1029,12 @@ class PostProcessing(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "post_process"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             sample_id = self.run.samples[-1].id
             kwargs["args"] = [
@@ -932,7 +1053,12 @@ class PreparingSample(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "prepare"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             sample_id = self.run.samples[-1].id
             kwargs["args"] = [
@@ -951,7 +1077,12 @@ class RenderingSample(RunStage):
     def get_task_signature(self, app, progress_token, pass_args=True):
         kwargs = {}
         kwargs["queue"] = "render"
-        kwargs["headers"] = {"token": progress_token}
+        kwargs["headers"] = {
+            "token": progress_token,
+            "enqueued_timestamp": datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat(),
+        }
         if pass_args:
             sample_id = self.run.samples[-1].id
             kwargs["args"] = [

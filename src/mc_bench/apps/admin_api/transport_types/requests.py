@@ -7,6 +7,13 @@ from pydantic import BaseModel
 from .generic import Base
 
 
+class SchedulerControlUpdateRequest(Base):
+    """Request model for updating scheduler control settings."""
+
+    value: Any
+    description: Optional[str] = None
+
+
 class CreateProviderRequest(Base):
     id: Optional[uuid.UUID] = None
     name: str

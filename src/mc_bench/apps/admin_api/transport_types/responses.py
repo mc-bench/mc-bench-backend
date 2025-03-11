@@ -4,6 +4,23 @@ from typing import Any, Dict, Generic, List, Literal, Optional, TypeVar
 
 from .generic import Base
 
+
+class SchedulerControlResponse(Base):
+    """Response model for scheduler control settings."""
+
+    key: str
+    value: Any
+    description: Optional[str]
+    created: datetime.datetime
+    last_modified: Optional[datetime.datetime]
+
+
+class SchedulerControlsListResponse(Base):
+    """Response model for listing all scheduler control settings."""
+
+    controls: List[SchedulerControlResponse]
+
+
 # Define the generic type variable
 T = TypeVar("T")
 
@@ -77,6 +94,8 @@ class RunStageResponse(Base):
     state: str
     progress: float
     note: Optional[str] = None
+    task_id: Optional[str] = None
+    heartbeat: Optional[datetime.datetime] = None
 
 
 class RunStatusResponse(Base):
@@ -332,6 +351,9 @@ class WorkerTaskResponse(Base):
     status: str
     eta: Optional[datetime.datetime] = None
     retries: int = 0
+    run_id: Optional[uuid.UUID] = (
+        None  # External ID of the associated run, if available
+    )
 
 
 class WorkerResponse(Base):
@@ -356,11 +378,12 @@ class QueuedTaskResponse(Base):
 
     id: str
     name: str
-    args: List[Any]
-    kwargs: Dict[str, Any]
     eta: Optional[datetime.datetime] = None
     priority: Optional[int] = None
     queued_at: Optional[datetime.datetime] = None
+    run_id: Optional[uuid.UUID] = (
+        None  # External ID of the associated run, if available
+    )
 
 
 class QueueResponse(Base):

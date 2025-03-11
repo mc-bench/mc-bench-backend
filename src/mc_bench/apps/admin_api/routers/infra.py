@@ -1,13 +1,17 @@
 import datetime
 import json
-from typing import List
+from typing import Dict, List
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from fastapi.responses import JSONResponse
 from redis import StrictRedis
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from mc_bench.apps.admin_api.transport_types.requests import (
     CancelConsumerRequest,
+    SchedulerControlUpdateRequest,
     WorkerActionRequest,
 )
 from mc_bench.apps.admin_api.transport_types.responses import (
@@ -15,15 +19,23 @@ from mc_bench.apps.admin_api.transport_types.responses import (
     InfraStatusResponse,
     QueuedTaskResponse,
     QueueResponse,
+    SchedulerControlResponse,
+    SchedulerControlsListResponse,
     WorkerResponse,
     WorkerTaskResponse,
 )
 from mc_bench.auth.permissions import PERM
+from mc_bench.models.run import Run, RunStage
+from mc_bench.models.scheduler_control import SchedulerControl
 from mc_bench.server.auth import AuthManager
+from mc_bench.util.logging import get_logger
+from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_database
 
 from ..celery import celery
 from ..config import settings
+
+logger = get_logger(__name__)
 
 am = AuthManager(
     jwt_secret=settings.JWT_SECRET_KEY,
@@ -56,12 +68,13 @@ BASE_QUEUE_NAMES = [
 @infra_router.get("/status", response_model=InfraStatusResponse)
 async def get_infra_status(
     redis: StrictRedis = Depends(get_redis_database(RedisDatabase.CELERY)),
+    db: Session = Depends(get_managed_session),
 ):
     """
     Get the status of all infrastructure components (workers and queues).
     """
-    workers = get_workers()
-    queues = get_queues(redis)
+    workers = get_workers(db)
+    queues = get_queues(redis, db)
 
     total_active_tasks = sum(len(worker.tasks) for worker in workers)
     total_queued_tasks = sum(queue.count for queue in queues)
@@ -78,21 +91,24 @@ async def get_infra_status(
 
 
 @infra_router.get("/workers", response_model=List[WorkerResponse])
-async def get_all_workers():
+async def get_all_workers(
+    db: Session = Depends(get_managed_session),
+):
     """
     Get information about all Celery workers.
     """
-    return get_workers()
+    return get_workers(db)
 
 
 @infra_router.get("/queues", response_model=List[QueueResponse])
 async def get_all_queues(
     redis: StrictRedis = Depends(get_redis_database(RedisDatabase.CELERY)),
+    db: Session = Depends(get_managed_session),
 ):
     """
     Get information about all queues and their pending tasks.
     """
-    return get_queues(redis)
+    return get_queues(redis, db)
 
 
 @infra_router.post(
@@ -155,7 +171,7 @@ async def worker_action(worker_id: str, request: WorkerActionRequest):
         )
 
 
-def get_workers() -> List[WorkerResponse]:
+def get_workers(db: Session) -> List[WorkerResponse]:
     """
     Get information about all Celery workers.
     """
@@ -171,6 +187,11 @@ def get_workers() -> List[WorkerResponse]:
     if active_workers is None:
         return workers
 
+    # Collect all task IDs from all active and reserved tasks
+    all_task_ids = []
+    worker_data = {}
+
+    # First pass: collect task IDs and prepare worker data
     for worker_name, tasks in active_workers.items():
         # Get reserved tasks for this worker
         reserved = reserved_tasks.get(worker_name, []) if reserved_tasks else []
@@ -184,31 +205,7 @@ def get_workers() -> List[WorkerResponse]:
             for queue_info in active_queues[worker_name]:
                 queues.append(queue_info["name"])
 
-        # Combine active and reserved tasks
-        worker_tasks = []
-
-        for task in tasks + reserved:
-            worker_tasks.append(
-                WorkerTaskResponse(
-                    id=task.get("id", ""),
-                    name=task.get("name", ""),
-                    started_at=datetime.datetime.fromtimestamp(
-                        task.get("time-start", 0)
-                    )
-                    if task.get("time-start")
-                    else None,
-                    args=task.get("args", []),
-                    kwargs=task.get("kwargs", {}),
-                    status="active" if task in tasks else "reserved",
-                    eta=datetime.datetime.fromisoformat(task.get("eta"))
-                    if task.get("eta")
-                    else None,
-                    retries=task.get("retries", 0),
-                )
-            )
-
         # Parse worker name for container and hostname info
-        # The worker_name should now be in format: container_name@hostname
         container_name = worker_name
         node_name = ""
         display_name = worker_name
@@ -220,17 +217,66 @@ def get_workers() -> List[WorkerResponse]:
             node_name = parts[1]
             display_name = f"{container_name}@{node_name}"
 
+        # Store all worker data except tasks
+        worker_data[worker_name] = {
+            "tasks_info": tasks + reserved,
+            "active_tasks": set(task.get("id", "") for task in tasks),
+            "stats": worker_stats,
+            "queues": queues,
+            "container_name": container_name,
+            "node_name": node_name,
+            "display_name": display_name,
+        }
+
+        # Collect all task IDs
+        for task in tasks + reserved:
+            task_id = task.get("id", "")
+            if task_id:
+                all_task_ids.append(task_id)
+
+    # Get a mapping of task_id to run_id for all collected task IDs in a single query
+    task_id_mapping = get_task_id_mapping(db, all_task_ids)
+
+    # Second pass: build worker responses with task information
+    for worker_name, data in worker_data.items():
+        worker_tasks = []
+
+        for task in data["tasks_info"]:
+            task_id = task.get("id", "")
+            # Include run_id if this task is associated with a run
+            run_id = task_id_mapping.get(task_id)
+
+            worker_tasks.append(
+                WorkerTaskResponse(
+                    id=task_id,
+                    name=task.get("name", ""),
+                    started_at=datetime.datetime.fromtimestamp(
+                        task.get("time-start", 0)
+                    )
+                    if task.get("time-start")
+                    else None,
+                    args=task.get("args", []),
+                    kwargs=task.get("kwargs", {}),
+                    status="active" if task_id in data["active_tasks"] else "reserved",
+                    eta=datetime.datetime.fromisoformat(task.get("eta"))
+                    if task.get("eta")
+                    else None,
+                    retries=task.get("retries", 0),
+                    run_id=run_id,
+                )
+            )
+
         workers.append(
             WorkerResponse(
                 id=worker_name,
                 hostname=worker_name,
                 status="online",
-                display_name=display_name,
-                container_name=container_name,
-                node_name=node_name,
-                queues=queues,
-                concurrency=worker_stats.get("pool", {}).get("max-concurrency", 0),
-                pool_size=len(worker_stats.get("pool", {}).get("processes", [])),
+                display_name=data["display_name"],
+                container_name=data["container_name"],
+                node_name=data["node_name"],
+                queues=data["queues"],
+                concurrency=data["stats"].get("pool", {}).get("max-concurrency", 0),
+                pool_size=len(data["stats"].get("pool", {}).get("processes", [])),
                 tasks=worker_tasks,
                 last_heartbeat=None,  # Could be derived if available in stats
                 started_at=None,  # Could be derived if available in stats
@@ -242,7 +288,180 @@ def get_workers() -> List[WorkerResponse]:
     )
 
 
-def get_queues(redis: StrictRedis) -> List[QueueResponse]:
+def get_task_id_mapping(db: Session, task_ids: List[str] = None) -> Dict[str, UUID]:
+    """
+    Get a mapping of task IDs to run external IDs.
+
+    Args:
+        db: The database session.
+        task_ids: Optional list of task IDs to filter the query by. If provided,
+                 only task_ids in this list will be included in the mapping.
+
+    Returns:
+        A dictionary mapping task_ids to run.external_id values.
+    """
+    # Base query joining RunStage to Run to get external_id
+    query = (
+        select(RunStage.task_id, Run.external_id)
+        .join(Run, RunStage.run_id == Run.id)
+        .where(RunStage.task_id.is_not(None))
+    )
+
+    # Apply task_ids filter if provided
+    if task_ids:
+        query = query.where(RunStage.task_id.in_(task_ids))
+
+    # Execute query and build mapping
+    result = db.execute(query).all()
+
+    # Create mapping from results
+    mapping = {row[0]: row[1] for row in result if row[0] and row[1]}
+
+    return mapping
+
+
+@infra_router.get("/scheduler/controls", response_model=SchedulerControlsListResponse)
+async def get_scheduler_controls(
+    db: Session = Depends(get_managed_session),
+):
+    """
+    List all scheduler control settings.
+    """
+    # Get all controls from the database
+    result = db.execute(
+        select(
+            SchedulerControl.key,
+            SchedulerControl.value,
+            SchedulerControl.description,
+            SchedulerControl.created,
+            SchedulerControl.last_modified,
+        )
+    ).all()
+
+    controls = []
+    for key, value_str, description, created, last_modified in result:
+        # Parse the JSON value
+        try:
+            value = json.loads(value_str)
+        except json.JSONDecodeError:
+            value = value_str  # Fallback to raw string if not valid JSON
+
+        controls.append(
+            SchedulerControlResponse(
+                key=key,
+                value=value,
+                description=description,
+                created=created,
+                last_modified=last_modified,
+            )
+        )
+
+    return SchedulerControlsListResponse(controls=controls)
+
+
+@infra_router.get("/scheduler/controls/{key}", response_model=SchedulerControlResponse)
+async def get_scheduler_control(
+    key: str = Path(..., description="The control key to retrieve"),
+    db: Session = Depends(get_managed_session),
+):
+    """
+    Get a specific scheduler control setting by key.
+    """
+    result = db.execute(
+        select(
+            SchedulerControl.key,
+            SchedulerControl.value,
+            SchedulerControl.description,
+            SchedulerControl.created,
+            SchedulerControl.last_modified,
+        ).where(SchedulerControl.key == key)
+    ).first()
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scheduler control with key '{key}' not found",
+        )
+
+    key, value_str, description, created, last_modified = result
+
+    # Parse the JSON value
+    try:
+        value = json.loads(value_str)
+    except json.JSONDecodeError:
+        value = value_str  # Fallback to raw string if not valid JSON
+
+    return SchedulerControlResponse(
+        key=key,
+        value=value,
+        description=description,
+        created=created,
+        last_modified=last_modified,
+    )
+
+
+@infra_router.put("/scheduler/controls/{key}", response_model=SchedulerControlResponse)
+async def update_scheduler_control(
+    request: SchedulerControlUpdateRequest,
+    key: str = Path(..., description="The control key to update"),
+    db: Session = Depends(get_managed_session),
+):
+    """
+    Update a scheduler control setting by key.
+    """
+    # Check if the key exists
+    existing = db.execute(
+        select(
+            SchedulerControl.key,
+            SchedulerControl.description,
+            SchedulerControl.created,
+        ).where(SchedulerControl.key == key)
+    ).first()
+
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scheduler control with key '{key}' not found",
+        )
+
+    # Update the value
+    description = (
+        request.description if request.description is not None else existing.description
+    )
+    SchedulerControl.set_value(db, key, request.value, description)
+
+    # Commit the transaction
+    db.commit()
+
+    # Get the updated record
+    updated = db.execute(
+        select(
+            SchedulerControl.key,
+            SchedulerControl.value,
+            SchedulerControl.description,
+            SchedulerControl.created,
+            SchedulerControl.last_modified,
+        ).where(SchedulerControl.key == key)
+    ).first()
+
+    key, value_str, description, created, last_modified = updated
+
+    # Parse the JSON value
+    try:
+        value = json.loads(value_str)
+    except json.JSONDecodeError:
+        value = value_str  # Fallback to raw string if not valid JSON
+
+    return SchedulerControlResponse(
+        key=key,
+        value=value,
+        description=description,
+        created=created,
+        last_modified=last_modified,
+    )
+
+
+def get_queues(redis: StrictRedis, db: Session) -> List[QueueResponse]:
     """
     Get information about all Celery queues and their pending tasks using Redis directly.
     """
@@ -266,6 +485,8 @@ def get_queues(redis: StrictRedis) -> List[QueueResponse]:
                     "workers": [],
                     "count": 0,
                     "tasks": [],
+                    "task_ids": [],  # Track task IDs for batch lookup
+                    "raw_tasks": {},  # Store raw task data for later processing
                 }
             queue_dict[queue_name]["workers"].append(worker_name)
 
@@ -276,7 +497,12 @@ def get_queues(redis: StrictRedis) -> List[QueueResponse]:
                 "workers": [],
                 "count": 0,
                 "tasks": [],
+                "task_ids": [],
+                "raw_tasks": {},
             }
+
+    # First pass: collect all task IDs and task data
+    all_task_ids = []
 
     # Directly inspect Redis queues
     for queue_name in queue_dict:
@@ -290,29 +516,50 @@ def get_queues(redis: StrictRedis) -> List[QueueResponse]:
             tasks = redis.lrange(queue_name, 0, 99)
 
             for task_data in tasks:
+                logger.debug("Task data", task_data=task_data)
                 try:
                     task = json.loads(task_data)
+                    task_id = task["headers"].get("id", "")
 
-                    # Extract task details
-                    queue_dict[queue_name]["tasks"].append(
-                        QueuedTaskResponse(
-                            id=task.get("id", ""),
-                            name=task.get("task", ""),
-                            args=task.get("args", []),
-                            kwargs=task.get("kwargs", {}),
-                            eta=datetime.datetime.fromisoformat(task.get("eta"))
-                            if task.get("eta")
-                            else None,
-                            priority=task.get("priority", 0),
-                            queued_at=datetime.datetime.fromtimestamp(
-                                task.get("created", 0)
-                            )
-                            if task.get("created")
-                            else None,
-                        )
-                    )
+                    if task_id:
+                        all_task_ids.append(task_id)
+                        queue_dict[queue_name]["task_ids"].append(task_id)
+                        queue_dict[queue_name]["raw_tasks"][task_id] = task
+
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
+
+    # Get mapping of task_id to run_id for all collected task IDs in a single efficient query
+    task_id_mapping = get_task_id_mapping(db, all_task_ids)
+
+    # Second pass: build task responses with run_id information
+    for queue_name, queue_data in queue_dict.items():
+        for task_id in queue_data["task_ids"]:
+            task = queue_data["raw_tasks"][task_id]
+            # Include run_id if this task is associated with a run
+            run_id = task_id_mapping.get(task_id)
+
+            # Extract task details
+            queue_data["tasks"].append(
+                QueuedTaskResponse(
+                    id=task_id,
+                    name=task["headers"].get("task", ""),
+                    eta=datetime.datetime.fromisoformat(task["headers"].get("eta"))
+                    if task["headers"].get("eta")
+                    else None,
+                    priority=task["properties"].get("priority", 0),
+                    queued_at=datetime.datetime.fromisoformat(
+                        task["headers"].get("enqueued_timestamp", "")
+                    )
+                    if task["headers"].get("enqueued_timestamp")
+                    else None,
+                    run_id=run_id,
+                )
+            )
+
+        # Clean up temporary data
+        del queue_data["task_ids"]
+        del queue_data["raw_tasks"]
 
     # Convert dictionary to list of QueueResponse objects
     queues = [
@@ -324,5 +571,8 @@ def get_queues(redis: StrictRedis) -> List[QueueResponse]:
         )
         for queue_name, queue_data in queue_dict.items()
     ]
+
+    # Sort queues by count in descending order
+    queues.sort(key=lambda q: q.count, reverse=True)
 
     return queues

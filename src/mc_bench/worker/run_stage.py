@@ -1,3 +1,5 @@
+import datetime
+import threading
 from typing import Optional
 
 from celery import Celery
@@ -14,9 +16,71 @@ from mc_bench.util.postgres import managed_session
 
 logger = get_logger(__name__)
 
+# Heartbeat interval in seconds
+HEARTBEAT_INTERVAL = 60  # Send heartbeat every minute
+
 
 class ValueNotSet:
     pass
+
+
+def run_heartbeat_thread(run_stage, task_id, stop_event):
+    """
+    Background thread function to periodically update the heartbeat timestamp.
+
+    Args:
+        run_stage: The RunStage instance to update heartbeat for
+        task_id: The Celery task ID for logging
+        stop_event: Threading event used to signal when to exit the thread
+    """
+    logger.info(
+        f"Starting heartbeat thread for task {task_id} and stage {run_stage.id}"
+    )
+
+    # Use a separate database session for heartbeat updates
+    with managed_session() as db:
+        # First, register the task ID if not already set
+        if not run_stage.task_id:
+            run_stage.register_task_id(task_id, db)
+            logger.debug(f"Registered task ID {task_id} with stage {run_stage.id}")
+
+    # Continue heartbeat until stop event is set
+    try:
+        while not stop_event.is_set():
+            try:
+                # Update the heartbeat timestamp in the database
+                with managed_session() as beat_db:
+                    # Get the latest stage from the database
+                    stage = beat_db.scalars(
+                        select(RunStage).where(RunStage.id == run_stage.id)
+                    ).first()
+
+                    if stage and stage.state.slug == RUN_STAGE_STATE.IN_PROGRESS.value:
+                        # Only update heartbeat for IN_PROGRESS stages
+                        stage.update_heartbeat(beat_db)
+                        logger.debug(
+                            f"Updated heartbeat for task {task_id}, stage {run_stage.id}, timestamp: {stage.heartbeat}"
+                        )
+                    else:
+                        logger.debug(
+                            f"Skipping heartbeat for task {task_id}, stage {run_stage.id} - "
+                            f"not in IN_PROGRESS state"
+                        )
+
+            except Exception as e:
+                logger.exception(
+                    f"Error updating heartbeat for task {task_id}: {str(e)}"
+                )
+
+            # Sleep until next heartbeat or until stop_event is set
+            stop_event.wait(HEARTBEAT_INTERVAL)
+
+    except Exception as e:
+        logger.exception(
+            f"Fatal error in heartbeat thread for task {task_id}: {str(e)}"
+        )
+
+    logger.info(f"Heartbeat thread for task {task_id} is exiting")
 
 
 def run_stage_task(
@@ -45,8 +109,9 @@ def run_stage_task(
             logger.info("Metadata", metadata=metadata)
             run_id = metadata["run_id"]
             sample_id = metadata["sample_id"]
+            task_id = self.request.id
 
-            logger.info("Starting task", name=name)
+            logger.info("Starting task", name=name, task_id=task_id)
             logger.info("Task args", run_id=run_id, sample_id=sample_id)
             logger.info(
                 "Task instance",
@@ -58,7 +123,7 @@ def run_stage_task(
                 api_client = Client(token=self.request.headers["token"])
                 stage_context = StageContext(
                     admin_api_client=api_client,
-                    task_id=self.request.id,
+                    task_id=task_id,
                     stage_class=stage,
                     run_id=run_id,
                     sample_id=sample_id,
@@ -69,9 +134,14 @@ def run_stage_task(
 
                 # THIS IS THE HAPPY PATH
                 # 1. Emit the stage is in progress
-                # 2. Run the stage
-                # 3. Emit the stage is complete
-                # 4. If terminal stage, emit we are completed
+                # 2. Start heartbeat thread
+                # 3. Run the stage
+                # 4. Emit the stage is complete
+                # 5. If terminal stage, emit we are completed
+                # Create stop event for the heartbeat thread
+                heartbeat_stop_event = threading.Event()
+                heartbeat_thread = None
+
                 try:
                     logger.info("Emitting IN_PROGRESS event")
                     emit_event(
@@ -80,6 +150,16 @@ def run_stage_task(
                             new_state=RUN_STAGE_STATE.IN_PROGRESS,
                         )
                     )
+
+                    # Start heartbeat thread
+                    heartbeat_thread = threading.Thread(
+                        target=run_heartbeat_thread,
+                        args=(stage_context.run_stage, task_id, heartbeat_stop_event),
+                        daemon=True,  # Make this a daemon thread so it exits when the main thread exits
+                    )
+                    heartbeat_thread.start()
+                    logger.debug(f"Started heartbeat thread for task {task_id}")
+
                     result = func(stage_context)
                     logger.info("Task completed successfully", result=result)
                     emit_event(
@@ -230,11 +310,23 @@ def run_stage_task(
                         )
 
                 finally:
+                    # Stop the heartbeat thread if it was started
+                    if heartbeat_thread is not None:
+                        logger.debug(f"Stopping heartbeat thread for task {task_id}")
+                        heartbeat_stop_event.set()
+                        # We don't need to join since it's a daemon thread
+
+                    # Finalize generation if needed
                     if generation_id is not None:
                         app.signature(
                             "generation.finalize_generation",
                             args=[generation_id],
                             queue="generation",
+                            headers={
+                                "enqueued_timestamp": datetime.datetime.now(
+                                    tz=datetime.timezone.utc
+                                ).isoformat()
+                            },
                         ).apply_async()
 
         return wrapped

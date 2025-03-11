@@ -1,4 +1,14 @@
-from . import experimental_state, log, model, prompt, provider, run, template, user
+from . import (
+    experimental_state,
+    log,
+    model,
+    prompt,
+    provider,
+    run,
+    scheduler_control,
+    template,
+    user,
+)
 
 __all__ = [
     "model",
@@ -9,4 +19,5 @@ __all__ = [
     "user",
     "log",
     "experimental_state",
+    "scheduler_control",
 ]

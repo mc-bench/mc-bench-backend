@@ -49,6 +49,7 @@ certifi==2024.8.30
     #   requests
 cffi==1.17.1
     # via
+    #   -c admin-worker-requirements.txt
     #   -c api-requirements.txt
     #   -c requirements.txt
     #   argon2-cffi-bindings
@@ -279,6 +280,7 @@ pure-eval==0.2.3
     # via stack-data
 pycparser==2.22
     # via
+    #   -c admin-worker-requirements.txt
     #   -c api-requirements.txt
     #   -c requirements.txt
     #   cffi

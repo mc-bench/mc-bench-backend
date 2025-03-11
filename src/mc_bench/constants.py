@@ -13,6 +13,7 @@ class RUN_STATE(enum.Enum):
 
 class RUN_STAGE_STATE(enum.Enum):
     PENDING = "PENDING"
+    ENQUEUED = "ENQUEUED"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"

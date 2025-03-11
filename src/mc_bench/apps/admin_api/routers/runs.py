@@ -1,8 +1,6 @@
-import datetime
 from typing import List, Optional
 from uuid import UUID
 
-import celery
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.routing import APIRouter
 from redis import StrictRedis
@@ -46,8 +44,6 @@ from mc_bench.server.auth import AuthManager
 from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
 from mc_bench.util.redis import RedisDatabase, get_redis_database
-
-from ..celery import celery as celery_app
 
 logger = get_logger(__name__)
 
@@ -327,23 +323,8 @@ def task_retry(
             detail=f"Unknown run id: {external_id}",
         )
 
+    # Mark run as in retry
     emit_event(RunStateChanged(run_id=run.id, new_state=RUN_STATE.IN_RETRY))
-
-    emit_event(RunStateChanged(run_id=run.id, new_state=RUN_STATE.IN_RETRY))
-
-    system_user = db.scalars(select(User).where(User.id == 1)).one()
-
-    # Create the access token
-    progress_token = am.create_access_token(
-        data={
-            "sub": str(system_user.external_id),
-            "scopes": [
-                PERM.RUN.PROGRESS_WRITE,
-                PERM.RUN.ADMIN,
-            ],
-        },
-        expires_delta=datetime.timedelta(days=2),
-    )
 
     if run is not None:
         generation_id = run.generation_id
@@ -369,30 +350,19 @@ def task_retry(
             stage for stage in ordered_stages if stage.stage.slug in (tasks_to_retry)
         ]
 
-        chained_items = []
+        # Reset progress for stages and mark them as PENDING
+        # The scheduler will pick them up and run them in the correct order
         for stage in stages_to_retry:
             stage.set_progress(redis, 0, None)
-            if not chained_items:
-                chained_items.append(
-                    stage.get_task_signature(
-                        app=celery_app,
-                        progress_token=progress_token,
-                        pass_args=True,
-                    )
-                )
-            else:
-                chained_items.append(
-                    stage.get_task_signature(
-                        app=celery_app,
-                        progress_token=progress_token,
-                        pass_args=False,
-                    )
-                )
 
             emit_event(
                 RunStageStateChanged(
                     stage_id=stage.id, new_state=RUN_STAGE_STATE.PENDING
                 )
+            )
+
+            logger.info(
+                f"Marked stage {stage.id} ({stage.stage.slug}) as PENDING for retry"
             )
 
         # TODO: This is a hack to not set sample pending if we are about to generate a new sample
@@ -403,8 +373,6 @@ def task_retry(
             db.add(sample)
             db.commit()
 
-        tasks = celery.chain(*chained_items)
-
         if generation_id is not None:
             emit_event(
                 GenerationStateChanged(
@@ -412,7 +380,9 @@ def task_retry(
                 )
             )
 
-        tasks.apply_async()
+        logger.info(
+            f"Marked {len(stages_to_retry)} stages as PENDING for scheduler to process"
+        )
         return {}
     else:
         raise HTTPException(

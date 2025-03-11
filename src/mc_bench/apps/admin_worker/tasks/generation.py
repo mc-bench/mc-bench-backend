@@ -1,4 +1,3 @@
-import celery
 from sqlalchemy import select, text
 
 from mc_bench.constants import GENERATION_STATE, RUN_STATE
@@ -65,38 +64,11 @@ def create_runs(
             select(Run.id).where(Run.generation_id == generation_id)
         ).all()
 
-        headers = {"token": self.request.headers["token"]}
-
-        workflow = celery.group(
-            celery.chain(
-                app.signature(
-                    "run.execute_prompt",
-                    args=[
-                        {
-                            "run_id": run_id,
-                            "sample_id": None,
-                        }
-                    ],
-                    queue="prompt",
-                    headers=headers,
-                ),
-                app.signature("run.parse_prompt", queue="parse", headers=headers),
-                app.signature("run.code_validation", queue="validate", headers=headers),
-                app.signature("run.build_structure", queue="server", headers=headers),
-                app.signature("run.render_sample", queue="render", headers=headers),
-                # TODO: Add exporting content back in once implemented in blender
-                # app.signature(
-                #     "run.export_structure_views", queue="server", headers=headers
-                # ),
-                app.signature(
-                    "run.post_processing", queue="post_process", headers=headers
-                ),
-                app.signature("run.prepare_sample", queue="prepare", headers=headers),
-            )
-            for run_id in run_ids
+        # No longer directly enqueuing Celery tasks
+        # The scheduler will pick up pending stages and enqueue them as appropriate
+        logger.info(
+            f"Created {len(run_ids)} runs with pending stages for scheduler to process"
         )
-
-        workflow.apply_async()
 
         db.execute(
             text("""\
