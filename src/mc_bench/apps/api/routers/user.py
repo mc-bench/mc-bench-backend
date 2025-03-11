@@ -6,7 +6,7 @@ import sqlalchemy
 import valx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from mc_bench.apps.api.config import settings
 from mc_bench.auth.emails import hash_email
@@ -16,6 +16,7 @@ from mc_bench.models.user import (
     Role,
     User,
     UserIdentificationToken,
+    UserRole,
 )
 from mc_bench.server.auth import AuthManager
 from mc_bench.util.logging import get_logger
@@ -36,6 +37,37 @@ am = AuthManager(
     jwt_secret=settings.JWT_SECRET_KEY,
     jwt_algorithm=settings.ALGORITHM,
 )
+
+_USER_ID_MAP = {}
+_ROLE_MAP = {}
+_SCOPE_MAP = {}
+
+
+def _get_system_user_id(db: Session):
+    if _USER_ID_MAP.get("SYSTEM") is None:
+        user_id = db.scalar(select(User.id).where(User.username == "SYSTEM"))
+        _USER_ID_MAP["SYSTEM"] = user_id
+    return _USER_ID_MAP["SYSTEM"]
+
+
+def _get_voter_role_id(db: Session):
+    if _ROLE_MAP.get("voter") is None:
+        role_id = db.scalar(select(Role.id).where(Role.name == "voter"))
+        _ROLE_MAP["voter"] = role_id
+    return _ROLE_MAP["voter"]
+
+
+def _get_voter_scopes(db: Session):
+    if _SCOPE_MAP.get("voter") is None:
+        voter_role = (
+            db.query(Role)
+            .options(joinedload(Role.permissions))
+            .where(Role.name == "voter")
+            .one()
+        )
+        scopes = [scope.name for scope in voter_role.permissions]
+        _SCOPE_MAP["voter"] = scopes
+    return _SCOPE_MAP["voter"]
 
 
 # TODO: Implement some of this on the frontend
@@ -139,22 +171,23 @@ def signup(request: SignupRequest, db: Session = Depends(get_managed_session)):
     )
     db.add(user)
     db.flush()
-    db.refresh(user)
+    user_external_id = str(user.external_id)
+    user_id = user.id
+    username = user.username
 
-    if settings.AUTO_GRANT_ADMIN_ROLE:
-        role = db.scalar(select(Role).where(Role.name == "admin"))
-        user.roles.append(role)
-        db.add(user)
-        db.flush()
-        db.refresh(user)
-
-    user_id = str(user.external_id)
+    db.add(
+        UserRole(
+            created_by=_get_system_user_id(db),
+            user_id=user_id,
+            role_id=_get_voter_role_id(db),
+        )
+    )
 
     # Create the access token
     access_token = am.create_access_token(
         data={
-            "sub": user_id,
-            "scopes": user.scopes,
+            "sub": user_external_id,
+            "scopes": _get_voter_scopes(db),
         },
         expires_delta=datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
@@ -162,16 +195,16 @@ def signup(request: SignupRequest, db: Session = Depends(get_managed_session)):
     # Create the refresh token
     refresh_token_id, refresh_token = am.create_refresh_token(
         data={
-            "sub": user_id,
+            "sub": user_external_id,
         },
         expires_delta=datetime.timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
     )
 
     return {
-        "user_id": user_id,
+        "user_id": user_external_id,
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "username": user.username,
+        "username": username,
     }
 
 
