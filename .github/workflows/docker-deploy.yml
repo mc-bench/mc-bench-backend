@@ -15,6 +15,7 @@ env:
   RENDER_WORKER_CONTAINER_PREFIX: "render-worker"
   ADMIN_WORKER_CONTAINER_PREFIX: "admin-worker"
   WORKER_CONTAINER_PREFIX: "worker"
+  SCHEDULER_CONTAINER_PREFIX: "scheduler"
   DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
 
   MINECRAFT_BUILDER_IMAGE_NAME: "mcbench/minecraft-builder"
@@ -146,6 +147,20 @@ jobs:
       - id: set-ips
         run: |
           echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "worker-dev") | .ip]') >> $GITHUB_OUTPUT
+
+  prepare-scheduler:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "scheduler-dev") | .ip]') >> $GITHUB_OUTPUT
 
   deploy-server-worker:
     needs:
@@ -314,6 +329,50 @@ jobs:
           ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
           
           scp -i ~/.ssh/deploy_key ./deploy/worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
+            && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
+            DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
+            REGISTRY=$REGISTRY \
+            IMAGE_NAME=$IMAGE_NAME \
+            TAG=$TAG \
+            CONTAINER_PREFIX=$CONTAINER_PREFIX \
+            SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
+            SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
+            SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
+            /tmp/deploy.sh"
+
+  deploy-scheduler:
+    needs:
+      - prepare-scheduler
+      - tag-development
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-scheduler.outputs.ip-list) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.ADMIN_WORKER_IMAGE_NAME }}
+          TAG: "development"
+          CONTAINER_PREFIX: ${{ env.SCHEDULER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          scp -i ~/.ssh/deploy_key ./deploy/scheduler-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
           scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
           ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
             && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \

@@ -10,16 +10,16 @@ fi
 # Create secrets directory if it doesn't exist
 mkdir -p /opt/secrets
 
-# Download .env file from DigitalOcean Spaces
+# Download .env file from DigitalOcean Spaces with a unique name for scheduler
 docker run --rm \
     -e AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY" \
     -e AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_KEY" \
     -v /opt/secrets:/mnt \
     amazon/aws-cli:latest \
     --endpoint-url "$SPACES_ENDPOINT" \
-    s3 cp s3://mc-bench-admin-worker/.env /mnt/.env
+    s3 cp s3://mc-bench-admin-worker/.env /mnt/scheduler.env
 
-chmod 644 /opt/secrets/.env
+chmod 644 /opt/secrets/scheduler.env
 
 # Login to registry
 docker login -u "$DOCKER_LOGIN_USERNAME" -p "$DIGITALOCEAN_ACCESS_TOKEN" registry.digitalocean.com
@@ -38,7 +38,7 @@ done
 docker run -d --name "$NEW_CONTAINER_NAME" \
     --pull always \
     --restart unless-stopped \
-    --env-file /opt/secrets/.env \
+    --env-file /opt/secrets/scheduler.env \
     -e WORKER_NAME="${NEW_CONTAINER_NAME}@${HOSTNAME}" \
     "$REGISTRY/$IMAGE_NAME:$TAG" \
     python -m mc_bench.apps.scheduler
@@ -59,7 +59,7 @@ HOSTNAME=\$(hostname)
 # Run the container
 docker run -d --name "\$MANUAL_CONTAINER_NAME" \\
     --restart unless-stopped \\
-    --env-file /opt/secrets/.env \\
+    --env-file /opt/secrets/scheduler.env \\
     -e WORKER_NAME="\$MANUAL_CONTAINER_NAME@\$HOSTNAME" \\
     "$REGISTRY/$IMAGE_NAME:$TAG" \\
     python -m mc_bench.apps.scheduler
