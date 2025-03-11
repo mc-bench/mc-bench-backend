@@ -143,9 +143,11 @@ def get_pending_runs_for_stage_id(
 
     runs = ready_runs.all()
 
-    runs = [run.ready_stage for run in runs]
+    runs = [run.ready_stage for run in runs if run.ready_stage is not None]
+
     if runs:
         logger.info("Found runs to enqueue", run_ids=[run.id for run in runs])
+
     return runs
 
 
