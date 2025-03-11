@@ -108,7 +108,7 @@ def get_pending_runs_for_stage_id(
         )
     ).filter(RunStage.stage_id == stage_id)
 
-    ready_runs = (
+    ready_runs_query = (
         db.query(Run)
         .filter(
             (Run.state_id == run_state_id_for(db, RUN_STATE.CREATED))
@@ -118,7 +118,6 @@ def get_pending_runs_for_stage_id(
         .filter(Run.id.in_(pending_stage_runs))
         .options(selectinload(Run.stages))
         .with_for_update(skip_locked=True)
-        .order_by(Run.created)
     )
 
     previous_stage = PREVIOUS_STAGE_MAPPING[stage]
@@ -132,9 +131,32 @@ def get_pending_runs_for_stage_id(
             )
             .filter(RunStage.stage_id == previous_stage_id)
         )
-        ready_runs = ready_runs.filter(Run.id.in_(completed_previous_stage_runs))
+        ready_runs_query = ready_runs_query.filter(
+            Run.id.in_(completed_previous_stage_runs)
+        )
 
-    ready_runs = ready_runs.limit(limit)
+    # Apply sorting strategy based on the configuration
+    sorting_strategy = settings.RUN_SORTING_STRATEGY
+    logger.info("Using run sorting strategy", strategy=sorting_strategy)
+
+    if sorting_strategy == "CREATED_ASC":
+        # Sort by creation time ascending (oldest first)
+        ready_runs_query = ready_runs_query.order_by(Run.created)
+    elif sorting_strategy == "CREATED_DESC":
+        # Sort by creation time descending (newest first)
+        ready_runs_query = ready_runs_query.order_by(Run.created.desc())
+    elif sorting_strategy == "RANDOM":
+        # Use random sorting
+        ready_runs_query = ready_runs_query.order_by(func.random())
+    else:
+        # Default to creation time ascending if strategy is not recognized
+        logger.warning(
+            "Unrecognized sorting strategy, defaulting to CREATED_ASC",
+            strategy=sorting_strategy,
+        )
+        ready_runs_query = ready_runs_query.order_by(Run.created)
+
+    ready_runs = ready_runs_query.limit(limit)
 
     # logger.debug(
     #     "ready query",

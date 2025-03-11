@@ -36,6 +36,9 @@ class Settings:
     LOG_LEVEL_STR = os.environ.get("LOG_LEVEL", "INFO")
     LOG_LEVEL = getattr(logging, LOG_LEVEL_STR.upper(), logging.INFO)
 
+    # Run sorting strategy
+    RUN_SORTING_STRATEGY = "CREATED_ASC"  # Default to created ascending
+
     # Control setting keys
     SCHEDULER_MODE_KEY = "SCHEDULER_MODE"
     DEFAULT_MAX_TASKS_KEY = "DEFAULT_MAX_QUEUED_TASKS"
@@ -44,6 +47,7 @@ class Settings:
     HEARTBEAT_INTERVAL_KEY = "HEARTBEAT_MONITOR_INTERVAL"
     MAX_STALLED_TASKS_KEY = "MAX_STALLED_TASKS_PER_CHECK"
     MAX_FAILED_STAGES_KEY = "MAX_FAILED_STAGES_PER_CHECK"
+    RUN_SORTING_STRATEGY_KEY = "RUN_SORTING_STRATEGY"
 
     # queue specific settings
     MAX_TASKS_PROMPT_KEY = "MAX_TASKS_prompt"
@@ -91,6 +95,9 @@ class Settings:
         )
         self.MAX_FAILED_STAGES_PER_CHECK = controls.get(
             self.MAX_FAILED_STAGES_KEY, self.MAX_FAILED_STAGES_PER_CHECK
+        )
+        self.RUN_SORTING_STRATEGY = controls.get(
+            self.RUN_SORTING_STRATEGY_KEY, self.RUN_SORTING_STRATEGY
         )
         self.MAX_TASKS_PROMPT = controls.get(
             self.MAX_TASKS_PROMPT_KEY, self.DEFAULT_MAX_QUEUED_TASKS
