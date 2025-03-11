@@ -2,6 +2,7 @@ from sqlalchemy import (
     TIMESTAMP,
     UUID,
     BigInteger,
+    Boolean,
     Column,
     ForeignKey,
     Integer,
@@ -25,5 +26,6 @@ tag = Table(
     ),
     Column("created_by", Integer, ForeignKey("auth.user.id"), nullable=False),
     Column("name", String(64), unique=True, nullable=False),
+    Column("calculate_score", Boolean, nullable=False, server_default=text("true")),
     schema="specification",
 )

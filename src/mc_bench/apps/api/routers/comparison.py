@@ -997,7 +997,12 @@ def view_sample(
     # Query sample with necessary relationships loaded
     query = (
         select(Sample)
-        .where(Sample.external_id == external_id)
+        .where(
+            sqlalchemy.or_(
+                Sample.external_id == external_id,
+                Sample.comparison_sample_id == external_id,
+            )
+        )
         .options(
             # Load the run and its relationships - we need to do this differently
             selectinload(Sample.run).joinedload(Run.model),

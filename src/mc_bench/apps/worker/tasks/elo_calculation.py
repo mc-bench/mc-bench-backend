@@ -450,7 +450,18 @@ def process_comparison_for_elo(db, comparison_id):
                 tags_b = set(sample_b["tag_ids"])
                 common_tags = tags_a.intersection(tags_b)
 
-                for tag_id in common_tags:
+                # Get list of tags that have calculate_score=True
+                calculate_score_tags_query = text("""
+                    SELECT t.id 
+                    FROM specification.tag t
+                    WHERE t.id = ANY(:tag_ids) AND t.calculate_score = TRUE
+                """).bindparams(tag_ids=list(common_tags))
+                scorable_tag_ids = set(
+                    db.execute(calculate_score_tags_query).scalars().all()
+                )
+
+                # Only process tags that are marked for score calculation
+                for tag_id in scorable_tag_ids:
                     # MODEL TAG UPDATE
                     tag_model_a_key = (
                         model_a_id,
@@ -744,7 +755,18 @@ def process_comparison_for_elo(db, comparison_id):
                 loser_tags = set(loser["tag_ids"])
                 common_tags = winner_tags.intersection(loser_tags)
 
-                for tag_id in common_tags:
+                # Get list of tags that have calculate_score=True
+                calculate_score_tags_query = text("""
+                    SELECT t.id 
+                    FROM specification.tag t
+                    WHERE t.id = ANY(:tag_ids) AND t.calculate_score = TRUE
+                """).bindparams(tag_ids=list(common_tags))
+                scorable_tag_ids = set(
+                    db.execute(calculate_score_tags_query).scalars().all()
+                )
+
+                # Only process tags that are marked for score calculation
+                for tag_id in scorable_tag_ids:
                     # MODEL TAG UPDATE
                     tag_winner_model_key = (
                         winner_model_id,
