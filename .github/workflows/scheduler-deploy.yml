@@ -97,9 +97,9 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
           
-          scp -i ~/.ssh/deploy_key ./deploy/scheduler-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/scheduler-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/scheduler-deploy.sh
           scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
-          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/scheduler-deploy.sh \
             && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
             DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
             REGISTRY=$REGISTRY \
@@ -109,4 +109,4 @@ jobs:
             SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
             SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
             SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
-            /tmp/deploy.sh"
+            /tmp/scheduler-deploy.sh"
