@@ -1,6 +1,11 @@
 import os
 
+import backoff
 import requests
+
+from mc_bench.util.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class Client:
@@ -23,6 +28,13 @@ class Client:
     def post(self, path, **kwargs):
         return self._make_request("POST", path, **kwargs)
 
+    @backoff.on_exception(
+        backoff.expo,
+        requests.exceptions.RequestException,
+        logger=logger,
+        max_time=30,
+        raise_on_giveup=False,
+    )
     def update_stage_progress(self, run_external_id, stage, progress, note):
         response = self.post(
             f"/api/run/{run_external_id}/task/progress",
@@ -34,9 +46,21 @@ class Client:
         )
         response.raise_for_status()
 
+    @backoff.on_exception(
+        backoff.expo,
+        requests.exceptions.RequestException,
+        logger=logger,
+        max_time=120,
+        raise_on_giveup=True,
+    )
     def start_run_over(self, run_external_id):
         response = self.post(
             f"/api/run/{run_external_id}/task-retry",
             json={"tasks": ["PROMPT_EXECUTION"]},
         )
+        if not response.ok:
+            logger.error(
+                f"Failed to start run over for run {run_external_id}",
+                error=response.text,
+            )
         response.raise_for_status()

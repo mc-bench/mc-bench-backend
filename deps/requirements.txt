@@ -14,6 +14,8 @@ argon2-cffi==23.1.0
     # via minio
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
+backoff==2.2.1
+    # via -r requirements.in
 billiard==4.2.1
     # via celery
 celery[redis]==5.4.0
