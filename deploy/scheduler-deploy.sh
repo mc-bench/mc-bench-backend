@@ -31,7 +31,7 @@ HOSTNAME=$(hostname)
 
 # Stop existing containers
 for container in $(docker ps -f name="$CONTAINER_PREFIX" -q); do
-    docker kill --signal=SIGTERM "$container"
+    docker kill "$container"
 done
 
 # Start new container with the scheduler command
