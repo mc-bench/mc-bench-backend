@@ -316,6 +316,7 @@ def _cached_tags(db: Session):
         select(Tag)
         .join(ModelLeaderboard, ModelLeaderboard.tag_id == Tag.id)
         .where(ModelLeaderboard.tag_id.is_not(None))
+        .where(Tag.calculate_score)
         .group_by(Tag.id)
         .order_by(Tag.name)
     )
