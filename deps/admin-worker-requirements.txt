@@ -14,7 +14,7 @@ annotated-types==0.7.0
     #   -c api-requirements.txt
     #   -c requirements.txt
     #   pydantic
-anthropic==0.45.2
+anthropic==0.49.0
     # via -r admin-worker-requirements.in
 anyio==4.6.2.post1
     # via
