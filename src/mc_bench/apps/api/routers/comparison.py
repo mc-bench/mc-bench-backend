@@ -327,96 +327,121 @@ def _cached_tags(db: Session):
 
 
 @comparison_router.get(
-    "/api/metric",
+    "/api/metrics",
     response_model=List[MetricResponse],
 )
 def get_metrics(
     db: Session = Depends(get_managed_session),
 ):
-    """List all metrics, cached in memory to avoid database hits."""
+    """
+    List all metrics in the system, cached in memory to avoid database hits.
+
+    Returns an array of all metrics, not just those used in leaderboards.
+    Each metric contains id, name, and optional description.
+    """
     return _cached_metrics(db)
 
 
 @comparison_router.get(
-    "/api/leaderboard/metric",
+    "/api/leaderboard/metrics",
     response_model=List[MetricResponse],
 )
 def get_leaderboard_metrics(
     db: Session = Depends(get_managed_session),
 ):
-    """List all metrics for leaderboards, cached in memory to avoid database hits."""
+    """
+    List all metrics used in leaderboards, cached in memory to avoid database hits.
+
+    Returns an array of metric options used specifically in the leaderboard.
+    Each metric contains id, name, and description.
+    """
     return _cached_metrics(db)
 
 
 @comparison_router.get(
-    "/api/leaderboard/test-set",
+    "/api/leaderboard/test-sets",
     response_model=List[TestSetResponse],
 )
 def get_test_sets(
     db: Session = Depends(get_managed_session),
 ):
-    """List all test sets, cached in memory to avoid database hits."""
+    """
+    List all test sets used in leaderboards, cached in memory to avoid database hits.
+
+    Returns an array of test set options for use in leaderboard filtering.
+    Each test set contains id, name, and optional metadata.
+    """
     return _cached_test_sets(db)
 
 
 @comparison_router.get(
-    "/api/leaderboard/tag",
+    "/api/leaderboard/tags",
     response_model=List[TagResponse],
 )
 def get_tags(
     db: Session = Depends(get_managed_session),
 ):
-    """List all tags used for prompts, cached in memory to avoid database hits."""
+    """
+    List all tags used in leaderboard entries, cached in memory to avoid database hits.
+
+    Returns an array of tag options for use in leaderboard filtering.
+    Each tag contains id, name, and is filtered to only include tags that are
+    used in leaderboard entries and have calculate_score=True.
+    """
     return _cached_tags(db)
 
 
 @comparison_router.get(
-    "/api/leaderboard/{metric_name}/{test_set_name}",
+    "/api/leaderboard",
     response_model=LeaderboardResponse,
 )
 def get_leaderboard(
-    metric_name: str,
-    test_set_name: str,
-    tag_name: Optional[str] = None,
-    limit: int = Query(20, ge=1, le=100),
-    min_votes: int = Query(10, ge=0),
+    metricName: str = Query(..., description="Name of the metric to use"),
+    testSetName: str = Query(..., description="Name of the test set"),
+    tagName: Optional[str] = Query(None, description="Filter by tag"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
+    minVotes: int = Query(10, ge=0, description="Minimum vote threshold"),
     db: Session = Depends(get_managed_session),
 ):
     """
     Get the leaderboard for a specific metric and test set.
 
-    If tag_name is provided, returns the tag-specific leaderboard.
+    If tagName is provided, returns the tag-specific leaderboard.
     Otherwise, returns the global leaderboard (no tag filter).
 
-    Parameters are now name/slug based rather than UUID based:
-    - metric_name: The name of the metric
-    - test_set_name: The name of the test set
-    - tag_name: Optional tag name for filtering
+    Required query parameters:
+    - metricName: The name of the metric to use
+    - testSetName: The name of the test set
+
+    Optional query parameters:
+    - tagName: Filter by tag
+    - limit: Maximum number of results (default: 20, max: 100)
+    - minVotes: Minimum vote threshold (default: 10)
     """
     # Verify the metric exists by name
-    metric = db.scalar(select(Metric).where(Metric.name == metric_name))
+    metric = db.scalar(select(Metric).where(Metric.name == metricName))
     if not metric:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Metric with name '{metric_name}' not found",
+            detail=f"Metric with name '{metricName}' not found",
         )
 
     # Verify the test set exists by name
-    test_set = db.scalar(select(TestSet).where(TestSet.name == test_set_name))
+    test_set = db.scalar(select(TestSet).where(TestSet.name == testSetName))
     if not test_set:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Test set with name '{test_set_name}' not found",
+            detail=f"Test set with name '{testSetName}' not found",
         )
 
-    # Check if tag exists when tag_name is provided
+    # Check if tag exists when tagName is provided
     tag = None
-    if tag_name:
-        tag = db.scalar(select(Tag).where(Tag.name == tag_name))
+    if tagName:
+        tag = db.scalar(select(Tag).where(Tag.name == tagName))
         if not tag:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Tag with name '{tag_name}' not found",
+                detail=f"Tag with name '{tagName}' not found",
             )
 
     # Query for leaderboard entries
@@ -425,14 +450,14 @@ def get_leaderboard(
         .where(
             ModelLeaderboard.metric_id == metric.id,
             ModelLeaderboard.test_set_id == test_set.id,
-            ModelLeaderboard.vote_count >= min_votes,
+            ModelLeaderboard.vote_count >= minVotes,
         )
         .order_by(ModelLeaderboard.elo_score.desc())
         .limit(limit)
     )
 
-    # Add tag filter if tag_name is provided
-    if tag_name:
+    # Add tag filter if tagName is provided
+    if tagName:
         query = query.where(ModelLeaderboard.tag_id == tag.id)
     else:
         query = query.where(ModelLeaderboard.tag_id == None)
@@ -477,48 +502,50 @@ def get_leaderboard(
 
 
 @comparison_router.get(
-    "/api/leaderboard/{metric_name}/{test_set_name}/{model_slug}/stats",
+    "/api/leaderboard/model/stats",
     response_model=ModelSampleStatsResponse,
 )
 def get_model_sample_stats(
-    metric_name: str,
-    test_set_name: str,
-    model_slug: str,
-    tag_name: Optional[str] = None,
+    metricName: str = Query(..., description="Name of the metric"),
+    testSetName: str = Query(..., description="Name of the test set"),
+    modelSlug: str = Query(..., description="Slug or ID of the model"),
+    tagName: Optional[str] = Query(None, description="Filter by tag"),
     db: Session = Depends(get_managed_session),
 ):
     """
     Get statistics about sample performance for a specific model.
 
     This provides deeper insight into how samples from this model are performing,
-    including quartile win rates and other statistics.
+    including bucket-based win rates and other statistics.
 
-    Parameters are now name/slug based rather than UUID based:
-    - metric_name: The name of the metric
-    - test_set_name: The name of the test set
-    - model_slug: The slug of the model
-    - tag_name: Optional tag name for filtering
+    Required query parameters:
+    - metricName: The name of the metric
+    - testSetName: The name of the test set
+    - modelSlug: The slug of the model
+
+    Optional query parameters:
+    - tagName: Filter by tag
     """
     # Verify all entities exist by name/slug instead of UUID
-    metric = db.scalar(select(Metric).where(Metric.name == metric_name))
+    metric = db.scalar(select(Metric).where(Metric.name == metricName))
     if not metric:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Metric with name '{metric_name}' not found",
+            detail=f"Metric with name '{metricName}' not found",
         )
 
-    test_set = db.scalar(select(TestSet).where(TestSet.name == test_set_name))
+    test_set = db.scalar(select(TestSet).where(TestSet.name == testSetName))
     if not test_set:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Test set with name '{test_set_name}' not found",
+            detail=f"Test set with name '{testSetName}' not found",
         )
 
-    model = db.scalar(select(Model).where(Model.slug == model_slug))
+    model = db.scalar(select(Model).where(Model.slug == modelSlug))
     if not model:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model with slug '{model_slug}' not found",
+            detail=f"Model with slug '{modelSlug}' not found",
         )
 
     # Get model entry in leaderboard
@@ -528,13 +555,13 @@ def get_model_sample_stats(
         ModelLeaderboard.test_set_id == test_set.id,
     )
 
-    # Add tag filter if tag_name is provided
-    if tag_name:
-        tag = db.scalar(select(Tag).where(Tag.name == tag_name))
+    # Add tag filter if tagName is provided
+    if tagName:
+        tag = db.scalar(select(Tag).where(Tag.name == tagName))
         if not tag:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Tag with name '{tag_name}' not found",
+                detail=f"Tag with name '{tagName}' not found",
             )
         model_entry_query = model_entry_query.where(ModelLeaderboard.tag_id == tag.id)
     else:
@@ -637,8 +664,7 @@ def get_model_sample_stats(
         model=ModelResponse(id=model.external_id, name=model.name, slug=model.slug),
         sample_count=total_samples,
         global_stats=GlobalStatsResponse(
-            avg_elo=sum(sample[0].elo_score for sample in sample_entries)
-            / total_samples,
+            avg_elo=model_entry.elo_score,
             total_votes=sum(sample[0].vote_count for sample in sample_entries),
             total_wins=sum(sample[0].win_count for sample in sample_entries),
             total_losses=sum(sample[0].loss_count for sample in sample_entries),
@@ -654,17 +680,17 @@ def get_model_sample_stats(
 
 
 @comparison_router.get(
-    "/api/leaderboard/{metric_name}/{test_set_name}/{model_slug}/prompts",
+    "/api/leaderboard/model/prompts",
     response_model=PromptLeaderboardResponse,
 )
 def get_model_prompt_leaderboard(
-    metric_name: str,
-    test_set_name: str,
-    model_slug: str,
-    tag_name: Optional[str] = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    min_votes: int = Query(5, ge=0),
+    metricName: str = Query(..., description="Name of the metric"),
+    testSetName: str = Query(..., description="Name of the test set"),
+    modelSlug: str = Query(..., description="Slug or ID of the model"),
+    tagName: Optional[str] = Query(None, description="Filter by tag"),
+    page: int = Query(1, ge=1, description="Page number"),
+    pageSize: int = Query(20, ge=1, le=100, description="Results per page"),
+    minVotes: int = Query(5, ge=0, description="Minimum vote threshold"),
     db: Session = Depends(get_managed_session),
 ):
     """
@@ -673,32 +699,37 @@ def get_model_prompt_leaderboard(
     Returns ELO scores and statistics for prompts used with this model,
     showing which prompts produce the best results for this specific model.
 
-    Parameters are now name/slug based rather than UUID based:
-    - metric_name: The name of the metric
-    - test_set_name: The name of the test set
-    - model_slug: The slug of the model
-    - tag_name: Optional tag name for filtering
+    Required query parameters:
+    - metricName: The name of the metric
+    - testSetName: The name of the test set
+    - modelSlug: The slug of the model
+
+    Optional query parameters:
+    - tagName: Filter by tag
+    - page: Page number (default: 1)
+    - pageSize: Results per page (default: 20, max: 100)
+    - minVotes: Minimum vote threshold (default: 5)
     """
     # Verify all entities exist by name/slug instead of UUID
-    metric = db.scalar(select(Metric).where(Metric.name == metric_name))
+    metric = db.scalar(select(Metric).where(Metric.name == metricName))
     if not metric:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Metric with name '{metric_name}' not found",
+            detail=f"Metric with name '{metricName}' not found",
         )
 
-    test_set = db.scalar(select(TestSet).where(TestSet.name == test_set_name))
+    test_set = db.scalar(select(TestSet).where(TestSet.name == testSetName))
     if not test_set:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Test set with name '{test_set_name}' not found",
+            detail=f"Test set with name '{testSetName}' not found",
         )
 
-    model = db.scalar(select(Model).where(Model.slug == model_slug))
+    model = db.scalar(select(Model).where(Model.slug == modelSlug))
     if not model:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model with slug '{model_slug}' not found",
+            detail=f"Model with slug '{modelSlug}' not found",
         )
 
     # Build query for prompt leaderboard entries related to this model
@@ -716,17 +747,17 @@ def get_model_prompt_leaderboard(
         PromptLeaderboard.prompt_id.in_(prompts_used_by_model),
         PromptLeaderboard.metric_id == metric.id,
         PromptLeaderboard.test_set_id == test_set.id,
-        PromptLeaderboard.vote_count >= min_votes,
+        PromptLeaderboard.vote_count >= minVotes,
         PromptLeaderboard.model_id == model.id,
     )
 
-    # Add tag filter if tag_name is provided
-    if tag_name:
-        tag = db.scalar(select(Tag).where(Tag.name == tag_name))
+    # Add tag filter if tagName is provided
+    if tagName:
+        tag = db.scalar(select(Tag).where(Tag.name == tagName))
         if not tag:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Tag with name '{tag_name}' not found",
+                detail=f"Tag with name '{tagName}' not found",
             )
         base_query = base_query.where(PromptLeaderboard.tag_id == tag.id)
     else:
@@ -737,14 +768,14 @@ def get_model_prompt_leaderboard(
     total_items = db.scalar(count_query) or 0
 
     # Calculate pagination parameters
-    total_pages = (total_items + page_size - 1) // page_size if total_items > 0 else 1
-    offset = (page - 1) * page_size
+    total_pages = (total_items + pageSize - 1) // pageSize if total_items > 0 else 1
+    offset = (page - 1) * pageSize
 
     # Add pagination
     query = (
         base_query.order_by(PromptLeaderboard.elo_score.desc())
         .offset(offset)
-        .limit(page_size)
+        .limit(pageSize)
     )
 
     # Execute query
@@ -784,7 +815,7 @@ def get_model_prompt_leaderboard(
     # Create paging response
     paging = PagingResponse(
         page=page,
-        page_size=page_size,
+        page_size=pageSize,
         total_pages=total_pages,
         total_items=total_items,
         has_next=page < total_pages,
@@ -809,18 +840,18 @@ def get_model_prompt_leaderboard(
 
 
 @comparison_router.get(
-    "/api/leaderboard/{metric_name}/{test_set_name}/{model_slug}/samples",
+    "/api/leaderboard/model/samples",
     response_model=ModelSamplesResponse,
 )
 def get_model_samples(
-    metric_name: str,
-    test_set_name: str,
-    model_slug: str,
-    tag_name: Optional[str] = None,
-    prompt_name: Optional[str] = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    min_votes: int = Query(5, ge=0),
+    metricName: str = Query(..., description="Name of the metric"),
+    testSetName: str = Query(..., description="Name of the test set"),
+    modelSlug: str = Query(..., description="Slug or ID of the model"),
+    tagName: Optional[str] = Query(None, description="Filter by tag"),
+    promptName: Optional[str] = Query(None, description="Filter by prompt"),
+    page: int = Query(1, ge=1, description="Page number"),
+    pageSize: int = Query(20, ge=1, le=100, description="Results per page"),
+    minVotes: int = Query(5, ge=0, description="Minimum vote threshold"),
     db: Session = Depends(get_managed_session),
 ):
     """
@@ -829,43 +860,48 @@ def get_model_samples(
     Returns sample statistics from the SampleLeaderboard table sorted by ELO score.
     Supports filtering by tag, prompt name, and pagination.
 
-    Parameters:
-    - metric_name: The name of the metric
-    - test_set_name: The name of the test set
-    - model_slug: The slug of the model
-    - tag_name: Optional tag name for filtering
-    - prompt_name: Optional prompt name for filtering
+    Required query parameters:
+    - metricName: The name of the metric
+    - testSetName: The name of the test set
+    - modelSlug: The slug of the model
+
+    Optional query parameters:
+    - tagName: Filter by tag
+    - promptName: Filter by prompt
+    - page: Page number (default: 1)
+    - pageSize: Results per page (default: 20, max: 100)
+    - minVotes: Minimum vote threshold (default: 5)
     """
     # Verify all entities exist by name/slug instead of UUID
-    metric = db.scalar(select(Metric).where(Metric.name == metric_name))
+    metric = db.scalar(select(Metric).where(Metric.name == metricName))
     if not metric:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Metric with name '{metric_name}' not found",
+            detail=f"Metric with name '{metricName}' not found",
         )
 
-    test_set = db.scalar(select(TestSet).where(TestSet.name == test_set_name))
+    test_set = db.scalar(select(TestSet).where(TestSet.name == testSetName))
     if not test_set:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Test set with name '{test_set_name}' not found",
+            detail=f"Test set with name '{testSetName}' not found",
         )
 
-    model = db.scalar(select(Model).where(Model.slug == model_slug))
+    model = db.scalar(select(Model).where(Model.slug == modelSlug))
     if not model:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model with slug '{model_slug}' not found",
+            detail=f"Model with slug '{modelSlug}' not found",
         )
 
-    # Check if tag exists when tag_name is provided
+    # Check if tag exists when tagName is provided
     tag = None
-    if tag_name:
-        tag = db.scalar(select(Tag).where(Tag.name == tag_name))
+    if tagName:
+        tag = db.scalar(select(Tag).where(Tag.name == tagName))
         if not tag:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Tag with name '{tag_name}' not found",
+                detail=f"Tag with name '{tagName}' not found",
             )
 
     # Build the base query for samples with leaderboard data
@@ -878,11 +914,11 @@ def get_model_samples(
             Run.model_id == model.id,
             SampleLeaderboard.metric_id == metric.id,
             SampleLeaderboard.test_set_id == test_set.id,
-            SampleLeaderboard.vote_count >= min_votes,
+            SampleLeaderboard.vote_count >= minVotes,
         )
     )
 
-    # Add tag filter if tag_name is provided
+    # Add tag filter if tagName is provided
     if tag:
         # Filter by samples from runs with prompts that have this tag
         prompt_with_tag_subquery = (
@@ -896,9 +932,9 @@ def get_model_samples(
 
         base_query = base_query.where(Run.prompt_id.in_(prompt_with_tag_subquery))
 
-    # Add prompt name filter if prompt_name is provided
-    if prompt_name:
-        base_query = base_query.where(Prompt.name == prompt_name)
+    # Add prompt name filter if promptName is provided
+    if promptName:
+        base_query = base_query.where(Prompt.name == promptName)
 
     # Get total count for pagination
     count_query = select(func.count()).select_from(
@@ -909,14 +945,14 @@ def get_model_samples(
     total_items = db.scalar(count_query) or 0
 
     # Calculate pagination parameters
-    total_pages = (total_items + page_size - 1) // page_size if total_items > 0 else 1
-    offset = (page - 1) * page_size
+    total_pages = (total_items + pageSize - 1) // pageSize if total_items > 0 else 1
+    offset = (page - 1) * pageSize
 
     # Add ordering and pagination
     query = (
         base_query.order_by(SampleLeaderboard.elo_score.desc())
         .offset(offset)
-        .limit(page_size)
+        .limit(pageSize)
     )
 
     # Execute query
@@ -951,14 +987,12 @@ def get_model_samples(
     # Create paging response
     paging = PagingResponse(
         page=page,
-        page_size=page_size,
+        page_size=pageSize,
         total_pages=total_pages,
         total_items=total_items,
         has_next=page < total_pages,
         has_previous=page > 1,
     )
-
-    # Just use model data without additional prompt details
 
     # Return samples response
     return ModelSamplesResponse(
