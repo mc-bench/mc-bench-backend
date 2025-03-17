@@ -1,4 +1,7 @@
 import datetime
+import os
+import signal
+import sys
 import time
 from typing import Dict, List
 
@@ -398,6 +401,33 @@ def scheduler_loop(max_loops=10):
     Args:
         max_loops: Maximum number of loops to run before exiting
     """
+
+    # Setup child-specific signal handler to ensure clean shutdown
+    def child_signal_handler(signum, frame):
+        sig_name = signal.Signals(signum).name
+
+        try:
+            redis.close()
+        except Exception:
+            logger.exception(
+                f"Error closing Redis connection for child process {os.getpid()}"
+            )
+
+        try:
+            db.close()
+        except Exception:
+            logger.exception(
+                f"Error closing database connection for child process {os.getpid()}"
+            )
+
+        logger.info(f"Child process received signal {sig_name}, exiting gracefully")
+        # Exit cleanly
+        sys.exit(0)
+
+    # Set up signal handlers in the child process
+    signal.signal(signal.SIGTERM, child_signal_handler)
+    signal.signal(signal.SIGINT, child_signal_handler)
+
     redis = get_redis_client()
     loop_count = 0
     celery_app = make_client_celery_app()

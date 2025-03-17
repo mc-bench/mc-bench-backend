@@ -1,5 +1,3 @@
-import errno
-import fcntl
 import multiprocessing
 import os
 import signal
@@ -26,39 +24,11 @@ class SchedulerManager:
         self.graceful_timeout = settings.SUBPROCESS_GRACEFUL_TIMEOUT
         self.force_timeout = settings.SUBPROCESS_FORCE_TIMEOUT
         self.restart_delay = settings.SUBPROCESS_RESTART_DELAY
-        self.lockfile_path = settings.SCHEDULER_LOCK_PATH
 
         self.process = None
         self.running = True
-        self.lockfile = None
-
-    def acquire_lock(self):
-        """Attempt to acquire an exclusive file lock to ensure only one scheduler is running."""
-        try:
-            self.lockfile = open(self.lockfile_path, "w")
-            fcntl.flock(self.lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            self.lockfile.write(str(os.getpid()))
-            self.lockfile.flush()
-            return True
-        except IOError as e:
-            if e.errno == errno.EWOULDBLOCK:
-                logger.error("Another scheduler process is already running. Exiting.")
-                return False
-            raise
-        except Exception as e:
-            logger.exception(f"Error acquiring lock: {e}")
-            return False
-
-    def release_lock(self):
-        """Release the file lock."""
-        if self.lockfile:
-            try:
-                fcntl.flock(self.lockfile, fcntl.LOCK_UN)
-                self.lockfile.close()
-                if os.path.exists(self.lockfile_path):
-                    os.remove(self.lockfile_path)
-            except Exception as e:
-                logger.exception(f"Error releasing lock: {e}")
+        # Guard flag to prevent re-entrant signal handling
+        self.handling_signal = False
 
     def start_subprocess(self):
         """Start a new scheduler subprocess."""
@@ -87,6 +57,7 @@ class SchedulerManager:
         if self.process and self.process.is_alive():
             logger.info(f"Terminating scheduler subprocess (PID: {self.process.pid})")
             # Send SIGTERM to allow graceful shutdown
+            logger.info("Sending SIGTERM to subprocess", pid=self.process.pid)
             os.kill(self.process.pid, signal.SIGTERM)
             # Give process time to terminate gracefully
             self.process.join(timeout=self.graceful_timeout)
@@ -94,6 +65,7 @@ class SchedulerManager:
                 logger.warning(
                     f"Subprocess didn't terminate within {self.graceful_timeout}s, forcing exit"
                 )
+                logger.info("Killing subprocess with SIGKILL", pid=self.process.pid)
                 os.kill(self.process.pid, signal.SIGKILL)
                 self.process.join(timeout=self.force_timeout)
             logger.info("Scheduler subprocess terminated")
@@ -101,18 +73,26 @@ class SchedulerManager:
 
     def handle_signal(self, signum, frame):
         """Signal handler for graceful termination."""
-        sig_name = signal.Signals(signum).name
-        logger.info(f"Received signal {sig_name} ({signum}), initiating shutdown")
-        self.running = False
-        self.terminate_subprocess()
-        self.release_lock()
-        logger.info("Scheduler manager shutdown complete")
-        sys.exit(0)
+        # Prevent re-entrant signal handling
+        if self.handling_signal:
+            logger.warning(
+                f"Already handling signal, ignoring new signal {signal.Signals(signum).name}"
+            )
+            return
+
+        try:
+            self.handling_signal = True
+            sig_name = signal.Signals(signum).name
+            logger.info(f"Received signal {sig_name} ({signum}), initiating shutdown")
+            self.running = False
+            self.terminate_subprocess()
+            logger.info("Scheduler manager shutdown complete")
+            sys.exit(0)
+        finally:
+            self.handling_signal = False
 
     def run(self):
         """Main loop for scheduler manager."""
-        if not self.acquire_lock():
-            sys.exit(1)
 
         # Set up signal handlers
         signal.signal(signal.SIGTERM, self.handle_signal)
@@ -148,7 +128,6 @@ class SchedulerManager:
             logger.exception(f"Error in scheduler manager: {e}")
         finally:
             self.terminate_subprocess()
-            self.release_lock()
             logger.info("Scheduler manager exited")
 
 
@@ -171,7 +150,9 @@ def main():
     logger.info(f"Max loops per scheduler process: {settings.MAX_SCHEDULER_LOOPS}")
     logger.info(f"Subprocess graceful timeout: {settings.SUBPROCESS_GRACEFUL_TIMEOUT}s")
     logger.info(f"Subprocess restart delay: {settings.SUBPROCESS_RESTART_DELAY}s")
-    logger.info(f"Scheduler lock path: {settings.SCHEDULER_LOCK_PATH}")
+
+    logger.info("Setting process start method to spawn")
+    # multiprocessing.set_start_method("spawn")
 
     # Start the manager which handles the scheduler subprocess
     manager = SchedulerManager()
