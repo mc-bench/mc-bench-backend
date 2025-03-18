@@ -1,3 +1,4 @@
-from mc_bench.apps.scheduler import main
+from mc_bench.apps.scheduler.manager import main
 
-main()
+if __name__ == "__main__":
+    main()

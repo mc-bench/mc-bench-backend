@@ -39,6 +39,15 @@ class Settings:
     # Run sorting strategy
     RUN_SORTING_STRATEGY = "CREATED_ASC"  # Default to created ascending
 
+    # Scheduler process management settings
+    MAX_SCHEDULER_LOOPS = int(os.environ.get("SCHEDULER_MAX_LOOPS", "10"))
+    SUBPROCESS_GRACEFUL_TIMEOUT = int(os.environ.get("SCHEDULER_GRACEFUL_TIMEOUT", "5"))
+    SUBPROCESS_FORCE_TIMEOUT = int(os.environ.get("SCHEDULER_FORCE_TIMEOUT", "1"))
+    SUBPROCESS_RESTART_DELAY = int(os.environ.get("SCHEDULER_RESTART_DELAY", "5"))
+    SCHEDULER_LOCK_PATH = os.environ.get(
+        "SCHEDULER_LOCK_PATH", "/tmp/mc_bench_scheduler.lock"
+    )
+
     # Control setting keys
     SCHEDULER_MODE_KEY = "SCHEDULER_MODE"
     DEFAULT_MAX_TASKS_KEY = "DEFAULT_MAX_QUEUED_TASKS"
@@ -48,6 +57,9 @@ class Settings:
     MAX_STALLED_TASKS_KEY = "MAX_STALLED_TASKS_PER_CHECK"
     MAX_FAILED_STAGES_KEY = "MAX_FAILED_STAGES_PER_CHECK"
     RUN_SORTING_STRATEGY_KEY = "RUN_SORTING_STRATEGY"
+    MAX_SCHEDULER_LOOPS_KEY = "MAX_SCHEDULER_LOOPS"
+    SUBPROCESS_GRACEFUL_TIMEOUT_KEY = "SUBPROCESS_GRACEFUL_TIMEOUT"
+    SUBPROCESS_RESTART_DELAY_KEY = "SUBPROCESS_RESTART_DELAY"
 
     # queue specific settings
     MAX_TASKS_PROMPT_KEY = "MAX_TASKS_prompt"
@@ -99,6 +111,17 @@ class Settings:
         self.RUN_SORTING_STRATEGY = controls.get(
             self.RUN_SORTING_STRATEGY_KEY, self.RUN_SORTING_STRATEGY
         )
+        self.MAX_SCHEDULER_LOOPS = controls.get(
+            self.MAX_SCHEDULER_LOOPS_KEY, self.MAX_SCHEDULER_LOOPS
+        )
+        self.SUBPROCESS_GRACEFUL_TIMEOUT = controls.get(
+            self.SUBPROCESS_GRACEFUL_TIMEOUT_KEY, self.SUBPROCESS_GRACEFUL_TIMEOUT
+        )
+        self.SUBPROCESS_RESTART_DELAY = controls.get(
+            self.SUBPROCESS_RESTART_DELAY_KEY, self.SUBPROCESS_RESTART_DELAY
+        )
+
+        # Queue-specific settings
         self.MAX_TASKS_PROMPT = controls.get(
             self.MAX_TASKS_PROMPT_KEY, self.DEFAULT_MAX_QUEUED_TASKS
         )
