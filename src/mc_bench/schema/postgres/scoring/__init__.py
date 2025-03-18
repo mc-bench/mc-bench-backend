@@ -1,5 +1,6 @@
 from ._comparison import comparison
 from ._comparison_rank import comparison_rank
+from ._comparison_report import comparison_report
 from ._metric import metric
 from ._model_leaderboard import model_leaderboard
 from ._processed_comparison import processed_comparison
@@ -10,6 +11,7 @@ from ._sample_leaderboard import sample_leaderboard
 __all__ = [
     "comparison",
     "comparison_rank",
+    "comparison_report",
     "metric",
     "model_leaderboard",
     "processed_comparison",
