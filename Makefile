@@ -1,23 +1,25 @@
 #.PHONY: build-images build-worker build-api build-admin-api build-admin-worker
 
+sync-deps:
+	# uv pip compile --python-version <version> -o <output> <input> --contstraints <constraints...>
+	docker run --rm -v `pwd`/deps:/deps ghcr.io/astral-sh/uv:python3.12-bookworm bash -c "cd /deps && \
+		uv pip compile --python-version 3.12.7 requirements.in -o requirements.txt -c known-constraints.in && \
+		uv pip compile --python-version 3.12.7 api-requirements.in -o api-requirements.txt -c requirements.txt -c known-constraints.in && \
+		uv pip compile --python-version 3.12.7 worker-requirements.in -o worker-requirements.txt -c requirements.txt -c api-requirements.txt -c known-constraints.in && \
+		uv pip compile --python-version 3.12.7 admin-worker-requirements.in -o admin-worker-requirements.txt -c requirements.txt -c api-requirements.txt -c worker-requirements.txt -c known-constraints.in && \
+		uv pip compile --python-version 3.12.7 server-worker-requirements.in -o server-worker-requirements.txt -c requirements.txt -c api-requirements.txt -c worker-requirements.txt -c admin-worker-requirements.txt -c known-constraints.in"
 
-sync-deps: build-deps-images
-	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o requirements.txt requirements.in -c known-constraints.in"
-	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o api-requirements.txt api-requirements.in --constraint requirements.txt -c known-constraints.in"
-	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o worker-requirements.txt worker-requirements.in --constraint requirements.txt --constraint api-requirements.txt -c known-constraints.in"
-	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o admin-worker-requirements.txt admin-worker-requirements.in --constraint requirements.txt --constraint api-requirements.txt -c worker-requirements.txt -c known-constraints.in"
-	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o server-worker-requirements.txt server-worker-requirements.in --constraint requirements.txt --constraint api-requirements.txt --constraint worker-requirements.txt -c admin-worker-requirements.txt -c known-constraints.in"
-	docker run --platform linux/amd64 --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.11.7 bash -c "cd /deps && pip-compile -o render-worker-requirements.txt render-worker-requirements.in --constraint requirements.txt --constraint api-requirements.txt --constraint worker-requirements.txt -c admin-worker-requirements.txt --constraint server-worker-requirements.txt -c known-constraints.in"
-	docker run --rm -v `pwd`/deps:/deps mcbench/deps-builder:3.12.7 bash -c "cd /deps && pip-compile -o dev-requirements.txt dev-requirements.in --constraint requirements.txt --constraint api-requirements.txt --constraint worker-requirements.txt -c admin-worker-requirements.txt --constraint server-worker-requirements.txt --constraint render-worker-requirements.txt -c known-constraints.in"
+	docker run --platform linux/amd64 --rm -v `pwd`/deps:/deps ghcr.io/astral-sh/uv:python3.11-bookworm bash -c "cd /deps && \
+		uv pip compile --python-version 3.11.7 render-worker-requirements.in -o render-worker-requirements.txt -c requirements.txt -c api-requirements.txt -c worker-requirements.txt -c admin-worker-requirements.txt -c server-worker-requirements.txt -c known-constraints.in"
+
+	docker run --rm -v `pwd`/deps:/deps ghcr.io/astral-sh/uv:python3.12-bookworm bash -c "cd /deps && \
+		uv pip compile  --python-version 3.12.7 --no-emit-package pip --no-emit-package setuptools dev-requirements.in -o dev-requirements.txt -c requirements.txt -c api-requirements.txt -c worker-requirements.txt -c admin-worker-requirements.txt -c server-worker-requirements.txt -c render-worker-requirements.txt -c known-constraints.in"
 
 build-%:
 	docker build -t mcbench/$* -f images/$*.Dockerfile .
 
 all-images: build-admin-api build-admin-worker build-api build-worker
 
-build-deps-images:
-	docker build --build-arg PYTHON_VERSION=3.12.7 -t mcbench/deps-builder:3.12.7 -f images/deps-builder.Dockerfile .
-	docker build --platform linux/amd64 --build-arg PYTHON_VERSION=3.11.7 -t mcbench/deps-builder:3.11.7 -f images/deps-builder.Dockerfile .
 
 install-dev:
 	pip install -e ".[dev]"
