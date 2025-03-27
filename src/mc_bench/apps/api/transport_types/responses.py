@@ -100,6 +100,30 @@ class LeaderboardResponse(Base):
     entries: List[LeaderboardEntryResponse]
 
 
+class GlickoLeaderboardEntryResponse(Base):
+    """A single entry in the Glicko-2 leaderboard."""
+
+    glicko_rating: float
+    rating_deviation: float
+    volatility: float
+    vote_count: int
+    win_count: int
+    loss_count: int
+    tie_count: int
+    last_updated: str  # ISO format timestamp
+    model: ModelResponse
+    tag: Optional[TagResponse] = None
+
+
+class GlickoLeaderboardResponse(Base):
+    """Glicko-2 leaderboard data for a specific metric and test set."""
+
+    metric: MetricResponse
+    test_set_id: uuid.UUID
+    test_set_name: str
+    entries: List[GlickoLeaderboardEntryResponse]
+
+
 class PromptLeaderboardEntryResponse(Base):
     """A single entry in the prompt leaderboard."""
 
