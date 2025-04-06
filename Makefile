@@ -20,7 +20,8 @@ build-deps-images:
 	docker build --platform linux/amd64 --build-arg PYTHON_VERSION=3.11.7 -t mcbench/deps-builder:3.11.7 -f images/deps-builder.Dockerfile .
 
 install-dev:
-	pip install -e ".[dev]"
+	pip install uv
+	uv pip install -e ".[dev]"
 
 fmt:
 	ruff check --select I,T20 --fix
@@ -42,14 +43,11 @@ reset:
 	docker-compose down -v
 	source .env || echo "Be sure to create .env in the root per the template"
 	# TODO: Check for local minecraft server and minecraft builder images
-	docker-compose up -d postgres redis object
+	docker-compose up -d postgres redis object object-init
 	echo "Sleeping for 10 seconds to let the database come up"
 	sleep 10
 	make install-dev
 	mc-bench-alembic upgrade head
-	docker-compose exec object sh -c "mc alias set object http://localhost:9000 fake_key fake_secret && \
-		mc mb object/mcbench-backend-object-local && mc anonymous set download object/mcbench-backend-object-local && \
-		mc mb object/mcbench-object-cdn-local && mc anonymous set download object/mcbench-object-cdn-local"
 
 	docker-compose up -d --build
 

@@ -147,19 +147,16 @@ Remember:
 - The build is intended for human consumption in game and for visual display. When producing the build, consider how it can be viewed, explored, and used.
 ') ON CONFLICT DO NOTHING;
 
-INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet (2024-10-22)', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gpt-4o-2024-11-20', 'GPT-4o (2024-11-20)', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'llama-3.1-405b-instruct', 'Llama 3.1 405B Instruct', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash Exp', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'grok-2-1212', 'Grok 2.1 (1212)', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, name, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'deepseek-r1', 'DeepSeek R1', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-5-sonnet-20241022', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'claude-3-7-sonnet-20250219', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gpt-4o-2024-11-20', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'llama-3.1-405b-instruct', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'gemini-2.0-flash-exp', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'grok-2-1212', true) ON CONFLICT DO NOTHING;
-INSERT INTO specification.model (created_by, slug, active) VALUES ((select id from auth.user where username = 'SYSTEM'), 'deepseek-r1', true) ON CONFLICT DO NOTHING;
+INSERT INTO specification.model (created_by, slug, name, active) 
+VALUES 
+    ((select id from auth.user where username = 'SYSTEM'), 'claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet (2024-10-22)', true),
+    ((select id from auth.user where username = 'SYSTEM'), 'claude-3-7-sonnet-20250219', 'Claude 3.7 Sonnet (2025-02-19)', true),
+    ((select id from auth.user where username = 'SYSTEM'), 'gpt-4o-2024-11-20', 'GPT-4o (2024-11-20)', true),
+    ((select id from auth.user where username = 'SYSTEM'), 'llama-3.1-405b-instruct', 'Llama 3.1 405B Instruct', true),
+    ((select id from auth.user where username = 'SYSTEM'), 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash Exp', true),
+    ((select id from auth.user where username = 'SYSTEM'), 'grok-2-1212', 'Grok 2.1 (1212)', true),
+    ((select id from auth.user where username = 'SYSTEM'), 'deepseek-r1', 'DeepSeek R1', true)
+ON CONFLICT (slug) DO NOTHING;
 
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (1, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'claude-3-5-sonnet-20241022'), 'ANTHROPIC_SDK', '"{\"model\": \"claude-3-5-sonnet-20241022\", \"max_tokens\": 4000}"', 'claude-3-5-sonnet-20241022', true) ON CONFLICT DO NOTHING;
 INSERT INTO specification.provider (id, created_by, model_id, provider_class, config, name, is_default) VALUES (7, (select id from auth.user where username = 'SYSTEM'), (select id from specification.model where slug = 'claude-3-7-sonnet-20250219'), 'ANTHROPIC_SDK', '"{\"model\": \"claude-3-7-sonnet-20250219\", \"max_tokens\": 4000}"', 'claude-3-7-sonnet-20250219', true) ON CONFLICT DO NOTHING;
@@ -248,7 +245,8 @@ ON CONFLICT DO NOTHING;
 INSERT INTO auth.user (username)
 VALUES
     ('huntcsg'),
-    ('Isaac');
+    ('Isaac')
+ON CONFLICT (username) DO NOTHING;
 
 WITH auth_provider as (
     select
@@ -270,7 +268,8 @@ VALUES
      147355120,
      (select id from auth.user where username = 'Isaac'),
      'f89ba90d514fbeefd5d2115b3f49fd7520480d9f94937a1e4794598aa124450a'
-    );
+    )
+ON CONFLICT (auth_provider_id, auth_provider_user_id) DO NOTHING;
 
 INSERT INTO auth.user_role (created_by, user_id, role_id)
 SELECT

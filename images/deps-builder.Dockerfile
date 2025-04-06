@@ -1,4 +1,4 @@
 ARG PYTHON_VERSION
 FROM python:${PYTHON_VERSION}-slim
 
-RUN pip install pip-tools
+RUN pip install uv
