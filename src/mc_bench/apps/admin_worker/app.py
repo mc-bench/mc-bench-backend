@@ -12,7 +12,11 @@ from .config import settings
 
 configure_logging(humanize=settings.HUMANIZE_LOGS, level=settings.LOG_LEVEL)
 
-app = make_worker_celery_app()
+app = make_worker_celery_app(
+    {
+        "worker_max_tasks_per_child": 16,
+    }
+)
 
 # Event handler registration
 on_event(RunStageStateChanged, RunStage.state_change_handler)
