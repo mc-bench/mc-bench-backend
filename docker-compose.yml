@@ -34,6 +34,7 @@ services:
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
       SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      USE_PRIORITY_COMPARISON: "true"
 
   admin-api:
     build:
@@ -213,7 +214,7 @@ services:
 #      FLOWER_OAUTH2_REDIRECT_URI: "http://localhost:5555/login"
 
     command: ["celery", "-A", "mc_bench.apps.admin_worker", "flower"]
-    
+
   scheduler:
     build:
       dockerfile: "images/admin-worker.Dockerfile"
