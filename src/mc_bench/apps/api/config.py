@@ -26,5 +26,8 @@ class Settings:
     LOG_LEVEL_STR = os.environ.get("LOG_LEVEL", "INFO")
     LOG_LEVEL = getattr(logging, LOG_LEVEL_STR.upper(), logging.INFO)
 
+    # Feature flags
+    USE_PRIORITY_COMPARISON = os.environ.get("USE_PRIORITY_COMPARISON", "false") == "true"
+
 
 settings = Settings()
