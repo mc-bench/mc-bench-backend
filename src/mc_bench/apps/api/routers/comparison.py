@@ -112,23 +112,169 @@ def get_comparison_batch(
         )
 
     # try:
-    sample_data = db.execute(
-        sqlalchemy.text(
-            "EXECUTE comparison_batch_query(:test_set_id, :sample_count)"
-        ).bindparams(
-            sample_count=request.batch_size,
-            test_set_id=test_set_id,
+    logger.info(f"Executing comparison_batch_query with test_set_id={test_set_id}, batch_size={request.batch_size}")
+    try:
+        # Get average vote count for logging
+        avg_votes = db.scalar(
+            sqlalchemy.text(
+                "SELECT AVG(vote_count) FROM scoring.model_leaderboard WHERE test_set_id = :test_set_id AND tag_id IS NULL"
+            ).bindparams(test_set_id=test_set_id)
         )
-    ).fetchall()
+        logger.info(f"Average vote count across all models: {avg_votes}")
+
+        sample_data = db.execute(
+            sqlalchemy.text(
+                "EXECUTE comparison_batch_query(:test_set_id, :sample_count)"
+            ).bindparams(
+                sample_count=request.batch_size,
+                test_set_id=test_set_id,
+            )
+        ).fetchall()
+        logger.info(f"Got {len(sample_data)} comparison samples")
+    except Exception as e:
+        logger.error(f"Error executing comparison_batch_query: {e}")
+        # Fall back to a simpler query if the prepared statement fails
+        logger.info("Falling back to simple random selection")
+        sample_data = db.execute(
+            sqlalchemy.text("""
+                WITH approval_state AS (
+                    SELECT id approved_state_id FROM scoring.sample_approval_state WHERE name = 'APPROVED'
+                ),
+                correlation_ids AS (
+                    SELECT comparison_correlation_id id
+                    FROM sample.sample
+                    JOIN specification.run ON sample.run_id = run.id
+                    JOIN specification.model ON run.model_id = model.id
+                    CROSS JOIN approval_state
+                    WHERE sample.approval_state_id = approval_state.approved_state_id AND sample.test_set_id = :test_set_id
+                    GROUP BY comparison_correlation_id, model.name
+                    HAVING COUNT(*) >= 2
+                    ORDER BY random()
+                    LIMIT :sample_count
+                )
+                -- Rest of the query simplified for fallback
+                SELECT s1.comparison_sample_id, a1.key, s2.comparison_sample_id, a2.key, p.build_specification
+                FROM correlation_ids c
+                JOIN sample.sample s1 ON s1.comparison_correlation_id = c.id
+                JOIN sample.sample s2 ON s2.comparison_correlation_id = c.id AND s2.id != s1.id
+                JOIN specification.run r ON s1.run_id = r.id
+                JOIN specification.prompt p ON r.prompt_id = p.id
+                JOIN sample.artifact a1 ON a1.sample_id = s1.id
+                JOIN sample.artifact a2 ON a2.sample_id = s2.id
+                JOIN sample.artifact_kind ak ON a1.artifact_kind_id = ak.id AND a2.artifact_kind_id = ak.id
+                WHERE ak.name = 'RENDERED_MODEL_GLB_COMPARISON_SAMPLE'
+                AND s1.test_set_id = :test_set_id AND s2.test_set_id = :test_set_id
+                AND s1.approval_state_id = approval_state.approved_state_id
+                AND s2.approval_state_id = approval_state.approved_state_id
+                LIMIT :sample_count
+            """)
+            .bindparams(
+                sample_count=request.batch_size,
+                test_set_id=test_set_id,
+            )
+        ).fetchall()
 
     comparison_tokens = []
-    for (
-        sample_1,
-        sample_1_key,
-        sample_2,
-        sample_2_key,
-        build_specification,
-    ) in sample_data:
+    for row in sample_data:
+        # Extract the basic sample data
+        sample_1 = row[0]
+        sample_1_key = row[1]
+        sample_2 = row[2]
+        sample_2_key = row[3]
+        build_specification = row[4]
+
+        # Extract model information for logging
+        model_1_slug = row[5] if len(row) > 5 else None
+        model_1_votes = row[6] if len(row) > 6 else None
+        model_1_priority = row[7] if len(row) > 7 else None
+        model_2_slug = row[8] if len(row) > 8 else None
+        model_2_votes = row[9] if len(row) > 9 else None
+        model_2_priority = row[10] if len(row) > 10 else None
+
+        # Log the selected models and their vote counts
+        try:
+            # Get the actual model objects to verify
+            model_1 = db.scalar(select(Model).where(Model.slug == model_1_slug)) if model_1_slug else None
+            model_2 = db.scalar(select(Model).where(Model.slug == model_2_slug)) if model_2_slug else None
+
+            # Get the current vote counts from the leaderboard
+            if model_1:
+                model_1_leaderboard = db.scalar(
+                    select(ModelLeaderboard).where(
+                        ModelLeaderboard.model_id == model_1.id,
+                        ModelLeaderboard.test_set_id == test_set_id,
+                        ModelLeaderboard.tag_id == None
+                    )
+                )
+                actual_votes_1 = model_1_leaderboard.vote_count if model_1_leaderboard else 0
+            else:
+                actual_votes_1 = "unknown"
+
+            if model_2:
+                model_2_leaderboard = db.scalar(
+                    select(ModelLeaderboard).where(
+                        ModelLeaderboard.model_id == model_2.id,
+                        ModelLeaderboard.test_set_id == test_set_id,
+                        ModelLeaderboard.tag_id == None
+                    )
+                )
+                actual_votes_2 = model_2_leaderboard.vote_count if model_2_leaderboard else 0
+            else:
+                actual_votes_2 = "unknown"
+
+            model_1_priority_fmt = f"{model_1_priority:.2f}" if model_1_priority is not None else "None"
+            model_2_priority_fmt = f"{model_2_priority:.2f}" if model_2_priority is not None else "None"
+
+            # Calculate what the priority score should be based on our algorithm
+            avg_votes_decimal = db.scalar(
+                sqlalchemy.text(
+                    "SELECT AVG(vote_count) FROM scoring.model_leaderboard WHERE test_set_id = :test_set_id AND tag_id IS NULL"
+                ).bindparams(test_set_id=test_set_id)
+            ) or 1
+
+            # Convert Decimal to float to avoid type errors
+            avg_votes = float(avg_votes_decimal)
+
+            # Convert actual_votes to float if it's not a string
+            actual_votes_1_float = actual_votes_1 if actual_votes_1 == "unknown" else float(actual_votes_1)
+            actual_votes_2_float = actual_votes_2 if actual_votes_2 == "unknown" else float(actual_votes_2)
+
+            # Calculate expected priority for model 1
+            if actual_votes_1 == "unknown":
+                expected_priority_1 = 0.0
+            elif actual_votes_1_float == 0:
+                expected_priority_1 = 200.0
+            elif actual_votes_1_float < max(avg_votes * 0.1, 1):
+                # Super high priority for models with very few votes (less than 10% of average)
+                expected_priority_1 = 150.0 + (1.0 - (actual_votes_1_float / max(avg_votes * 0.1, 1)))
+            elif actual_votes_1_float < max(avg_votes * 0.9, 1):
+                # Match the new algorithm in prepared_statements.py
+                # We don't include the random factor here since this is just for logging
+                expected_priority_1 = 50.0 + (1.0 - (actual_votes_1_float / max(avg_votes * 0.9, 1)))
+            elif actual_votes_1_float < max(avg_votes * 0.99, 1):
+                expected_priority_1 = 10.0 + (1.0 - (actual_votes_1_float / max(avg_votes * 0.99, 1)))
+            else:
+                expected_priority_1 = 1.0 - (actual_votes_1_float / max(avg_votes, 1))
+
+            # Calculate expected priority for model 2
+            if actual_votes_2 == "unknown":
+                expected_priority_2 = 0.0
+            elif actual_votes_2_float == 0:
+                expected_priority_2 = 200.0
+            elif actual_votes_2_float < max(avg_votes * 0.1, 1):
+                # Super high priority for models with very few votes (less than 10% of average)
+                expected_priority_2 = 150.0 + (1.0 - (actual_votes_2_float / max(avg_votes * 0.1, 1)))
+            elif actual_votes_2_float < max(avg_votes * 0.9, 1):
+                expected_priority_2 = 50.0 + (1.0 - (actual_votes_2_float / max(avg_votes * 0.9, 1)))
+            elif actual_votes_2_float < max(avg_votes * 0.99, 1):
+                expected_priority_2 = 10.0 + (1.0 - (actual_votes_2_float / max(avg_votes * 0.99, 1)))
+            else:
+                expected_priority_2 = 1.0 - (actual_votes_2_float / max(avg_votes, 1))
+
+            logger.info(f"SELECTED MODELS: {model_1_slug} (votes: {model_1_votes}/{actual_votes_1}, priority: {model_1_priority_fmt}, expected: {expected_priority_1:.2f}) vs {model_2_slug} (votes: {model_2_votes}/{actual_votes_2}, priority: {model_2_priority_fmt}, expected: {expected_priority_2:.2f})")
+            logger.info(f"Average vote count: {avg_votes}")
+        except Exception as e:
+            logger.error(f"Error logging model comparison: {e}")
         token = uuid.uuid4()
 
         # Store in Redis with expiration
