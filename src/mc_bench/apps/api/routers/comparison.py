@@ -327,7 +327,11 @@ def post_comparison(
             current_rank_ids = set()
             for ranked_sample_id_str in sample_or_samples:
                 try:
-                    ranked_sample_id = uuid.UUID(ranked_sample_id_str)
+                    # Check if it's already a UUID object
+                    if isinstance(ranked_sample_id_str, uuid.UUID):
+                        ranked_sample_id = ranked_sample_id_str
+                    else:
+                        ranked_sample_id = uuid.UUID(ranked_sample_id_str)
                     if ranked_sample_id not in valid_sample_ids:
                         raise HTTPException(status_code=400, detail=f"Invalid sample ID '{ranked_sample_id_str}' in request")
                     if ranked_sample_id in processed_sample_ids:
@@ -340,7 +344,11 @@ def post_comparison(
         else:
             # Handle single rank
             try:
-                ranked_sample_id = uuid.UUID(sample_or_samples)
+                # Check if it's already a UUID object
+                if isinstance(sample_or_samples, uuid.UUID):
+                    ranked_sample_id = sample_or_samples
+                else:
+                    ranked_sample_id = uuid.UUID(sample_or_samples)
                 if ranked_sample_id not in valid_sample_ids:
                     raise HTTPException(status_code=400, detail=f"Invalid sample ID '{sample_or_samples}' in request")
                 if ranked_sample_id in processed_sample_ids:
