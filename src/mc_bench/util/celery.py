@@ -14,13 +14,13 @@ DEFAULT_WORKER_CONF = dict(
     # Our tasks are technically idempotent, but we want to avoid multiple executions
     task_acks_late=False,
     # worker_lost might occur during redeploys and that kind of thing
-    task_reject_on_worker_lost=True,
+    task_reject_on_worker_lost=False,
     # We want to avoid stale results
     result_expires=172800,
     # We want to make sure to spread load tasks across all workers
     worker_prefetch_multiplier=1,
     # experimental to maybe avoid memory leaks
-    worker_max_tasks_per_child=16,
+    worker_max_tasks_per_child=1,
     # We want to make sure to retry connection to the broker on startup
     broker_connection_retry_on_startup=True,
     worker_hijack_root_logger=False,
