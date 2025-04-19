@@ -31,10 +31,13 @@ COMPARISON_BATCH_QUERY = textwrap.dedent("""\
                 on sample.run_id = run.id
             join specification.model
                 on run.model_id = model.id
+            join research.experimental_state
+                on model.experimental_state_id = experimental_state.id
             cross join approval_state
         WHERE
             sample.approval_state_id = approval_state.approved_state_id
             AND sample.test_set_id = $1
+            AND (experimental_state.name IS NULL OR experimental_state.name != 'DEPRECATED')
         GROUP BY
             comparison_correlation_id,
             model.name
@@ -57,10 +60,13 @@ COMPARISON_BATCH_QUERY = textwrap.dedent("""\
                 on sample.run_id = run.id
             join specification.model
                 on run.model_id = model.id
+            join research.experimental_state
+                on model.experimental_state_id = experimental_state.id
             cross join approval_state
         WHERE
             sample.approval_state_id = approval_state.approved_state_id
             AND sample.test_set_id = $1
+            AND (experimental_state.name IS NULL OR experimental_state.name != 'DEPRECATED')
     ), 
     samples as (
         SELECT

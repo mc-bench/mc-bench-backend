@@ -23,6 +23,7 @@ from mc_bench.models.prompt import Prompt, Tag
 from mc_bench.models.run import Artifact, Run, Sample, TestSet
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
+from mc_bench.models.experimental_state import ExperimentalState
 from mc_bench.util.cache import timed_cache
 from mc_bench.util.logging import get_logger
 from mc_bench.util.postgres import get_managed_session
@@ -447,10 +448,13 @@ def get_leaderboard(
     # Query for leaderboard entries
     query = (
         select(ModelLeaderboard)
+        .join(Model, ModelLeaderboard.model_id == Model.id)
+        .join(ExperimentalState, Model.experimental_state_id == ExperimentalState.id, isouter=True)
         .where(
             ModelLeaderboard.metric_id == metric.id,
             ModelLeaderboard.test_set_id == test_set.id,
             ModelLeaderboard.vote_count >= minVotes,
+            (ExperimentalState.name.is_(None) | (ExperimentalState.name != 'DEPRECATED'))
         )
         .order_by(ModelLeaderboard.elo_score.desc())
         .limit(limit)
