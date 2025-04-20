@@ -9,9 +9,9 @@ class Settings:
     GITHUB_EMAIL_SALT = os.environ["GITHUB_EMAIL_SALT"]
     EMAIL_SALT = os.environ["GITHUB_EMAIL_SALT"]
     ALGORITHM = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7))
     REFRESH_TOKEN_EXPIRE_MINUTES = int(
-        os.environ.get("REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 30)
+        os.environ.get("REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7)
     )
     AUTO_GRANT_ADMIN_ROLE = os.environ.get("AUTO_GRANT_ADMIN_ROLE", "false") == "true"
 
