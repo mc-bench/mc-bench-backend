@@ -2,7 +2,7 @@ celery[redis]>=5.4.0
 psycopg2-binary>=2.9.10
 sqlalchemy>=2.0.36
 alembic>=1.14.0
-anthropic
+anthropic>=0.47.0
 openai
 mistralai
 reka-api
