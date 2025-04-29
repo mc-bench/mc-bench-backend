@@ -14,6 +14,7 @@ from mc_bench.models.comparison import (
     Comparison,
     ComparisonRank,
     Metric,
+    ModelGlickoLeaderboard,
     ModelLeaderboard,
     PromptLeaderboard,
     SampleLeaderboard,
@@ -35,6 +36,8 @@ from ..transport_types.responses import (
     ArtifactResponse,
     BucketStatsResponse,
     ComparisonBatchResponse,
+    GlickoLeaderboardEntryResponse,
+    GlickoLeaderboardResponse,
     GlobalStatsResponse,
     LeaderboardEntryResponse,
     LeaderboardResponse,
@@ -275,6 +278,18 @@ def post_comparison(
             send_task("elo_calculation")
         else:
             logger.debug("Elo calculation already in progress")
+        
+        # Force delete the Glicko-2 lock and trigger the calculation
+        logger.info("Attempting to enqueue Glicko-2 calculation")
+        redis.delete("glicko_calculation_in_progress")  # Force delete any stuck key
+        logger.info("Forcibly deleted glicko_calculation_in_progress key")
+        
+        try:
+            logger.info("Enqueuing Glicko-2 calculation task")
+            result = send_task("glicko_calculation")
+            logger.info(f"Glicko-2 calculation task sent: {result}")
+        except Exception as e:
+            logger.error(f"Error sending Glicko-2 calculation task: {e}")
 
     # Return model names for the UI
     return {
@@ -494,6 +509,109 @@ def get_leaderboard(
         )
 
     return LeaderboardResponse(
+        metric={
+            "id": metric.external_id,
+            "name": metric.name,
+            "description": metric.description,
+        },
+        test_set_id=test_set.external_id,
+        test_set_name=test_set.name,
+        entries=leaderboard_entries,
+    )
+
+
+@comparison_router.get(
+    "/api/leaderboard-glicko",
+    response_model=GlickoLeaderboardResponse,
+)
+def get_glicko_leaderboard(
+    metricName: str = Query(..., description="Name of the metric to use"),
+    testSetName: str = Query(..., description="Name of the test set"),
+    tagName: Optional[str] = Query(None, description="Filter by tag"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
+    minVotes: int = Query(10, ge=0, description="Minimum vote threshold"),
+    db: Session = Depends(get_managed_session),
+):
+    """
+    Get the Glicko-2 leaderboard for a specific metric and test set.
+    
+    This endpoint returns a list of models ranked by their Glicko-2 rating,
+    which includes rating deviation and volatility values.
+    """
+    # Get metric
+    metric = db.scalar(select(Metric).where(Metric.name == metricName))
+    if not metric:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Metric with name '{metricName}' not found",
+        )
+
+    # Get test set
+    test_set = db.scalar(select(TestSet).where(TestSet.name == testSetName))
+    if not test_set:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Test set with name '{testSetName}' not found",
+        )
+
+    # Get tag if tagName is provided
+    tag = None
+    if tagName:
+        tag = db.scalar(select(Tag).where(Tag.name == tagName))
+        if not tag:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tag with name '{tagName}' not found",
+            )
+
+    # Query for leaderboard entries
+    query = (
+        select(ModelGlickoLeaderboard)
+        .where(
+            ModelGlickoLeaderboard.metric_id == metric.id,
+            ModelGlickoLeaderboard.test_set_id == test_set.id,
+            ModelGlickoLeaderboard.vote_count >= minVotes,
+        )
+        .order_by(ModelGlickoLeaderboard.glicko_rating.desc())
+        .limit(limit)
+    )
+
+    # Add tag filter if tagName is provided
+    if tagName:
+        query = query.where(ModelGlickoLeaderboard.tag_id == tag.id)
+    else:
+        query = query.where(ModelGlickoLeaderboard.tag_id == None)
+
+    # Execute query
+    entries = db.scalars(query).all()
+
+    # Transform entries to response format
+    leaderboard_entries = []
+    for entry in entries:
+        model_data = ModelResponse(
+            id=entry.model.external_id, name=entry.model.name, slug=entry.model.slug
+        )
+
+        tag_data = None
+        if entry.tag:
+            tag_data = TagResponse(id=entry.tag.external_id, name=entry.tag.name)
+
+        leaderboard_entries.append(
+            GlickoLeaderboardEntryResponse(
+                glicko_rating=entry.glicko_rating,
+                rating_deviation=entry.rating_deviation,
+                volatility=entry.volatility,
+                vote_count=entry.vote_count,
+                win_count=entry.win_count,
+                loss_count=entry.loss_count,
+                tie_count=entry.tie_count,
+                last_updated=entry.last_updated.isoformat(),
+                model=model_data,
+                tag=tag_data,
+            )
+        )
+
+    return GlickoLeaderboardResponse(
         metric={
             "id": metric.external_id,
             "name": metric.name,

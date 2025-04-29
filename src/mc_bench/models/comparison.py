@@ -71,6 +71,48 @@ class ModelLeaderboard(Base):
         return result
 
 
+class ModelGlickoLeaderboard(Base):
+    __table__ = schema.scoring.model_glicko_leaderboard
+
+    model: Mapped["Model"] = relationship("Model", uselist=False)  # type: ignore
+    metric: Mapped["Metric"] = relationship("Metric", uselist=False)
+    test_set: Mapped["TestSet"] = relationship("TestSet", uselist=False)
+    tag: Mapped["Tag"] = relationship("Tag", uselist=False)  # type: ignore
+
+    def to_dict(self, include_details=True):
+        result = {
+            "glicko_rating": self.glicko_rating,
+            "rating_deviation": self.rating_deviation,
+            "volatility": self.volatility,
+            "vote_count": self.vote_count,
+            "win_count": self.win_count,
+            "loss_count": self.loss_count,
+            "tie_count": self.tie_count,
+            "last_updated": self.last_updated,
+        }
+
+        if include_details:
+            result.update(
+                {
+                    "model": self.model.to_dict() if self.model else None,
+                    "metric": self.metric.to_dict() if self.metric else None,
+                    "test_set": self.test_set.to_dict() if self.test_set else None,
+                    "tag": self.tag.to_dict() if self.tag else None,
+                }
+            )
+        else:
+            result.update(
+                {
+                    "model_id": self.model_id,
+                    "metric_id": self.metric_id,
+                    "test_set_id": self.test_set_id,
+                    "tag_id": self.tag_id,
+                }
+            )
+
+        return result
+
+
 class PromptLeaderboard(Base):
     __table__ = schema.scoring.prompt_leaderboard
 
@@ -161,4 +203,5 @@ __all__ = [
     "ProcessedComparison",
     "PromptLeaderboard",
     "SampleLeaderboard",
+    "ModelGlickoLeaderboard",
 ]
