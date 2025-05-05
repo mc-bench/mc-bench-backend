@@ -727,6 +727,28 @@ class Generation(Base):
             result["pending_runs"] = 0
             result["completed_runs"] = 0
             result["failed_runs"] = 0
+            
+            # Sample approval statistics
+            total_samples = 0
+            approved_samples = 0
+            rejected_samples = 0
+            pending_approval_samples = 0
+            
+            for run in self.runs:
+                for sample in run.samples:
+                    total_samples += 1
+                    if sample.approval_state:
+                        if sample.approval_state.name == "APPROVED":
+                            approved_samples += 1
+                        elif sample.approval_state.name == "REJECTED":
+                            rejected_samples += 1
+                    elif sample.is_complete and sample.experimental_state and sample.experimental_state.name == "RELEASED":
+                        pending_approval_samples += 1
+            
+            result["total_samples"] = total_samples
+            result["approved_samples"] = approved_samples
+            result["rejected_samples"] = rejected_samples
+            result["pending_approval_samples"] = pending_approval_samples
 
         return result
 

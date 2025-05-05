@@ -1,21 +1,25 @@
 import datetime
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.routing import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from mc_bench.auth.permissions import PERM
-from mc_bench.constants import GENERATION_STATE
+from mc_bench.constants import GENERATION_STATE, EXPERIMENTAL_STATE
 from mc_bench.events import emit_event
 from mc_bench.events.types import GenerationStateChanged
+from mc_bench.models.log import SampleApproval
 from mc_bench.models.model import Model
 from mc_bench.models.prompt import Prompt
 from mc_bench.models.run import (
     Generation,
     TestSet,
+    SampleApprovalState,
     generation_state_id_for,
+    experimental_state_id_for,
 )
+from mc_bench.models.sample import Sample
 from mc_bench.models.template import Template
 from mc_bench.models.user import User
 from mc_bench.server.auth import AuthManager
@@ -24,8 +28,9 @@ from mc_bench.util.postgres import get_managed_session
 from .. import celery
 from ..config import settings
 from ..transport_types.generic import ListResponse
-from ..transport_types.requests import GenerationRequest
+from ..transport_types.requests import GenerationRequest, BulkSampleApprovalRequest
 from ..transport_types.responses import (
+    BulkSampleApprovalResponse,
     GenerationCreatedResponse,
     GenerationDetailResponse,
     GenerationResponse,
@@ -174,3 +179,96 @@ def get_generation(
     )
 
     return generation.to_dict(include_runs=False, include_stats=True)
+
+
+@generation_router.post(
+    "/api/generation/{generation_id}/approve-samples",
+    dependencies=[
+        Depends(am.require_any_scopes([PERM.VOTING.ADMIN])),
+    ],
+    response_model=BulkSampleApprovalResponse
+)
+def approve_all_samples(
+    generation_id: str,
+    approval_request: BulkSampleApprovalRequest,
+    db: Session = Depends(get_managed_session),
+    user_uuid: str = Depends(am.get_current_user_uuid),
+):
+    
+    # Get the user
+    try:
+        user = db.scalars(select(User).where(User.external_id == user_uuid)).one()
+    except:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Find the generation
+    generation = db.scalar(
+        select(Generation)
+        .where(Generation.external_id == generation_id)
+        .options(selectinload(Generation.runs))
+    )
+    
+    if not generation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Generation with ID {generation_id} not found")
+    
+    # Get the test set
+    try:
+        test_set = db.scalars(
+            select(TestSet).where(TestSet.external_id == approval_request.test_set_id)
+        ).one()
+    except:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Test set with ID {approval_request.test_set_id} not found")
+    
+    # Get all run IDs for this generation
+    run_ids = [run.id for run in generation.runs]
+    
+    # Find all eligible samples
+    eligible_samples = db.scalars(
+        select(Sample)
+        .where(
+            Sample.run_id.in_(run_ids),
+            Sample.is_complete == True,
+            Sample.experimental_state_id == experimental_state_id_for(db, EXPERIMENTAL_STATE.RELEASED),
+            Sample.approval_state == None
+        )
+    ).all()
+    
+    approved_state = db.scalar(
+        select(SampleApprovalState).where(SampleApprovalState.name == "APPROVED")
+    )
+    
+    if not approved_state:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to find approval state")
+    
+    # Approve all eligible samples
+    for sample in eligible_samples:
+        sample.approval_state = approved_state
+        sample.test_set_id = test_set.id
+        
+        # Create sample approval log entry
+        approval = SampleApproval(
+            sample=sample,
+            user=user,
+            test_set=test_set,
+            note=approval_request.note if approval_request.note else None,
+        )
+        db.add(approval)
+    
+    db.commit()
+    
+    # Count remaining pending samples
+    remaining_pending = db.scalar(
+        select(db.func.count())
+        .select_from(Sample)
+        .where(
+            Sample.run_id.in_(run_ids),
+            Sample.is_complete == True,
+            Sample.experimental_state_id == experimental_state_id_for(db, EXPERIMENTAL_STATE.RELEASED),
+            Sample.approval_state == None
+        )
+    )
+    
+    return {
+        "total_approved": len(eligible_samples),
+        "remaining_pending": remaining_pending,
+    }

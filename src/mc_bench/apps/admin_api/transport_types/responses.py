@@ -175,6 +175,10 @@ class GenerationResponse(GenerationBaseResponse):
     pending_runs: int
     completed_runs: int
     failed_runs: int
+    total_samples: int
+    approved_samples: int
+    rejected_samples: int
+    pending_approval_samples: int
 
 
 class GenerationDetailResponse(GenerationResponse):
@@ -410,3 +414,10 @@ class CancelConsumerResponse(Base):
 
     success: bool
     message: str
+
+
+class BulkSampleApprovalResponse(Base):
+    """Response for bulk sample approval operation."""
+
+    total_approved: int
+    remaining_pending: int

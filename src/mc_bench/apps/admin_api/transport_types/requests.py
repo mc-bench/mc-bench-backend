@@ -116,6 +116,12 @@ class SampleApprovalRequest(SampleActionRequest):
     test_set_id: uuid.UUID
 
 
+class BulkSampleApprovalRequest(Base):
+    """Request model for bulk approving samples from a generation."""
+    test_set_id: uuid.UUID
+    note: Optional[str] = None
+
+
 class AddPromptTagRequest(Base):
     tag_name: str
 
