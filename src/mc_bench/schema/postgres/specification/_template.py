@@ -1,4 +1,6 @@
-""" """
+"""This table stores prompt templates that can be used with different models.
+Templates define the structure and content of the prompts sent to models,
+including Minecraft-specific formatting and instructions."""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -19,6 +21,7 @@ from .._metadata import metadata
 template = Table(
     "template",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

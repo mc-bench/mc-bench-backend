@@ -1,3 +1,10 @@
+"""Defines the specification stage table schema for the database.
+
+This table defines the various stages in the processing pipeline for runs, such as 
+initialization, generation, validation, etc. Each stage represents a discrete step
+in the content generation and validation workflow.
+"""
+
 from sqlalchemy import (
     TIMESTAMP,
     UUID,
@@ -17,6 +24,7 @@ from .._metadata import metadata
 stage = Table(
     "stage",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

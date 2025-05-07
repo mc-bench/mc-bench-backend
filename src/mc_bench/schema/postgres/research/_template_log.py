@@ -11,5 +11,6 @@ template_log = Table(
         "template_id", Integer, ForeignKey("specification.template.id"), nullable=False
     ),
     Column("log_id", Integer, ForeignKey("research.log.id"), nullable=False),
+    comment=__doc__.strip(),
     schema="research",
 )
