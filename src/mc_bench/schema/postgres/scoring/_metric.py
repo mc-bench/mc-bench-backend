@@ -1,4 +1,9 @@
-""" """
+"""This module defines the 'metric' table schema for storing scoring metrics.
+
+The metric table contains definitions of different metrics used to evaluate model outputs,
+including human-judged qualities like helpfulness, correctness, and other dimensions
+used in model evaluations. Each metric has a name, description, and tracking metadata.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -18,6 +23,7 @@ from .._metadata import metadata
 metric = Table(
     "metric",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

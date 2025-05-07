@@ -1,3 +1,13 @@
+"""
+Junction table linking users to roles in a many-to-many relationship.
+
+This table associates users with their assigned roles for authorization purposes.
+Each record represents a single role assignment to a specific user. The table
+enforces uniqueness constraints to prevent duplicate user-role assignments.
+Role assignments determine what permissions and access levels a user has within
+the application.
+"""
+
 from sqlalchemy import (
     TIMESTAMP,
     BigInteger,
@@ -14,6 +24,7 @@ from .._metadata import metadata
 user_role = Table(
     "user_role",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

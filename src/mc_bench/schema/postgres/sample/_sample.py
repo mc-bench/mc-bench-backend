@@ -1,4 +1,25 @@
-""" """
+"""
+The sample table stores individual benchmark samples to be evaluated.
+
+Each sample represents a specific AI-generated output for a benchmark run.
+Samples can be compared against each other (via comparison_correlation_id)
+and have various states (active, pending, complete, approval) to track
+their lifecycle through the benchmarking process.
+
+Key relationships:
+- Created by and modified by users (auth.user)
+- Belongs to a specific benchmark run (specification.run)
+- Can be part of a test set (sample.test_set)
+- Has approval states (scoring.sample_approval_state)
+- May have experimental states (research.experimental_state)
+
+Important fields:
+- external_id: UUID for external references
+- comparison_sample_id: UUID used for comparison tracking
+- active: Whether the sample can be voted on
+- is_pending: Whether the sample is still being processed
+- is_complete: Whether the sample has all required data
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -20,6 +41,7 @@ from .._metadata import metadata
 sample = Table(
     "sample",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

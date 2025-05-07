@@ -1,3 +1,10 @@
+"""Defines the allowed states for run stages in the benchmark system.
+
+This table defines the possible states a run stage can be in, such as pending, 
+running, completed, or failed. It serves as a reference table for the state 
+column in the run_stage table.
+"""
+
 from sqlalchemy import (
     TIMESTAMP,
     UUID,
@@ -17,6 +24,7 @@ from .._metadata import metadata
 run_stage_state = Table(
     "run_stage_state",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

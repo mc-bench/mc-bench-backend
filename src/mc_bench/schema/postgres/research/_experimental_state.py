@@ -16,6 +16,7 @@ from .._metadata import metadata
 experimental_state = Table(
     "experimental_state",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")

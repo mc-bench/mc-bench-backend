@@ -1,4 +1,8 @@
-""" """
+"""Defines the run_state table which represents the possible states a run can be in.
+
+This table stores the various states that a run can transition through during its lifecycle,
+such as pending, running, completed, failed, etc. Each state is uniquely identified and 
+tracked with creation and modification metadata."""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -19,6 +23,7 @@ from .._metadata import metadata
 run_state = Table(
     "run_state",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

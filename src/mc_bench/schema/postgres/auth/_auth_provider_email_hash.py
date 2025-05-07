@@ -1,3 +1,12 @@
+"""
+Maps hashed email addresses to users from external authentication providers.
+
+This table stores relationships between external authentication providers, their users,
+and the corresponding local user accounts. Email hashes are used to protect user privacy
+while still allowing for user identification across different authentication providers.
+The table enforces uniqueness of email hash per auth provider to prevent duplicate accounts.
+"""
+
 from sqlalchemy import (
     TIMESTAMP,
     BigInteger,
@@ -15,6 +24,7 @@ from .._metadata import metadata
 auth_provider_email_hash = Table(
     "auth_provider_email_hash",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

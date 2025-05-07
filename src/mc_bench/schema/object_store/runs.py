@@ -1,7 +1,31 @@
+"""
+Object store schema for MC-Bench runs and samples.
+
+This module defines the hierarchical structure for storing run data, samples, and artifacts
+in the object store. It provides Prototype definitions that map logical object kinds to
+physical storage paths following a consistent pattern.
+
+The schema follows a hierarchical pattern:
+- 'runs': Contains all run data organized by run_id
+  - Each run contains samples identified by sample_id
+    - Each sample has an artifacts directory with various output files
+- 'comparison_samples': Stores comparison data for evaluation purposes
+
+Each logical object kind maps to a physical storage path through Prototype definitions,
+making it easy to locate and organize benchmark-related files.
+"""
+
 from mc_bench.util.object_store import Prototype
 
 
 class KINDS:
+    """
+    Defines the logical object kinds used in the MC-Bench object store schema.
+    
+    These constants represent different types of data and artifacts that can be
+    stored in the object store, providing a consistent naming convention for
+    all benchmark-related objects.
+    """
     RUN = "RUN"
     SAMPLE = "SAMPLE"
     ARTIFACTS = "ARTIFACTS"
@@ -30,6 +54,7 @@ class KINDS:
 
 
 runs = Prototype(
+    comment="The main run data storage prototype defining the hierarchical structure for all benchmark run data and artifacts.",
     children=[
         Prototype(
             kind=KINDS.RUN,
@@ -109,6 +134,7 @@ runs = Prototype(
 )
 
 comparison_samples = Prototype(
+    comment="Storage prototype for comparison samples used for evaluation purposes.",
     kind=KINDS.COMPARISON_SAMPLES,
     pattern="comparison_samples",
     children=[

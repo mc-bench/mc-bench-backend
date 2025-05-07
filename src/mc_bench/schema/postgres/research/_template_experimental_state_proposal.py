@@ -12,9 +12,19 @@ from sqlalchemy import (
 
 from .._metadata import metadata
 
+__doc__ = """
+Tracks proposals to change the experimental state of a template.
+
+This table records when template experimental state change proposals are created,
+by whom, and their acceptance or rejection status. It maintains references to 
+the template being modified, the proposed new experimental state, and logs
+associated with creation, acceptance, and rejection events.
+"""
+
 template_experimental_state_proposal = Table(
     "template_experimental_state_proposal",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True),
     Column(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")

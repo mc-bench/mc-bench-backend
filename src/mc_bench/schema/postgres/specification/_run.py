@@ -1,4 +1,9 @@
-""" """
+"""
+The run table represents individual executions of specific models with particular prompts and templates.
+Each run tracks a single model inference with its associated context, including which template and prompt
+were used. Runs may be part of a larger generation process, but can also exist independently.
+The table maintains the state of each run and includes metadata about creation and modification.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -18,6 +23,7 @@ from .._metadata import metadata
 run = Table(
     "run",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=True

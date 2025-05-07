@@ -9,5 +9,6 @@ sample_log = Table(
     metadata,
     Column("sample_id", Integer, ForeignKey("sample.sample.id"), nullable=False),
     Column("log_id", Integer, ForeignKey("research.log.id"), nullable=False),
+    comment=__doc__.strip(),
     schema="research",
 )

@@ -1,4 +1,17 @@
-""" """
+"""
+Represents a file artifact associated with experimental runs and samples.
+
+Artifacts are files or data assets generated during experiment execution, such as:
+- Model outputs
+- Generated images
+- Evaluation metrics
+- Raw data
+
+Each artifact is categorized by its kind (artifact_kind_id) and linked to either
+a specific run, a sample, or both. Artifacts are stored externally with bucket/key
+references following an object storage pattern. The external_id provides a UUID
+for public reference without exposing the internal ID.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -18,6 +31,7 @@ from .._metadata import metadata
 artifact = Table(
     "artifact",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=True

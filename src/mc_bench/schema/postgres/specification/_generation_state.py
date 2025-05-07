@@ -1,4 +1,9 @@
-""" """
+"""Table defining the possible states a generation can be in during its lifecycle.
+
+This table stores the various states that a generation can transition through,
+such as queued, processing, completed, or failed. Each state is uniquely
+identified and tracked with creation and modification metadata.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -18,6 +23,7 @@ from .._metadata import metadata
 generation_state = Table(
     "generation_state",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

@@ -1,4 +1,11 @@
-""" """
+"""
+Comparison table for storing user or system evaluations of model outputs.
+
+This table tracks comparison data for model samples across different metrics and test sets.
+It stores information about who performed the comparison (user_id or identification_token_id),
+when it was created, which metric and test set were used, and additional tracking data like
+session_id and comparison_id for grouping related comparisons.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -17,6 +24,7 @@ from .._metadata import metadata
 comparison = Table(
     "comparison",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=True

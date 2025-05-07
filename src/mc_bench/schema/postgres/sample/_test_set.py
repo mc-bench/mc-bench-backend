@@ -1,4 +1,32 @@
-"""A test set is a collection of samples that can be voted on."""
+"""
+A test set is a collection of samples that can be voted on in structured evaluation workflows.
+
+Test sets provide a comprehensive framework to organize samples for systematic assessment by human evaluators.
+They enable administrators to strategically group related samples for targeted evaluation campaigns,
+track voting progress at individual and aggregate levels, and generate detailed statistical analyses
+on evaluator preferences and consensus patterns. Each test set maintains bidirectional relationships
+with the samples it contains and all votes cast on those samples, creating a complete evaluation ecosystem.
+
+Key characteristics of test sets include:
+- Unique identification through name, description, and UUID
+- User attribution via created_by tracking
+- Flexible organization allowing any sample to belong to multiple test sets
+- Hierarchical structure supporting the primary organizational unit for evaluation campaigns
+- Scalable design accommodating any number of samples and votes across multiple criteria
+
+Test sets serve as the foundation for various evaluation activities:
+
+1. Systematic evaluation of AI-generated outputs against specific quality metrics
+2. Comparative assessment of different model versions, prompts, or system configurations
+3. Collection of fine-grained human preferences for training reward models and alignment research
+4. Quantitative measurement of output quality across multiple evaluation dimensions
+5. Aggregation of evaluator consensus to identify patterns in subjective preferences
+6. Longitudinal tracking of model improvements through consistent evaluation frameworks
+7. Controlled A/B testing of different generation approaches against the same prompts
+
+The test_set table forms the core of the evaluation database schema, with relationships
+to samples, votes, criteria, and users, enabling comprehensive evaluation workflows.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,

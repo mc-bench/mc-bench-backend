@@ -20,6 +20,7 @@ from .._metadata import metadata
 prompt_leaderboard = Table(
     "prompt_leaderboard",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False
