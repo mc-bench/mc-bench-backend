@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+
+import argparse
+import sys
+from sqlalchemy import select, text
+
+from mc_bench.util.postgres import get_session
+from mc_bench.models.user import User, Role
+from mc_bench.schema.postgres.auth import user_role
+
+def list_users():
+    db = get_session()
+    users = db.execute(select(User)).scalars().all()
+    for user in users:
+        print(f"Username: {user.username}")
+    db.close()
+
+def list_roles():
+    db = get_session()
+    roles = db.execute(select(Role)).scalars().all()
+    for role in roles:
+        print(f"Role: {role.name}")
+    db.close()
+
+def grant_role(username, role_name):
+    db = get_session()
+    user = db.scalar(select(User).where(User.username == username))
+    if not user:
+        print(f"Error: User '{username}' not found")
+        sys.exit(1)
+
+    role = db.scalar(select(Role).where(Role.name == role_name))
+    if not role:
+        print(f"Error: Role '{role_name}' not found")
+        sys.exit(1)
+
+    # Check if user already has role
+    existing = db.execute(
+        select(user_role).where(
+            user_role.c.user_id == user.id,
+            user_role.c.role_id == role.id
+        )
+    ).first()
+    
+    if existing:
+        print(f"User '{username}' already has role '{role_name}'")
+        return
+
+    # Grant the role
+    db.execute(
+        user_role.insert().values(
+            created_by=user.id,
+            user_id=user.id,
+            role_id=role.id
+        )
+    )
+    db.commit()
+    print(f"Granted role '{role_name}' to user '{username}'")
+    db.close()
+
+def main():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest='command')
+
+    # List users command
+    subparsers.add_parser('list-users')
+
+    # List roles command
+    subparsers.add_parser('list-roles')
+
+    # Grant role command
+    grant_parser = subparsers.add_parser('grant')
+    grant_parser.add_argument('--username', required=True)
+    grant_parser.add_argument('--role', required=True)
+
+    args = parser.parse_args()
+
+    if args.command == 'list-users':
+        list_users()
+    elif args.command == 'list-roles':
+        list_roles()
+    elif args.command == 'grant':
+        grant_role(args.username, args.role)
+    else:
+        parser.print_help()
+
+if __name__ == '__main__':
+    main()

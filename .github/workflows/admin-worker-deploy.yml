@@ -1,0 +1,112 @@
+name: Admin Worker Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_hash:
+        description: 'Commit hash to deploy to production'
+        required: true
+        type: string
+
+env:
+  REGISTRY: "registry.digitalocean.com"
+  ADMIN_WORKER_IMAGE_NAME: "mcbench/admin-worker"
+  ADMIN_WORKER_CONTAINER_PREFIX: "admin-worker"
+  DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
+
+jobs:
+  verify-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit is on main
+        run: |
+          if ! git branch --contains ${{ github.event.inputs.commit_hash }} | grep -q "main"; then
+            echo "Error: Commit ${{ github.event.inputs.commit_hash }} is not on the main branch"
+            exit 1
+          fi
+
+  tag-admin-worker-production:
+    needs: verify-commit
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Tag Admin Worker image as production
+        run: |
+          echo "Tagging admin-worker as production..."
+          docker buildx imagetools create \
+            ${{ env.REGISTRY }}/mcbench/admin-worker:${{ github.event.inputs.commit_hash }} \
+            --tag ${{ env.REGISTRY }}/mcbench/admin-worker:production
+
+  prepare-admin-workers:
+    needs: tag-admin-worker-production
+    runs-on: ubuntu-latest
+    outputs:
+      admin-worker-ips: ${{ steps.set-ips.outputs.admin-worker-ips }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "admin-worker-ips="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "admin-worker-prod") | .ip]') >> $GITHUB_OUTPUT
+
+  deploy-admin-worker:
+    needs: prepare-admin-workers
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-admin-workers.outputs.admin-worker-ips) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.ADMIN_WORKER_IMAGE_NAME }}
+          TAG: "production"
+          CONTAINER_PREFIX: ${{ env.ADMIN_WORKER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          scp -i ~/.ssh/deploy_key ./deploy/admin-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
+            && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
+            DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
+            REGISTRY=$REGISTRY \
+            IMAGE_NAME=$IMAGE_NAME \
+            TAG=$TAG \
+            CONTAINER_PREFIX=$CONTAINER_PREFIX \
+            SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
+            SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
+            SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
+            /tmp/deploy.sh" 

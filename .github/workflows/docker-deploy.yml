@@ -1,0 +1,387 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: "registry.digitalocean.com"
+  SERVER_WORKER_IMAGE_NAME: "mcbench/server-worker"
+  RENDER_WORKER_IMAGE_NAME: "mcbench/render-worker"
+  ADMIN_WORKER_IMAGE_NAME: "mcbench/admin-worker"
+  WORKER_IMAGE_NAME: "mcbench/worker"
+  SERVER_WORKER_CONTAINER_PREFIX: "server-worker"
+  RENDER_WORKER_CONTAINER_PREFIX: "render-worker"
+  ADMIN_WORKER_CONTAINER_PREFIX: "admin-worker"
+  WORKER_CONTAINER_PREFIX: "worker"
+  SCHEDULER_CONTAINER_PREFIX: "scheduler"
+  DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
+
+  MINECRAFT_BUILDER_IMAGE_NAME: "mcbench/minecraft-builder"
+
+jobs:
+  build-and-push-images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - name: server-worker
+            path: server-worker.Dockerfile
+          - name: render-worker
+            path: render-worker.Dockerfile
+          - name: minecraft-builder
+            path: builder-runner.Dockerfile
+            context: images/builder-runner
+          - name: admin-api
+            path: admin-api.Dockerfile
+          - name: admin-worker
+            path: admin-worker.Dockerfile
+          - name: api
+            path: api.Dockerfile
+          - name: worker
+            path: worker.Dockerfile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.image.context || '.' }}
+          file: ${{ matrix.image.context || 'images' }}/${{ matrix.image.path }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:buildcache,mode=max
+
+  tag-development:
+    needs: build-and-push-images
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Tag images as development
+        run: |
+          for image in server-worker render-worker minecraft-builder admin-api admin-worker api worker; do
+            echo "Tagging $image as development..."
+            docker buildx imagetools create \
+              ${{ env.REGISTRY }}/mcbench/$image:${{ github.sha }} \
+              --tag ${{ env.REGISTRY }}/mcbench/$image:development
+          done
+
+  prepare-server-worker:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "server-worker-dev") | .ip]') >> $GITHUB_OUTPUT
+
+  prepare-render-worker:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "render-worker-dev") | .ip]') >> $GITHUB_OUTPUT
+
+  prepare-admin-worker:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "admin-worker-dev") | .ip]') >> $GITHUB_OUTPUT
+
+  prepare-worker:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "worker-dev") | .ip]') >> $GITHUB_OUTPUT
+
+  prepare-scheduler:
+    runs-on: ubuntu-latest
+    outputs:
+      ip-list: ${{ steps.set-ips.outputs.ip-list }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - id: set-ips
+        run: |
+          echo "ip-list="$(doctl compute reserved-ip list -o json | jq -c '[.[] | select(.droplet.tags[] == "scheduler-dev") | .ip]') >> $GITHUB_OUTPUT
+
+  deploy-server-worker:
+    needs:
+      - prepare-server-worker
+      - tag-development
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-server-worker.outputs.ip-list) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.SERVER_WORKER_IMAGE_NAME }}
+          TAG: "development"
+          CONTAINER_PREFIX: ${{ env.SERVER_WORKER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+        run: |
+          # Set up SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          # Copy deploy script to server and execute
+          scp -i ~/.ssh/deploy_key ./deploy/server-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
+            && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
+            DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
+            REGISTRY=$REGISTRY \
+            IMAGE_NAME=$IMAGE_NAME \
+            TAG=$TAG \
+            CONTAINER_PREFIX=$CONTAINER_PREFIX \
+            SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
+            SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
+            SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
+            /tmp/deploy.sh"
+
+  deploy-render-worker:
+    needs:
+      - prepare-render-worker
+      - tag-development
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-render-worker.outputs.ip-list) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.RENDER_WORKER_IMAGE_NAME }}
+          TAG: "development"
+          CONTAINER_PREFIX: ${{ env.RENDER_WORKER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+        run: |
+          # Set up SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          # Copy deploy script to render worker and execute
+          scp -i ~/.ssh/deploy_key ./deploy/render-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
+            && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
+            DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
+            REGISTRY=$REGISTRY \
+            IMAGE_NAME=$IMAGE_NAME \
+            TAG=$TAG \
+            CONTAINER_PREFIX=$CONTAINER_PREFIX \
+            SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
+            SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
+            SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
+            /tmp/deploy.sh"
+
+  deploy-admin-worker:
+    needs:
+      - prepare-admin-worker
+      - tag-development
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-admin-worker.outputs.ip-list) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.ADMIN_WORKER_IMAGE_NAME }}
+          TAG: "development"
+          CONTAINER_PREFIX: ${{ env.ADMIN_WORKER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          scp -i ~/.ssh/deploy_key ./deploy/admin-worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
+            && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
+            DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
+            REGISTRY=$REGISTRY \
+            IMAGE_NAME=$IMAGE_NAME \
+            TAG=$TAG \
+            CONTAINER_PREFIX=$CONTAINER_PREFIX \
+            SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
+            SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
+            SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
+            /tmp/deploy.sh"
+
+  deploy-worker:
+    needs:
+      - prepare-worker
+      - tag-development
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-worker.outputs.ip-list) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.WORKER_IMAGE_NAME }}
+          TAG: "development"
+          CONTAINER_PREFIX: ${{ env.WORKER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          scp -i ~/.ssh/deploy_key ./deploy/worker-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/deploy.sh \
+            && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
+            DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
+            REGISTRY=$REGISTRY \
+            IMAGE_NAME=$IMAGE_NAME \
+            TAG=$TAG \
+            CONTAINER_PREFIX=$CONTAINER_PREFIX \
+            SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
+            SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
+            SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
+            /tmp/deploy.sh"
+
+  deploy-scheduler:
+    needs:
+      - prepare-scheduler
+      - tag-development
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ip: ${{ fromJson(needs.prepare-scheduler.outputs.ip-list) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ matrix.ip }}
+          DROPLET_USER: ${{ secrets.DROPLET_USERNAME }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.ADMIN_WORKER_IMAGE_NAME }}
+          TAG: "development"
+          CONTAINER_PREFIX: ${{ env.SCHEDULER_CONTAINER_PREFIX }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
+          SPACES_SECRET_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_HOST >> ~/.ssh/known_hosts
+          
+          scp -i ~/.ssh/deploy_key ./deploy/scheduler-deploy.sh $DROPLET_USER@$DROPLET_HOST:/tmp/scheduler-deploy.sh
+          scp -i ~/.ssh/deploy_key ./deploy/docker-cleanup.sh $DROPLET_USER@$DROPLET_HOST:/opt/docker-cleanup.sh
+          ssh -i ~/.ssh/deploy_key $DROPLET_USER@$DROPLET_HOST "chmod +x /tmp/scheduler-deploy.sh \
+            && DOCKER_LOGIN_USERNAME=${{ env.DOCKER_LOGIN_USERNAME }} \
+            DIGITALOCEAN_ACCESS_TOKEN=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} \
+            REGISTRY=$REGISTRY \
+            IMAGE_NAME=$IMAGE_NAME \
+            TAG=$TAG \
+            CONTAINER_PREFIX=$CONTAINER_PREFIX \
+            SPACES_ACCESS_KEY=${{ secrets.SPACES_ACCESS_KEY }} \
+            SPACES_SECRET_KEY=${{ secrets.SPACES_SECRET_KEY }} \
+            SPACES_ENDPOINT=${{ secrets.SPACES_ENDPOINT }} \
+            /tmp/scheduler-deploy.sh"

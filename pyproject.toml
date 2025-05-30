@@ -1,0 +1,40 @@
+[project]
+name = "mc-bench"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    { name = "hunter", email = "huntcsg@gmail.com" }
+]
+requires-python = ">=3.10"
+dynamic = ["dependencies", "optional-dependencies"]
+
+[project.scripts]
+mc-bench-alembic = "mc_bench.migrations.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+dependencies = { file = "deps/requirements.in" }
+
+[tool.setuptools.dynamic.optional-dependencies]
+dev = {file = "deps/dev-requirements.in"}
+api = {file = "deps/api-requirements.in"}
+worker = {file = "deps/worker-requirements.in"}
+admin-worker = {file = "deps/admin-worker-requirements.in"}
+server-worker = {file = "deps/server-worker-requirements.in"}
+render-worker = {file = "deps/render-worker-requirements.in"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff.lint.pyflakes]
+allowed-unused-imports = [
+    "mc_bench.schema.postgres.specification"
+]
+
+[tool.ruff.lint]
+ignore = ["E712", "E711"]

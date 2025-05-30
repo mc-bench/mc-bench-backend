@@ -1,0 +1,54 @@
+name: PR Build
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: "registry.digitalocean.com"
+  DOCKER_LOGIN_USERNAME: huntcsg@gmail.com
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - name: server-worker
+            path: server-worker.Dockerfile
+          - name: render-worker
+            path: render-worker.Dockerfile
+          - name: minecraft-builder
+            path: builder-runner.Dockerfile
+            context: images/builder-runner
+          - name: admin-api
+            path: admin-api.Dockerfile
+          - name: admin-worker
+            path: admin-worker.Dockerfile
+          - name: api
+            path: api.Dockerfile
+          - name: worker
+            path: worker.Dockerfile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.image.context || '.' }}
+          file: ${{ matrix.image.context || 'images' }}/${{ matrix.image.path }}
+          push: false
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/mcbench/${{ matrix.image.name }}:buildcache,mode=max
