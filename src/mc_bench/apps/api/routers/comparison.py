@@ -1078,6 +1078,123 @@ def get_model_samples(
 
 
 @comparison_router.get(
+    "/api/leaderboard/model/random-sample",
+    response_model=SampleResponse,
+)
+def get_random_model_sample(
+    metricName: str = Query(..., description="Name of the metric"),
+    testSetName: str = Query(..., description="Name of the test set"),
+    modelSlug: str = Query(..., description="Slug or ID of the model"),
+    tagName: Optional[str] = Query(None, description="Filter by tag"),
+    promptName: Optional[str] = Query(None, description="Filter by prompt"),
+    excludeIds: Optional[str] = Query(None, description="Comma-separated list of sample IDs to exclude"),
+    db: Session = Depends(get_managed_session),
+):
+    """
+    Get a random sample for a specific model from the leaderboard.
+    
+    This endpoint returns a random sample that has been voted on and is part
+    of the leaderboard. It's useful for browsing through model outputs.
+    
+    Required query parameters:
+    - metricName: The name of the metric
+    - testSetName: The name of the test set
+    - modelSlug: The slug of the model
+    
+    Optional query parameters:
+    - tagName: Filter by tag
+    - promptName: Filter by prompt
+    - excludeIds: Comma-separated list of sample external IDs to exclude (for getting different samples)
+    """
+    # Verify all entities exist
+    metric = db.scalar(select(Metric).where(Metric.name == metricName))
+    if not metric:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Metric with name '{metricName}' not found",
+        )
+    
+    test_set = db.scalar(select(TestSet).where(TestSet.name == testSetName))
+    if not test_set:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Test set with name '{testSetName}' not found",
+        )
+    
+    model = db.scalar(select(Model).where(Model.slug == modelSlug))
+    if not model:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model with slug '{modelSlug}' not found",
+        )
+    
+    # Check if tag exists when tagName is provided
+    tag = None
+    if tagName:
+        tag = db.scalar(select(Tag).where(Tag.name == tagName))
+        if not tag:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tag with name '{tagName}' not found",
+            )
+    
+    # Build the base query for samples with leaderboard data
+    base_query = (
+        select(Sample)
+        .join(SampleLeaderboard, SampleLeaderboard.sample_id == Sample.id)
+        .join(Run, Sample.run_id == Run.id)
+        .join(Prompt, Run.prompt_id == Prompt.id)
+        .where(
+            Run.model_id == model.id,
+            SampleLeaderboard.metric_id == metric.id,
+            SampleLeaderboard.test_set_id == test_set.id,
+            SampleLeaderboard.vote_count >= 5,  # Only samples with some votes
+            Sample.is_complete == True,
+            Sample.is_pending == False,
+        )
+    )
+    
+    # Add tag filter if tagName is provided
+    if tag:
+        prompt_with_tag_subquery = (
+            select(Prompt.id)
+            .join(
+                schema.specification.prompt_tag,
+                schema.specification.prompt_tag.c.prompt_id == Prompt.id,
+            )
+            .where(schema.specification.prompt_tag.c.tag_id == tag.id)
+        ).subquery()
+        
+        base_query = base_query.where(Run.prompt_id.in_(prompt_with_tag_subquery))
+    
+    # Add prompt name filter if promptName is provided
+    if promptName:
+        base_query = base_query.where(Prompt.name == promptName)
+    
+    # Exclude specific sample IDs if provided
+    if excludeIds:
+        exclude_list = [id.strip() for id in excludeIds.split(",") if id.strip()]
+        if exclude_list:
+            base_query = base_query.where(Sample.external_id.notin_(exclude_list))
+    
+    # Use ORDER BY RANDOM() to get a random sample
+    # Note: This is not the most efficient for very large datasets, but should be fine for our use case
+    query = base_query.order_by(func.random()).limit(1)
+    
+    # Execute query
+    sample = db.scalar(query)
+    
+    if not sample:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No samples found matching the criteria",
+        )
+    
+    # Now fetch the sample with all necessary relationships using the view_sample logic
+    return view_sample(str(sample.external_id), db)
+
+
+@comparison_router.get(
     "/api/sample/{external_id}",
     response_model=SampleResponse,
 )
