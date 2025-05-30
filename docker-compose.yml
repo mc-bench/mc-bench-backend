@@ -34,6 +34,7 @@ services:
       HUMANIZE_LOGS: ${HUMANIZE_LOGS:-false}
       SHOW_VERBOSE_SQL: ${SHOW_VERBOSE_SQL:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      USE_PRIORITY_COMPARISON: ${USE_PRIORITY_COMPARISON:-true}
 
   admin-api:
     build:
