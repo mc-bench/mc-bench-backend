@@ -8,7 +8,10 @@ from mc_bench.util.postgres import get_session
 from mc_bench.util.redis import RedisDatabase, get_redis_pool
 
 from .config import settings
-from .prepared_statements import COMPARISON_BATCH_QUERY
+from .prepared_statements import COMPARISON_BATCH_QUERY, COMPARISON_BATCH_QUERY_PRIORITY
+from mc_bench.util.logging import get_logger
+
+logger = get_logger(__name__)
 
 github_oauth_client = GithubOauthClient(
     client_id=settings.GITHUB_CLIENT_ID,
@@ -39,10 +42,22 @@ async def lifespan(app):
         """Prepare statements when a new connection is created in the pool"""
         cursor = dbapi_connection.cursor()
         try:
+            # Prepare the standard/random query
             cursor.execute(
                 f"PREPARE comparison_batch_query(integer, integer) AS {COMPARISON_BATCH_QUERY}"
             )
+            logger.info("Prepared statement: comparison_batch_query (standard/random)")
+            
+            # Prepare the priority query
+            cursor.execute(
+                f"PREPARE comparison_batch_query_priority(integer, integer) AS {COMPARISON_BATCH_QUERY_PRIORITY}"
+            )
+            logger.info("Prepared statement: comparison_batch_query_priority")
+            
             dbapi_connection.commit()
+        except Exception as e:
+            logger.error(f"Failed to prepare statements: {e}", exc_info=True)
+            dbapi_connection.rollback()
         finally:
             cursor.close()
 
