@@ -301,7 +301,7 @@ WHERE experimental_state_id IS NULL;
 
 -- Enable scheduler and set simple queue limits for development (users can tune later)
 INSERT INTO specification.scheduler_control (key, value) VALUES 
-    ('SCHEDULER_MODE', 'on'),
+    ('SCHEDULER_MODE', '"on"'),
     ('DEFAULT_MAX_QUEUED_TASKS', '10'),
     ('MAX_TASKS_prompt', '10'),
     ('MAX_TASKS_parse', '10'), 
