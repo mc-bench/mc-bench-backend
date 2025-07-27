@@ -285,3 +285,29 @@ WHERE
         'Isaac'
     )
 ON CONFLICT DO NOTHING;
+
+-- Set all items to RELEASED experimental state for easier development setup
+UPDATE specification.model 
+SET experimental_state_id = (SELECT id FROM research.experimental_state WHERE name = 'RELEASED')
+WHERE experimental_state_id IS NULL;
+
+UPDATE specification.prompt
+SET experimental_state_id = (SELECT id FROM research.experimental_state WHERE name = 'RELEASED')
+WHERE experimental_state_id IS NULL;
+
+UPDATE specification.template
+SET experimental_state_id = (SELECT id FROM research.experimental_state WHERE name = 'RELEASED')
+WHERE experimental_state_id IS NULL;
+
+-- Enable scheduler and set simple queue limits for development (users can tune later)
+INSERT INTO specification.scheduler_control (key, value) VALUES 
+    ('SCHEDULER_MODE', 'on'),
+    ('DEFAULT_MAX_QUEUED_TASKS', '10'),
+    ('MAX_TASKS_prompt', '10'),
+    ('MAX_TASKS_parse', '10'), 
+    ('MAX_TASKS_validate', '10'),
+    ('MAX_TASKS_server', '10'),
+    ('MAX_TASKS_render', '10'),
+    ('MAX_TASKS_post_process', '10'),
+    ('MAX_TASKS_prepare', '10')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
