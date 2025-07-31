@@ -230,7 +230,9 @@ class AuthManager:
         if expires_delta:
             expire = datetime.utcnow() + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=60 * 24 * 7)  # Default to 7 days
+            expire = datetime.utcnow() + timedelta(
+                minutes=60 * 24 * 7
+            )  # Default to 7 days
 
         # Add jti (JWT ID) claim for tracking revoked tokens
         token_id = str(uuid.uuid4())
