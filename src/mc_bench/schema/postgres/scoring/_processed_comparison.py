@@ -18,6 +18,7 @@ from .._metadata import metadata
 processed_comparison = Table(
     "processed_comparison",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

@@ -19,6 +19,7 @@ from .._metadata import metadata
 comparison_rank = Table(
     "comparison_rank",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column(
         "comparison_id", Integer, ForeignKey("scoring.comparison.id"), nullable=False

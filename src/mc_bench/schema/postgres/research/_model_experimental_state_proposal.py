@@ -12,9 +12,20 @@ from sqlalchemy import (
 
 from .._metadata import metadata
 
+__doc__ = """
+Tracks proposals to change the experimental state of a model.
+
+This table records the lifecycle of experimental state change proposals,
+including who created the proposal, when it was created, and its acceptance
+or rejection status. It maintains relationships to the relevant model,
+the proposed experimental state, and logs associated with creation,
+acceptance, and rejection events.
+"""
+
 model_experimental_state_proposal = Table(
     "model_experimental_state_proposal",
     metadata,
+    comment=__doc__.strip(),
     Column("id", Integer, primary_key=True),
     Column(
         "external_id", UUID, nullable=False, server_default=text("uuid_generate_v4()")

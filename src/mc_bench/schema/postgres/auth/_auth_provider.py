@@ -1,3 +1,11 @@
+"""
+Authentication provider table that stores information about external identity providers.
+
+This table stores references to third-party authentication systems such as GitHub, Google, 
+or other OAuth providers that can be used for user authentication in the application.
+Each entry represents a different provider with a unique name.
+"""
+
 from sqlalchemy import (
     TIMESTAMP,
     BigInteger,
@@ -14,6 +22,7 @@ from .._metadata import metadata
 auth_provider = Table(
     "auth_provider",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

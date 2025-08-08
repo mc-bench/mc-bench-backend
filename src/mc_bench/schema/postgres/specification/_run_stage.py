@@ -1,4 +1,11 @@
-"""Run stage table with indexes for optimized scheduler performance"""
+"""
+Run stage table tracks individual stages within a run's execution pipeline.
+
+This table connects runs to their various processing stages and maintains the current
+state of each stage. It serves as the core tracking mechanism for the execution pipeline,
+allowing the system to monitor progress, manage task assignments, and handle failures.
+Includes indexes optimized for scheduler performance queries.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -19,6 +26,7 @@ from .._metadata import metadata
 run_stage = Table(
     "run_stage",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=True

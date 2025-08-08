@@ -1,3 +1,11 @@
+"""
+Provider class definitions for LLM service integration.
+
+This table defines the types of model providers available in the system (like OpenAI, 
+Anthropic, Gemini, etc.) and stores their default configuration settings. Each provider 
+class represents a different implementation strategy for connecting to LLM services.
+"""
+
 from sqlalchemy import (
     JSON,
     TIMESTAMP,
@@ -17,6 +25,7 @@ from .._metadata import metadata
 provider_class = Table(
     "provider_class",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=False

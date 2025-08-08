@@ -1,4 +1,9 @@
-""" """
+"""
+This table represents a request to generate content using a specific model and prompt.
+A generation may result in multiple individual runs as part of the content creation process.
+Generations track the higher-level process of content creation, while individual runs track
+specific model executions.
+"""
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -18,6 +23,7 @@ from .._metadata import metadata
 generation = Table(
     "generation",
     metadata,
+    comment=__doc__.strip(),
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column(
         "created", TIMESTAMP(timezone=False), server_default=func.now(), nullable=True

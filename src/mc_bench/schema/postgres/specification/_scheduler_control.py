@@ -1,9 +1,16 @@
+"""
+Table for storing scheduler control values that allow dynamic configuration of the scheduler system
+without requiring code changes. These values can be used to enable/disable features, set limits,
+or control scheduler behavior at runtime.
+"""
+
 from sqlalchemy import TIMESTAMP, Column, Index, String, Table, func
 from sqlalchemy.dialects.postgresql import UUID
 
 from mc_bench.schema.postgres._metadata import metadata
 
 scheduler_control = Table(
+    comment=__doc__.strip(),
     "scheduler_control",
     metadata,
     Column(
