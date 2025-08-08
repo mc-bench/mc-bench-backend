@@ -276,6 +276,21 @@ services:
       MINIO_ROOT_USER: fake_key
       MINIO_ROOT_PASSWORD: fake_secret
     command: ["server", "/data", "--console-address", "0.0.0.0:9001"]
+  
+  object-init:
+    image: minio/mc
+    depends_on:
+      - object
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      /bin/sleep 5 &&
+      /usr/bin/mc alias set object http://object:9000 fake_key fake_secret &&
+      /usr/bin/mc mb object/mcbench-backend-object-local --ignore-existing &&
+      /usr/bin/mc anonymous set download object/mcbench-backend-object-local &&
+      /usr/bin/mc mb object/mcbench-object-cdn-local --ignore-existing &&
+      /usr/bin/mc anonymous set download object/mcbench-object-cdn-local
+      "
 
 volumes:
   minio-data:
