@@ -27,6 +27,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # First delete any providers that reference this provider class
+    op.execute("""\
+        DELETE FROM specification.provider 
+        WHERE provider_class = 'OPENAI_RESPONSES_SDK';
+    """)
+    
+    # Then delete the provider class
     op.execute("""\
         DELETE FROM specification.provider_class 
         WHERE name = 'OPENAI_RESPONSES_SDK';
