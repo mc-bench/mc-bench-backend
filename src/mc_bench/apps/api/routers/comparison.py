@@ -449,19 +449,12 @@ def get_leaderboard(
     query = (
         select(ModelLeaderboard)
         .join(Model, ModelLeaderboard.model_id == Model.id)
-        .join(
-            ExperimentalState,
-            Model.experimental_state_id == ExperimentalState.id,
-            isouter=True,
-        )
+        .join(ExperimentalState, Model.experimental_state_id == ExperimentalState.id, isouter=True)
         .where(
             ModelLeaderboard.metric_id == metric.id,
             ModelLeaderboard.test_set_id == test_set.id,
             ModelLeaderboard.vote_count >= minVotes,
-            (
-                ExperimentalState.name.is_(None)
-                | (ExperimentalState.name != "DEPRECATED")
-            ),
+            (ExperimentalState.name.is_(None) | (ExperimentalState.name != 'DEPRECATED'))
         )
         .order_by(ModelLeaderboard.elo_score.desc())
         .limit(limit)
