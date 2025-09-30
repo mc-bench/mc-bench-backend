@@ -6,7 +6,6 @@ from .gemini import GeminiProvider
 from .grok import GrokProvider
 from .mistral import MistralProvider
 from .openai import OpenAIProvider
-from .openai_responses import OpenAIResponsesProvider
 from .openrouter import OpenRouterProvider
 from .reka import RekaProvider
 from .zhipuai import ZhipuAIProvider
@@ -20,7 +19,6 @@ __all__ = [
     "GrokProvider",
     "MistralProvider",
     "OpenAIProvider",
-    "OpenAIResponsesProvider",
     "OpenRouterProvider",
     "RekaProvider",
     "ZhipuAIProvider",
